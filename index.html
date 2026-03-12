@@ -101,7 +101,7 @@
   #canvas {
     flex: 1;
     display: block;
-    cursor: crosshair;
+    cursor: default;
   }
 
   #energyPanel {
@@ -154,10 +154,52 @@
     border: 1px solid #2a2a4a;
   }
 
+  #bucket {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    width: 60px;
+    height: 70px;
+    background: #1e1e3a;
+    border: 2px solid #4a4a6a;
+    border-radius: 0 0 12px 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    user-select: none;
+    z-index: 5;
+  }
+
+  #bucket:hover {
+    border-color: #ff6b6b;
+    background: #2a2a4a;
+  }
+
+  #bucket .bucket-label {
+    font-size: 10px;
+    color: #9ca3af;
+    margin-top: 4px;
+  }
+
+  #bucket .bucket-proton {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 40%, #ff9999, #ff4444 60%, #cc2222);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: bold;
+    font-size: 14px;
+  }
+
   #instructions {
     position: absolute;
     bottom: 20px;
-    left: calc(50% - 130px);
+    left: 50%;
     transform: translateX(-50%);
     background: rgba(18, 18, 42, 0.85);
     border: 1px solid #2a2a4a;
@@ -205,7 +247,12 @@
     <canvas id="graphCanvas"></canvas>
   </div>
 
-  <div id="instructions">Click to place protons, then press <strong>Go</strong> to watch them repel!</div>
+  <div id="bucket">
+    <div class="bucket-proton">+</div>
+    <span class="bucket-label">Drag me</span>
+  </div>
+
+  <div id="instructions">Drag protons from the bucket, or drag existing ones to reposition them.</div>
 </div>
 
 <script>
@@ -223,6 +270,7 @@ const instructions = document.getElementById('instructions');
 const kineticVal = document.getElementById('kineticVal');
 const potentialVal = document.getElementById('potentialVal');
 const totalVal = document.getElementById('totalVal');
+const bucket = document.getElementById('bucket');
 
 let protons = [];
 let running = false;
@@ -230,7 +278,13 @@ let animId = null;
 let speed = 1.0;
 const PROTON_RADIUS = 10;
 const COULOMB_K = 800;
-const MIN_DIST = 4;
+const MIN_DIST = 20; // Minimum distance enforced so protons can't overlap
+
+// Drag state
+let dragging = null;       // index of proton being dragged, or null
+let draggingNew = false;   // true if dragging a new proton from the bucket
+let dragOffsetX = 0;
+let dragOffsetY = 0;
 
 // Energy history for graph
 const MAX_HISTORY = 200;
@@ -253,15 +307,115 @@ function createProton(x, y) {
   return { x, y, vx: 0, vy: 0 };
 }
 
-// Click to add protons
-canvas.addEventListener('click', (e) => {
+function getCanvasPos(e) {
   const rect = canvas.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const y = e.clientY - rect.top;
-  protons.push(createProton(x, y));
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+function findProtonAt(x, y) {
+  for (let i = protons.length - 1; i >= 0; i--) {
+    const p = protons[i];
+    const dx = p.x - x;
+    const dy = p.y - y;
+    if (dx * dx + dy * dy <= (PROTON_RADIUS + 4) * (PROTON_RADIUS + 4)) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+// Separate overlapping protons so none sit on top of each other
+function separateOverlaps() {
+  const minSep = PROTON_RADIUS * 2;
+  for (let iter = 0; iter < 10; iter++) {
+    let moved = false;
+    for (let i = 0; i < protons.length; i++) {
+      for (let j = i + 1; j < protons.length; j++) {
+        const a = protons[i];
+        const b = protons[j];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < minSep && dist > 0) {
+          const overlap = (minSep - dist) / 2;
+          const nx = dx / dist;
+          const ny = dy / dist;
+          a.x -= nx * overlap;
+          a.y -= ny * overlap;
+          b.x += nx * overlap;
+          b.y += ny * overlap;
+          moved = true;
+        } else if (dist === 0) {
+          // Identical position — nudge randomly
+          b.x += (Math.random() - 0.5) * minSep;
+          b.y += (Math.random() - 0.5) * minSep;
+          moved = true;
+        }
+      }
+    }
+    if (!moved) break;
+  }
+}
+
+// --- Bucket drag: mousedown on bucket starts dragging a new proton ---
+bucket.addEventListener('mousedown', (e) => {
+  e.preventDefault();
+  const pos = getCanvasPos(e);
+  const newP = createProton(pos.x, pos.y);
+  protons.push(newP);
+  dragging = protons.length - 1;
+  draggingNew = true;
   updateStats();
-  if (!running) { computeEnergy(); draw(); drawGraph(); }
   hideInstructions();
+  if (!running) { draw(); }
+});
+
+// --- Canvas mouse events for dragging existing protons ---
+canvas.addEventListener('mousedown', (e) => {
+  const pos = getCanvasPos(e);
+  const idx = findProtonAt(pos.x, pos.y);
+  if (idx >= 0) {
+    dragging = idx;
+    draggingNew = false;
+    dragOffsetX = protons[idx].x - pos.x;
+    dragOffsetY = protons[idx].y - pos.y;
+    // Zero out velocity when grabbed
+    protons[idx].vx = 0;
+    protons[idx].vy = 0;
+    canvas.style.cursor = 'grabbing';
+  }
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (dragging === null) {
+    // Update cursor on hover
+    const pos = getCanvasPos(e);
+    const idx = findProtonAt(pos.x, pos.y);
+    canvas.style.cursor = idx >= 0 ? 'grab' : 'default';
+    return;
+  }
+  const pos = getCanvasPos(e);
+  const p = protons[dragging];
+  if (draggingNew) {
+    p.x = pos.x;
+    p.y = pos.y;
+  } else {
+    p.x = pos.x + dragOffsetX;
+    p.y = pos.y + dragOffsetY;
+  }
+  p.vx = 0;
+  p.vy = 0;
+  if (!running) { computeEnergy(); draw(); drawGraph(); }
+});
+
+window.addEventListener('mouseup', () => {
+  if (dragging !== null) {
+    separateOverlaps();
+    if (!running) { computeEnergy(); draw(); drawGraph(); }
+  }
+  dragging = null;
+  draggingNew = false;
+  canvas.style.cursor = 'default';
 });
 
 // Add a cluster of protons
@@ -271,9 +425,10 @@ addClusterBtn.addEventListener('click', () => {
   const count = 10 + Math.floor(Math.random() * 10);
   for (let i = 0; i < count; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const r = Math.random() * 40;
+    const r = PROTON_RADIUS * 2 + Math.random() * 40;
     protons.push(createProton(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r));
   }
+  separateOverlaps();
   updateStats();
   if (!running) { computeEnergy(); draw(); drawGraph(); }
   hideInstructions();
@@ -365,7 +520,6 @@ function drawGraph() {
     return;
   }
 
-  // Find max value for scaling
   let maxVal = 1;
   for (const e of energyHistory) {
     maxVal = Math.max(maxVal, e.kinetic, e.potential, e.total);
@@ -399,7 +553,10 @@ function step(dt) {
   const n = protons.length;
 
   for (let i = 0; i < n; i++) {
+    // Skip the dragged proton — it's held by the user
+    if (i === dragging) continue;
     for (let j = i + 1; j < n; j++) {
+      if (j === dragging) continue;
       const a = protons[i];
       const b = protons[j];
       let dx = b.x - a.x;
@@ -417,7 +574,27 @@ function step(dt) {
     }
   }
 
+  // Dragged proton still exerts force on others but doesn't move from physics
+  if (dragging !== null) {
+    const d = protons[dragging];
+    for (let j = 0; j < n; j++) {
+      if (j === dragging) continue;
+      const b = protons[j];
+      let dx = b.x - d.x;
+      let dy = b.y - d.y;
+      let distSq = dx * dx + dy * dy;
+      if (distSq < MIN_DIST * MIN_DIST) distSq = MIN_DIST * MIN_DIST;
+      const dist = Math.sqrt(distSq);
+      const force = COULOMB_K / distSq;
+      const fx = force * (dx / dist);
+      const fy = force * (dy / dist);
+      b.vx += fx * dt;
+      b.vy += fy * dt;
+    }
+  }
+
   for (let i = 0; i < n; i++) {
+    if (i === dragging) continue;
     const p = protons[i];
     p.x += p.vx * dt;
     p.y += p.vy * dt;
@@ -449,9 +626,12 @@ function draw() {
     }
   }
 
-  for (const p of protons) {
+  for (let i = 0; i < protons.length; i++) {
+    const p = protons[i];
+    const isHeld = i === dragging;
+
     const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, PROTON_RADIUS * 2.5);
-    gradient.addColorStop(0, 'rgba(255, 80, 80, 0.4)');
+    gradient.addColorStop(0, isHeld ? 'rgba(255, 200, 80, 0.5)' : 'rgba(255, 80, 80, 0.4)');
     gradient.addColorStop(1, 'rgba(255, 80, 80, 0)');
     ctx.fillStyle = gradient;
     ctx.beginPath();
@@ -459,9 +639,9 @@ function draw() {
     ctx.fill();
 
     const bodyGrad = ctx.createRadialGradient(p.x - 3, p.y - 3, 1, p.x, p.y, PROTON_RADIUS);
-    bodyGrad.addColorStop(0, '#ff9999');
-    bodyGrad.addColorStop(0.7, '#ff4444');
-    bodyGrad.addColorStop(1, '#cc2222');
+    bodyGrad.addColorStop(0, isHeld ? '#ffcc66' : '#ff9999');
+    bodyGrad.addColorStop(0.7, isHeld ? '#ff9933' : '#ff4444');
+    bodyGrad.addColorStop(1, isHeld ? '#cc6600' : '#cc2222');
     ctx.fillStyle = bodyGrad;
     ctx.beginPath();
     ctx.arc(p.x, p.y, PROTON_RADIUS, 0, Math.PI * 2);
