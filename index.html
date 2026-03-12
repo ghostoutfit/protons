@@ -68,24 +68,7 @@
   }
   #addClusterBtn:hover { background: #4f46e5; }
 
-  .toolbar-group {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .toolbar-group label {
-    font-size: 13px;
-    color: #9ca3af;
-    white-space: nowrap;
-  }
-
-  .toolbar-group input[type="range"] {
-    width: 100px;
-    accent-color: #ff6b6b;
-  }
-
-  #stats {
+#stats {
     font-size: 13px;
     color: #9ca3af;
     margin-left: auto;
@@ -122,15 +105,7 @@
   <button class="btn" id="goBtn">Go</button>
   <button class="btn" id="clearBtn">Clear</button>
   <button class="btn" id="addClusterBtn">Add Cluster</button>
-  <div class="toolbar-group">
-    <label>Force: <span id="forceVal">1.0</span>x</label>
-    <input type="range" id="forceSlider" min="0.1" max="5" step="0.1" value="1">
-  </div>
-  <div class="toolbar-group">
-    <label>Damping: <span id="dampVal">0.98</span></label>
-    <input type="range" id="dampSlider" min="0.9" max="1" step="0.005" value="0.98">
-  </div>
-  <span id="stats">Protons: 0</span>
+<span id="stats">Protons: 0</span>
 </div>
 
 <canvas id="canvas"></canvas>
@@ -143,23 +118,15 @@ const ctx = canvas.getContext('2d');
 const goBtn = document.getElementById('goBtn');
 const clearBtn = document.getElementById('clearBtn');
 const addClusterBtn = document.getElementById('addClusterBtn');
-const forceSlider = document.getElementById('forceSlider');
-const dampSlider = document.getElementById('dampSlider');
-const forceVal = document.getElementById('forceVal');
-const dampVal = document.getElementById('dampVal');
 const stats = document.getElementById('stats');
 const instructions = document.getElementById('instructions');
 
 let protons = [];
 let running = false;
 let animId = null;
-let forceMultiplier = 1.0;
-let damping = 0.98;
-
 const PROTON_RADIUS = 10;
-const COULOMB_K = 800; // Scaled Coulomb constant for visual effect
-const MIN_DIST = 4;    // Prevent division by near-zero
-const WALL_BOUNCE = 0.6;
+const COULOMB_K = 800;
+const MIN_DIST = 4;
 
 function resize() {
   canvas.width = window.innerWidth;
@@ -221,16 +188,6 @@ clearBtn.addEventListener('click', () => {
   draw();
 });
 
-// Sliders
-forceSlider.addEventListener('input', () => {
-  forceMultiplier = parseFloat(forceSlider.value);
-  forceVal.textContent = forceMultiplier.toFixed(1);
-});
-dampSlider.addEventListener('input', () => {
-  damping = parseFloat(dampSlider.value);
-  dampVal.textContent = damping.toFixed(3);
-});
-
 function hideInstructions() {
   instructions.style.opacity = '0';
   setTimeout(() => instructions.style.display = 'none', 500);
@@ -254,7 +211,7 @@ function step(dt) {
       let distSq = dx * dx + dy * dy;
       if (distSq < MIN_DIST * MIN_DIST) distSq = MIN_DIST * MIN_DIST;
       const dist = Math.sqrt(distSq);
-      const force = (COULOMB_K * forceMultiplier) / distSq;
+      const force = COULOMB_K / distSq;
       const fx = force * (dx / dist);
       const fy = force * (dy / dist);
       a.vx -= fx * dt;
@@ -264,19 +221,11 @@ function step(dt) {
     }
   }
 
-  // Update positions and apply damping
+  // Update positions (no damping, no walls — protons fly away freely)
   for (let i = 0; i < n; i++) {
     const p = protons[i];
-    p.vx *= damping;
-    p.vy *= damping;
     p.x += p.vx * dt;
     p.y += p.vy * dt;
-
-    // Wall bouncing
-    if (p.x < PROTON_RADIUS) { p.x = PROTON_RADIUS; p.vx = Math.abs(p.vx) * WALL_BOUNCE; }
-    if (p.x > canvas.width - PROTON_RADIUS) { p.x = canvas.width - PROTON_RADIUS; p.vx = -Math.abs(p.vx) * WALL_BOUNCE; }
-    if (p.y < PROTON_RADIUS) { p.y = PROTON_RADIUS; p.vy = Math.abs(p.vy) * WALL_BOUNCE; }
-    if (p.y > canvas.height - PROTON_RADIUS) { p.y = canvas.height - PROTON_RADIUS; p.vy = -Math.abs(p.vy) * WALL_BOUNCE; }
   }
 }
 
