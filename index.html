@@ -252,7 +252,7 @@
     <span class="bucket-label">Drag me</span>
   </div>
 
-  <div id="instructions">Drag protons from the bucket, or drag existing ones to reposition them.</div>
+  <div id="instructions">Click to place protons, drag from the bucket, or drag existing ones to reposition.</div>
 </div>
 
 <script>
@@ -287,7 +287,7 @@ let dragOffsetX = 0;
 let dragOffsetY = 0;
 
 // Energy history for graph
-const MAX_HISTORY = 200;
+const MAX_HISTORY = 600;
 let energyHistory = [];
 
 function resize() {
@@ -370,16 +370,17 @@ bucket.addEventListener('mousedown', (e) => {
   if (!running) { draw(); }
 });
 
-// --- Canvas mouse events for dragging existing protons ---
+// --- Canvas mouse events: click to place, or drag existing protons ---
+let didDrag = false;
 canvas.addEventListener('mousedown', (e) => {
   const pos = getCanvasPos(e);
   const idx = findProtonAt(pos.x, pos.y);
+  didDrag = false;
   if (idx >= 0) {
     dragging = idx;
     draggingNew = false;
     dragOffsetX = protons[idx].x - pos.x;
     dragOffsetY = protons[idx].y - pos.y;
-    // Zero out velocity when grabbed
     protons[idx].vx = 0;
     protons[idx].vy = 0;
     canvas.style.cursor = 'grabbing';
@@ -396,6 +397,7 @@ window.addEventListener('mousemove', (e) => {
   }
   const pos = getCanvasPos(e);
   const p = protons[dragging];
+  didDrag = true;
   if (draggingNew) {
     p.x = pos.x;
     p.y = pos.y;
@@ -406,6 +408,19 @@ window.addEventListener('mousemove', (e) => {
   p.vx = 0;
   p.vy = 0;
   if (!running) { computeEnergy(); draw(); drawGraph(); }
+});
+
+canvas.addEventListener('click', (e) => {
+  if (didDrag) return;
+  const pos = getCanvasPos(e);
+  if (findProtonAt(pos.x, pos.y) >= 0) return;
+  protons.push(createProton(pos.x, pos.y));
+  separateOverlaps();
+  updateStats();
+  computeEnergy();
+  draw();
+  drawGraph();
+  hideInstructions();
 });
 
 window.addEventListener('mouseup', () => {
@@ -498,10 +513,8 @@ function computeEnergy() {
   potentialVal.textContent = potential.toFixed(1);
   totalVal.textContent = (kinetic + potential).toFixed(1);
 
-  if (running) {
-    energyHistory.push({ kinetic, potential, total: kinetic + potential });
-    if (energyHistory.length > MAX_HISTORY) energyHistory.shift();
-  }
+  energyHistory.push({ kinetic, potential, total: kinetic + potential });
+  if (energyHistory.length > MAX_HISTORY) energyHistory.shift();
 
   return { kinetic, potential };
 }
@@ -512,13 +525,7 @@ function drawGraph() {
   const h = graphCanvas.offsetHeight;
   gctx.clearRect(0, 0, w, h);
 
-  if (energyHistory.length < 2) {
-    gctx.fillStyle = '#4a4a6a';
-    gctx.font = '11px sans-serif';
-    gctx.textAlign = 'center';
-    gctx.fillText('Graph appears when running', w / 2, h / 2);
-    return;
-  }
+  if (energyHistory.length < 2) return;
 
   let maxVal = 1;
   for (const e of energyHistory) {
