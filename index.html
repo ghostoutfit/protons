@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Proton Force Simulation</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a1a;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #toolbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 20px;
+    background: #12122a;
+    border-bottom: 1px solid #2a2a4a;
+    z-index: 10;
+    flex-wrap: wrap;
+  }
+
+  #toolbar h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #ff6b6b;
+    margin-right: 8px;
+    white-space: nowrap;
+  }
+
+  .btn {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  #goBtn {
+    background: #22c55e;
+    color: #fff;
+  }
+  #goBtn:hover { background: #16a34a; }
+  #goBtn.running {
+    background: #ef4444;
+  }
+  #goBtn.running:hover { background: #dc2626; }
+
+  #clearBtn {
+    background: #374151;
+    color: #e0e0e0;
+  }
+  #clearBtn:hover { background: #4b5563; }
+
+  #addClusterBtn {
+    background: #6366f1;
+    color: #fff;
+  }
+  #addClusterBtn:hover { background: #4f46e5; }
+
+  .toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .toolbar-group label {
+    font-size: 13px;
+    color: #9ca3af;
+    white-space: nowrap;
+  }
+
+  .toolbar-group input[type="range"] {
+    width: 100px;
+    accent-color: #ff6b6b;
+  }
+
+  #stats {
+    font-size: 13px;
+    color: #9ca3af;
+    margin-left: auto;
+    white-space: nowrap;
+  }
+
+  #canvas {
+    flex: 1;
+    display: block;
+    cursor: crosshair;
+  }
+
+  #instructions {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(18, 18, 42, 0.85);
+    border: 1px solid #2a2a4a;
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-size: 13px;
+    color: #9ca3af;
+    pointer-events: none;
+    text-align: center;
+    transition: opacity 0.5s;
+  }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <h1>Proton Simulation</h1>
+  <button class="btn" id="goBtn">Go</button>
+  <button class="btn" id="clearBtn">Clear</button>
+  <button class="btn" id="addClusterBtn">Add Cluster</button>
+  <div class="toolbar-group">
+    <label>Force: <span id="forceVal">1.0</span>x</label>
+    <input type="range" id="forceSlider" min="0.1" max="5" step="0.1" value="1">
+  </div>
+  <div class="toolbar-group">
+    <label>Damping: <span id="dampVal">0.98</span></label>
+    <input type="range" id="dampSlider" min="0.9" max="1" step="0.005" value="0.98">
+  </div>
+  <span id="stats">Protons: 0</span>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<div id="instructions">Click to place protons, then press <strong>Go</strong> to watch them repel!</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const goBtn = document.getElementById('goBtn');
+const clearBtn = document.getElementById('clearBtn');
+const addClusterBtn = document.getElementById('addClusterBtn');
+const forceSlider = document.getElementById('forceSlider');
+const dampSlider = document.getElementById('dampSlider');
+const forceVal = document.getElementById('forceVal');
+const dampVal = document.getElementById('dampVal');
+const stats = document.getElementById('stats');
+const instructions = document.getElementById('instructions');
+
+let protons = [];
+let running = false;
+let animId = null;
+let forceMultiplier = 1.0;
+let damping = 0.98;
+
+const PROTON_RADIUS = 10;
+const COULOMB_K = 800; // Scaled Coulomb constant for visual effect
+const MIN_DIST = 4;    // Prevent division by near-zero
+const WALL_BOUNCE = 0.6;
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight - document.getElementById('toolbar').offsetHeight;
+  canvas.style.marginTop = '0';
+  if (!running) draw();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Proton class
+function createProton(x, y) {
+  return { x, y, vx: 0, vy: 0 };
+}
+
+// Click to add protons
+canvas.addEventListener('click', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  protons.push(createProton(x, y));
+  updateStats();
+  if (!running) draw();
+  hideInstructions();
+});
+
+// Add a cluster of protons
+addClusterBtn.addEventListener('click', () => {
+  const cx = canvas.width / 2 + (Math.random() - 0.5) * 100;
+  const cy = canvas.height / 2 + (Math.random() - 0.5) * 100;
+  const count = 10 + Math.floor(Math.random() * 10);
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const r = Math.random() * 40;
+    protons.push(createProton(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r));
+  }
+  updateStats();
+  if (!running) draw();
+  hideInstructions();
+});
+
+// Go / Stop
+goBtn.addEventListener('click', () => {
+  running = !running;
+  goBtn.textContent = running ? 'Stop' : 'Go';
+  goBtn.classList.toggle('running', running);
+  if (running) loop();
+  else cancelAnimationFrame(animId);
+});
+
+// Clear
+clearBtn.addEventListener('click', () => {
+  protons = [];
+  running = false;
+  goBtn.textContent = 'Go';
+  goBtn.classList.remove('running');
+  cancelAnimationFrame(animId);
+  updateStats();
+  draw();
+});
+
+// Sliders
+forceSlider.addEventListener('input', () => {
+  forceMultiplier = parseFloat(forceSlider.value);
+  forceVal.textContent = forceMultiplier.toFixed(1);
+});
+dampSlider.addEventListener('input', () => {
+  damping = parseFloat(dampSlider.value);
+  dampVal.textContent = damping.toFixed(3);
+});
+
+function hideInstructions() {
+  instructions.style.opacity = '0';
+  setTimeout(() => instructions.style.display = 'none', 500);
+}
+
+function updateStats() {
+  stats.textContent = `Protons: ${protons.length}`;
+}
+
+// Physics step
+function step(dt) {
+  const n = protons.length;
+
+  // Compute repulsive forces (Coulomb's law)
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const a = protons[i];
+      const b = protons[j];
+      let dx = b.x - a.x;
+      let dy = b.y - a.y;
+      let distSq = dx * dx + dy * dy;
+      if (distSq < MIN_DIST * MIN_DIST) distSq = MIN_DIST * MIN_DIST;
+      const dist = Math.sqrt(distSq);
+      const force = (COULOMB_K * forceMultiplier) / distSq;
+      const fx = force * (dx / dist);
+      const fy = force * (dy / dist);
+      a.vx -= fx * dt;
+      a.vy -= fy * dt;
+      b.vx += fx * dt;
+      b.vy += fy * dt;
+    }
+  }
+
+  // Update positions and apply damping
+  for (let i = 0; i < n; i++) {
+    const p = protons[i];
+    p.vx *= damping;
+    p.vy *= damping;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+
+    // Wall bouncing
+    if (p.x < PROTON_RADIUS) { p.x = PROTON_RADIUS; p.vx = Math.abs(p.vx) * WALL_BOUNCE; }
+    if (p.x > canvas.width - PROTON_RADIUS) { p.x = canvas.width - PROTON_RADIUS; p.vx = -Math.abs(p.vx) * WALL_BOUNCE; }
+    if (p.y < PROTON_RADIUS) { p.y = PROTON_RADIUS; p.vy = Math.abs(p.vy) * WALL_BOUNCE; }
+    if (p.y > canvas.height - PROTON_RADIUS) { p.y = canvas.height - PROTON_RADIUS; p.vy = -Math.abs(p.vy) * WALL_BOUNCE; }
+  }
+}
+
+// Drawing
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Draw force lines between close protons
+  if (running) {
+    for (let i = 0; i < protons.length; i++) {
+      for (let j = i + 1; j < protons.length; j++) {
+        const a = protons[i];
+        const b = protons[j];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 150) {
+          const alpha = Math.max(0, 0.3 * (1 - dist / 150));
+          ctx.strokeStyle = `rgba(255, 100, 100, ${alpha})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+        }
+      }
+    }
+  }
+
+  // Draw protons
+  for (const p of protons) {
+    // Glow
+    const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, PROTON_RADIUS * 2.5);
+    gradient.addColorStop(0, 'rgba(255, 80, 80, 0.4)');
+    gradient.addColorStop(1, 'rgba(255, 80, 80, 0)');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, PROTON_RADIUS * 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body
+    const bodyGrad = ctx.createRadialGradient(p.x - 3, p.y - 3, 1, p.x, p.y, PROTON_RADIUS);
+    bodyGrad.addColorStop(0, '#ff9999');
+    bodyGrad.addColorStop(0.7, '#ff4444');
+    bodyGrad.addColorStop(1, '#cc2222');
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, PROTON_RADIUS, 0, Math.PI * 2);
+    ctx.fill();
+
+    // "+" symbol
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('+', p.x, p.y + 1);
+  }
+}
+
+// Animation loop
+function loop() {
+  if (!running) return;
+  step(1);
+  draw();
+  animId = requestAnimationFrame(loop);
+}
+
+draw();
+</script>
+</body>
+</html>
