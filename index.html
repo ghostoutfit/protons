@@ -238,7 +238,7 @@
     <label>Speed: <span id="speedVal">1.0</span>x</label>
     <input type="range" id="speedSlider" min="0.01" max="1" step="0.01" value="1">
   </div>
-  <label class="toggle-label"><input type="checkbox" id="heatmapToggle"> Show energy in field</label>
+  <label class="toggle-label"><input type="checkbox" id="heatmapToggle"> Show energy between particles</label>
   <span id="stats">Protons: 0</span>
 </div>
 
@@ -635,46 +635,31 @@ function step(dt) {
   }
 }
 
-// Precomputed diverging colormap LUT (512 entries, index 0–255 = negative, 256–511 = positive)
-// Blue (fields opposing) → transparent (zero) → orange/red (fields reinforcing)
-const COLORMAP_NEG = new Uint8Array(256 * 4); // negative side: blue
-const COLORMAP_POS = new Uint8Array(256 * 4); // positive side: orange/red
-(function buildColormaps() {
-  // Positive: transparent → deep red → orange → yellow-white
-  const posStops = [
+// Warm sequential colormap: transparent → deep red → orange → yellow
+const COLORMAP = new Uint8Array(256 * 4);
+(function buildColormap() {
+  const stops = [
     { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0 },
     { t: 0.2,  r: 140, g: 15,  b: 5,   a: 77 },
     { t: 0.5,  r: 220, g: 60,  b: 10,  a: 153 },
     { t: 0.8,  r: 255, g: 180, b: 30,  a: 217 },
     { t: 1.0,  r: 255, g: 250, b: 220, a: 255 },
   ];
-  // Negative: transparent → deep blue → bright blue → cyan-white
-  const negStops = [
-    { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0 },
-    { t: 0.2,  r: 5,   g: 20,  b: 140, a: 77 },
-    { t: 0.5,  r: 20,  g: 70,  b: 220, a: 153 },
-    { t: 0.8,  r: 60,  g: 160, b: 255, a: 217 },
-    { t: 1.0,  r: 200, g: 235, b: 255, a: 255 },
-  ];
-  function fillLUT(lut, stops) {
-    for (let i = 0; i < 256; i++) {
-      const t = i / 255;
-      let s0 = stops[0], s1 = stops[1];
-      for (let s = 0; s < stops.length - 1; s++) {
-        if (t >= stops[s].t && t <= stops[s + 1].t) {
-          s0 = stops[s]; s1 = stops[s + 1]; break;
-        }
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    let s0 = stops[0], s1 = stops[1];
+    for (let s = 0; s < stops.length - 1; s++) {
+      if (t >= stops[s].t && t <= stops[s + 1].t) {
+        s0 = stops[s]; s1 = stops[s + 1]; break;
       }
-      const f = (t - s0.t) / (s1.t - s0.t);
-      const idx = i * 4;
-      lut[idx]     = s0.r + (s1.r - s0.r) * f;
-      lut[idx + 1] = s0.g + (s1.g - s0.g) * f;
-      lut[idx + 2] = s0.b + (s1.b - s0.b) * f;
-      lut[idx + 3] = s0.a + (s1.a - s0.a) * f;
     }
+    const f = (t - s0.t) / (s1.t - s0.t);
+    const idx = i * 4;
+    COLORMAP[idx]     = s0.r + (s1.r - s0.r) * f;
+    COLORMAP[idx + 1] = s0.g + (s1.g - s0.g) * f;
+    COLORMAP[idx + 2] = s0.b + (s1.b - s0.b) * f;
+    COLORMAP[idx + 3] = s0.a + (s1.a - s0.a) * f;
   }
-  fillLUT(COLORMAP_POS, posStops);
-  fillLUT(COLORMAP_NEG, negStops);
 })();
 
 // Draw interaction energy density heat map at half resolution using ImageData
@@ -735,18 +720,20 @@ function drawHeatmap() {
         }
       }
 
-      // Signed log scaling with fixed reference (no per-frame normalization)
-      const absVal = interaction < 0 ? -interaction : interaction;
-      let magnitude = Math.log(1.0 + sensitivity * absVal) * invLogNorm;
-      if (magnitude > 1.0) magnitude = 1.0;
-      const ci = (magnitude * 255) | 0;
-      const di = (py * w + px) * 4;
-      const ci4 = ci * 4;
-      const lut = interaction >= 0 ? COLORMAP_POS : COLORMAP_NEG;
-      data[di]     = lut[ci4];
-      data[di + 1] = lut[ci4 + 1];
-      data[di + 2] = lut[ci4 + 2];
-      data[di + 3] = lut[ci4 + 3];
+      // Only show negative cross-term (where fields oppose = stored interaction energy)
+      // Positive regions are transparent
+      if (interaction < 0) {
+        const absVal = -interaction;
+        let magnitude = Math.log(1.0 + sensitivity * absVal) * invLogNorm;
+        if (magnitude > 1.0) magnitude = 1.0;
+        const ci = (magnitude * 255) | 0;
+        const di = (py * w + px) * 4;
+        const ci4 = ci * 4;
+        data[di]     = COLORMAP[ci4];
+        data[di + 1] = COLORMAP[ci4 + 1];
+        data[di + 2] = COLORMAP[ci4 + 2];
+        data[di + 3] = COLORMAP[ci4 + 3];
+      }
     }
   }
 
@@ -790,10 +777,9 @@ function draw() {
 
   for (let i = 0; i < protons.length; i++) {
     const p = protons[i];
-    const isHeld = i === dragging;
 
     const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, PROTON_RADIUS * 2.5);
-    gradient.addColorStop(0, isHeld ? 'rgba(255, 200, 80, 0.5)' : 'rgba(255, 80, 80, 0.4)');
+    gradient.addColorStop(0, 'rgba(255, 80, 80, 0.4)');
     gradient.addColorStop(1, 'rgba(255, 80, 80, 0)');
     ctx.fillStyle = gradient;
     ctx.beginPath();
@@ -801,9 +787,9 @@ function draw() {
     ctx.fill();
 
     const bodyGrad = ctx.createRadialGradient(p.x - 3, p.y - 3, 1, p.x, p.y, PROTON_RADIUS);
-    bodyGrad.addColorStop(0, isHeld ? '#ffcc66' : '#ff9999');
-    bodyGrad.addColorStop(0.7, isHeld ? '#ff9933' : '#ff4444');
-    bodyGrad.addColorStop(1, isHeld ? '#cc6600' : '#cc2222');
+    bodyGrad.addColorStop(0, '#ff9999');
+    bodyGrad.addColorStop(0.7, '#ff4444');
+    bodyGrad.addColorStop(1, '#cc2222');
     ctx.fillStyle = bodyGrad;
     ctx.beginPath();
     ctx.arc(p.x, p.y, PROTON_RADIUS, 0, Math.PI * 2);
