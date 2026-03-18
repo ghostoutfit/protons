@@ -68,6 +68,12 @@
   }
   #addClusterBtn:hover { background: #4f46e5; }
 
+  #clearOffscreenBtn {
+    background: #374151;
+    color: #e0e0e0;
+  }
+  #clearOffscreenBtn:hover { background: #4b5563; }
+
   .slider-group {
     display: flex;
     align-items: center;
@@ -255,6 +261,7 @@
   <button class="btn" id="goBtn">Go</button>
   <button class="btn" id="clearBtn">Clear</button>
   <button class="btn" id="addClusterBtn">Add Cluster</button>
+  <button class="btn" id="clearOffscreenBtn">Clear Offscreen</button>
   <div class="slider-group">
     <label>Speed: <span id="speedVal">1.0</span>x</label>
     <input type="range" id="speedSlider" min="0.01" max="1" step="0.01" value="1">
@@ -323,6 +330,7 @@ const gctx = graphCanvas.getContext('2d');
 const goBtn = document.getElementById('goBtn');
 const clearBtn = document.getElementById('clearBtn');
 const addClusterBtn = document.getElementById('addClusterBtn');
+const clearOffscreenBtn = document.getElementById('clearOffscreenBtn');
 const speedSlider = document.getElementById('speedSlider');
 const speedValEl = document.getElementById('speedVal');
 const statsEl = document.getElementById('stats');
@@ -587,6 +595,20 @@ clearBtn.addEventListener('click', () => {
   computeEnergy();
   draw();
   drawGraph();
+});
+
+// Clear offscreen particles
+clearOffscreenBtn.addEventListener('click', () => {
+  const margin = PARTICLE_RADIUS * 2;
+  const w = canvas.width;
+  const h = canvas.height;
+  particles = particles.filter(p =>
+    p.x >= -margin && p.x <= w + margin &&
+    p.y >= -margin && p.y <= h + margin
+  );
+  updateStats();
+  computeEnergy();
+  if (!running) { draw(); drawGraph(); }
 });
 
 // Speed slider
