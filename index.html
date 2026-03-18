@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Proton Force Simulation</title>
+<title>Proton Simulations</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -11,809 +11,115 @@
     background: #0a0a1a;
     color: #e0e0e0;
     font-family: 'Segoe UI', system-ui, sans-serif;
-    overflow: hidden;
-    height: 100vh;
+    min-height: 100vh;
+    padding: 60px 20px;
     display: flex;
     flex-direction: column;
-  }
-
-  #toolbar {
-    display: flex;
     align-items: center;
-    gap: 16px;
-    padding: 12px 20px;
-    background: #12122a;
-    border-bottom: 1px solid #2a2a4a;
-    z-index: 10;
-    flex-wrap: wrap;
   }
 
-  #toolbar h1 {
-    font-size: 18px;
-    font-weight: 600;
+  h1 {
+    font-size: 32px;
+    font-weight: 700;
     color: #ff6b6b;
-    margin-right: 8px;
-    white-space: nowrap;
+    margin-bottom: 8px;
   }
 
-  .btn {
-    padding: 8px 20px;
-    border: none;
-    border-radius: 6px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
+  .subtitle {
+    color: #6b7280;
+    font-size: 15px;
+    margin-bottom: 48px;
+  }
+
+  .versions {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+    max-width: 640px;
+  }
+
+  a.version {
+    display: block;
+    background: #12122a;
+    border: 1px solid #2a2a4a;
+    border-radius: 10px;
+    padding: 20px 24px;
+    text-decoration: none;
+    color: #e0e0e0;
     transition: all 0.15s;
   }
 
-  #goBtn {
-    background: #22c55e;
-    color: #fff;
-  }
-  #goBtn:hover { background: #16a34a; }
-  #goBtn.running {
-    background: #ef4444;
-  }
-  #goBtn.running:hover { background: #dc2626; }
-
-  #clearBtn {
-    background: #374151;
-    color: #e0e0e0;
-  }
-  #clearBtn:hover { background: #4b5563; }
-
-  #addClusterBtn {
-    background: #6366f1;
-    color: #fff;
-  }
-  #addClusterBtn:hover { background: #4f46e5; }
-
-  .slider-group {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+  a.version:hover {
+    border-color: #6366f1;
+    background: #1a1a3a;
   }
 
-  .slider-group label {
-    font-size: 13px;
-    color: #9ca3af;
-    white-space: nowrap;
-  }
-
-  .slider-group input[type="range"] {
-    width: 100px;
-    accent-color: #6366f1;
-  }
-
-  .toggle-label {
-    font-size: 13px;
-    color: #9ca3af;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  .toggle-label input[type="checkbox"] {
-    accent-color: #f59e0b;
-  }
-
-  #stats {
-    font-size: 13px;
-    color: #9ca3af;
-    margin-left: auto;
-    white-space: nowrap;
-  }
-
-  #main {
-    flex: 1;
-    display: flex;
-    position: relative;
-  }
-
-  #canvas {
-    flex: 1;
-    display: block;
-    cursor: default;
-  }
-
-  #energyPanel {
-    width: 260px;
-    background: #12122a;
-    border-left: 1px solid #2a2a4a;
-    display: flex;
-    flex-direction: column;
-    padding: 16px;
-    gap: 12px;
-  }
-
-  #energyPanel h2 {
-    font-size: 14px;
+  a.version .name {
+    font-size: 18px;
     font-weight: 600;
+    color: #fff;
+    margin-bottom: 4px;
+  }
+
+  a.version .desc {
+    font-size: 14px;
     color: #9ca3af;
+    line-height: 1.5;
+  }
+
+  a.version.dev {
+    border-color: #f59e0b44;
+  }
+
+  a.version.dev:hover {
+    border-color: #f59e0b;
+    background: #1a1a2a;
+  }
+
+  a.version.dev .name {
+    color: #f59e0b;
+  }
+
+  .tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-left: 8px;
+    vertical-align: middle;
   }
 
-  .energy-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 13px;
+  .tag-dev {
+    background: #f59e0b22;
+    color: #f59e0b;
   }
 
-  .energy-label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .energy-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-  }
-
-  .energy-value {
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-  }
-
-  #graphCanvas {
-    width: 100%;
-    height: 160px;
-    border-radius: 6px;
-    background: #0a0a1a;
-    border: 1px solid #2a2a4a;
-  }
-
-  #bucket {
-    position: absolute;
-    bottom: 20px;
-    left: 20px;
-    width: 60px;
-    height: 70px;
-    background: #1e1e3a;
-    border: 2px solid #4a4a6a;
-    border-radius: 0 0 12px 12px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    cursor: grab;
-    user-select: none;
-    z-index: 5;
-  }
-
-  #bucket:hover {
-    border-color: #ff6b6b;
-    background: #2a2a4a;
-  }
-
-  #bucket .bucket-label {
-    font-size: 10px;
-    color: #9ca3af;
-    margin-top: 4px;
-  }
-
-  #bucket .bucket-proton {
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 40% 40%, #ff9999, #ff4444 60%, #cc2222);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    font-weight: bold;
-    font-size: 14px;
-  }
-
-  #instructions {
-    position: absolute;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(18, 18, 42, 0.85);
-    border: 1px solid #2a2a4a;
-    border-radius: 8px;
-    padding: 10px 20px;
-    font-size: 13px;
-    color: #9ca3af;
-    pointer-events: none;
-    text-align: center;
-    transition: opacity 0.5s;
+  .tag-latest {
+    background: #22c55e22;
+    color: #22c55e;
   }
 </style>
 </head>
 <body>
 
-<div id="toolbar">
-  <h1>Proton Simulation</h1>
-  <button class="btn" id="goBtn">Go</button>
-  <button class="btn" id="clearBtn">Clear</button>
-  <button class="btn" id="addClusterBtn">Add Cluster</button>
-  <div class="slider-group">
-    <label>Speed: <span id="speedVal">1.0</span>x</label>
-    <input type="range" id="speedSlider" min="0.01" max="1" step="0.01" value="1">
-  </div>
-  <label class="toggle-label"><input type="checkbox" id="heatmapToggle"> Show energy between particles</label>
-  <span id="stats">Protons: 0</span>
+<h1>Proton Simulations</h1>
+<p class="subtitle">Interactive explorations of electrostatic forces and energy</p>
+
+<div class="versions">
+  <a class="version dev" href="dev/">
+    <div class="name">Dev Sandbox <span class="tag tag-dev">dev</span></div>
+    <div class="desc">Work-in-progress. Latest experiments and features being tested.</div>
+  </a>
+
+  <a class="version" href="v1/">
+    <div class="name">v1 &mdash; Coulomb Repulsion <span class="tag tag-latest">latest</span></div>
+    <div class="desc">Drag-and-drop protons with real-time Coulomb force simulation, energy tracking graph, and toggleable interaction energy density heat map.</div>
+  </a>
 </div>
 
-<div id="main">
-  <canvas id="canvas"></canvas>
-
-  <div id="energyPanel">
-    <h2>Energy</h2>
-    <div class="energy-row">
-      <span class="energy-label"><span class="energy-dot" style="background:#f59e0b"></span> Energy in motion</span>
-      <span class="energy-value" id="kineticVal">0</span>
-    </div>
-    <div class="energy-row">
-      <span class="energy-label"><span class="energy-dot" style="background:#3b82f6"></span> Energy in interactions</span>
-      <span class="energy-value" id="potentialVal">0</span>
-    </div>
-    <div class="energy-row" style="border-top: 1px solid #2a2a4a; padding-top: 8px;">
-      <span class="energy-label"><span class="energy-dot" style="background:#22c55e"></span> Total</span>
-      <span class="energy-value" id="totalVal">0</span>
-    </div>
-    <canvas id="graphCanvas"></canvas>
-  </div>
-
-  <div id="bucket">
-    <div class="bucket-proton">+</div>
-    <span class="bucket-label">Drag me</span>
-  </div>
-
-  <div id="instructions">Click to place protons, drag from the bucket, or drag existing ones to reposition.</div>
-</div>
-
-<script>
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-const graphCanvas = document.getElementById('graphCanvas');
-const gctx = graphCanvas.getContext('2d');
-const goBtn = document.getElementById('goBtn');
-const clearBtn = document.getElementById('clearBtn');
-const addClusterBtn = document.getElementById('addClusterBtn');
-const speedSlider = document.getElementById('speedSlider');
-const speedValEl = document.getElementById('speedVal');
-const stats = document.getElementById('stats');
-const instructions = document.getElementById('instructions');
-const kineticVal = document.getElementById('kineticVal');
-const potentialVal = document.getElementById('potentialVal');
-const totalVal = document.getElementById('totalVal');
-const bucket = document.getElementById('bucket');
-const heatmapToggle = document.getElementById('heatmapToggle');
-
-let protons = [];
-let running = false;
-let animId = null;
-let speed = 1.0;
-let showHeatmap = false;
-const PROTON_RADIUS = 10;
-const COULOMB_K = 800;
-const MIN_DIST = 20; // Minimum distance enforced so protons can't overlap
-
-// Heat map offscreen canvas (half resolution for performance)
-const hmCanvas = document.createElement('canvas');
-const hmCtx = hmCanvas.getContext('2d');
-
-// Drag state
-let dragging = null;       // index of proton being dragged, or null
-let draggingNew = false;   // true if dragging a new proton from the bucket
-let dragOffsetX = 0;
-let dragOffsetY = 0;
-
-// Energy history for graph
-const MAX_HISTORY = 600;
-let energyHistory = [];
-
-function resize() {
-  const toolbarH = document.getElementById('toolbar').offsetHeight;
-  const mainH = window.innerHeight - toolbarH;
-  canvas.width = canvas.parentElement.offsetWidth - 260;
-  canvas.height = mainH;
-  graphCanvas.width = graphCanvas.offsetWidth * devicePixelRatio;
-  graphCanvas.height = graphCanvas.offsetHeight * devicePixelRatio;
-  gctx.scale(devicePixelRatio, devicePixelRatio);
-  if (!running) { draw(); drawGraph(); }
-}
-window.addEventListener('resize', resize);
-setTimeout(resize, 0);
-
-function createProton(x, y) {
-  return { x, y, vx: 0, vy: 0 };
-}
-
-function getCanvasPos(e) {
-  const rect = canvas.getBoundingClientRect();
-  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-}
-
-function findProtonAt(x, y) {
-  for (let i = protons.length - 1; i >= 0; i--) {
-    const p = protons[i];
-    const dx = p.x - x;
-    const dy = p.y - y;
-    if (dx * dx + dy * dy <= (PROTON_RADIUS + 4) * (PROTON_RADIUS + 4)) {
-      return i;
-    }
-  }
-  return -1;
-}
-
-// Separate overlapping protons so none sit on top of each other
-function separateOverlaps() {
-  const minSep = PROTON_RADIUS * 2;
-  for (let iter = 0; iter < 10; iter++) {
-    let moved = false;
-    for (let i = 0; i < protons.length; i++) {
-      for (let j = i + 1; j < protons.length; j++) {
-        const a = protons[i];
-        const b = protons[j];
-        let dx = b.x - a.x;
-        let dy = b.y - a.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < minSep && dist > 0) {
-          const overlap = (minSep - dist) / 2;
-          const nx = dx / dist;
-          const ny = dy / dist;
-          a.x -= nx * overlap;
-          a.y -= ny * overlap;
-          b.x += nx * overlap;
-          b.y += ny * overlap;
-          moved = true;
-        } else if (dist === 0) {
-          // Identical position — nudge randomly
-          b.x += (Math.random() - 0.5) * minSep;
-          b.y += (Math.random() - 0.5) * minSep;
-          moved = true;
-        }
-      }
-    }
-    if (!moved) break;
-  }
-}
-
-// --- Bucket drag: mousedown on bucket starts dragging a new proton ---
-bucket.addEventListener('mousedown', (e) => {
-  e.preventDefault();
-  const pos = getCanvasPos(e);
-  const newP = createProton(pos.x, pos.y);
-  protons.push(newP);
-  dragging = protons.length - 1;
-  draggingNew = true;
-  updateStats();
-  hideInstructions();
-  if (!running) { draw(); }
-});
-
-// --- Canvas mouse events: click to place, or drag existing protons ---
-let didDrag = false;
-canvas.addEventListener('mousedown', (e) => {
-  const pos = getCanvasPos(e);
-  const idx = findProtonAt(pos.x, pos.y);
-  didDrag = false;
-  if (idx >= 0) {
-    dragging = idx;
-    draggingNew = false;
-    dragOffsetX = protons[idx].x - pos.x;
-    dragOffsetY = protons[idx].y - pos.y;
-    protons[idx].vx = 0;
-    protons[idx].vy = 0;
-    canvas.style.cursor = 'grabbing';
-  }
-});
-
-window.addEventListener('mousemove', (e) => {
-  if (dragging === null) {
-    // Update cursor on hover
-    const pos = getCanvasPos(e);
-    const idx = findProtonAt(pos.x, pos.y);
-    canvas.style.cursor = idx >= 0 ? 'grab' : 'default';
-    return;
-  }
-  const pos = getCanvasPos(e);
-  const p = protons[dragging];
-  didDrag = true;
-  if (draggingNew) {
-    p.x = pos.x;
-    p.y = pos.y;
-  } else {
-    p.x = pos.x + dragOffsetX;
-    p.y = pos.y + dragOffsetY;
-  }
-  p.vx = 0;
-  p.vy = 0;
-  if (!running) { computeEnergy(); draw(); drawGraph(); }
-});
-
-canvas.addEventListener('click', (e) => {
-  if (didDrag) return;
-  const pos = getCanvasPos(e);
-  if (findProtonAt(pos.x, pos.y) >= 0) return;
-  protons.push(createProton(pos.x, pos.y));
-  separateOverlaps();
-  updateStats();
-  computeEnergy();
-  draw();
-  drawGraph();
-  hideInstructions();
-});
-
-window.addEventListener('mouseup', () => {
-  if (dragging !== null) {
-    separateOverlaps();
-    if (!running) { computeEnergy(); draw(); drawGraph(); }
-  }
-  dragging = null;
-  draggingNew = false;
-  canvas.style.cursor = 'default';
-});
-
-// Add a cluster of protons
-addClusterBtn.addEventListener('click', () => {
-  const cx = canvas.width / 2 + (Math.random() - 0.5) * 100;
-  const cy = canvas.height / 2 + (Math.random() - 0.5) * 100;
-  const count = 10 + Math.floor(Math.random() * 10);
-  for (let i = 0; i < count; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const r = PROTON_RADIUS * 2 + Math.random() * 40;
-    protons.push(createProton(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r));
-  }
-  separateOverlaps();
-  updateStats();
-  if (!running) { computeEnergy(); draw(); drawGraph(); }
-  hideInstructions();
-});
-
-// Go / Stop
-goBtn.addEventListener('click', () => {
-  running = !running;
-  goBtn.textContent = running ? 'Stop' : 'Go';
-  goBtn.classList.toggle('running', running);
-  if (running) loop();
-  else cancelAnimationFrame(animId);
-});
-
-// Clear
-clearBtn.addEventListener('click', () => {
-  protons = [];
-  energyHistory = [];
-  running = false;
-  goBtn.textContent = 'Go';
-  goBtn.classList.remove('running');
-  cancelAnimationFrame(animId);
-  updateStats();
-  computeEnergy();
-  draw();
-  drawGraph();
-});
-
-// Speed slider
-speedSlider.addEventListener('input', () => {
-  speed = parseFloat(speedSlider.value);
-  speedValEl.textContent = speed.toFixed(2);
-});
-
-// Heatmap toggle
-heatmapToggle.addEventListener('change', () => {
-  showHeatmap = heatmapToggle.checked;
-  if (!running) draw();
-});
-
-function hideInstructions() {
-  instructions.style.opacity = '0';
-  setTimeout(() => instructions.style.display = 'none', 500);
-}
-
-function updateStats() {
-  stats.textContent = `Protons: ${protons.length}`;
-}
-
-// Compute energies
-function computeEnergy() {
-  let kinetic = 0;
-  let potential = 0;
-  const n = protons.length;
-
-  for (let i = 0; i < n; i++) {
-    const p = protons[i];
-    kinetic += 0.5 * (p.vx * p.vx + p.vy * p.vy);
-  }
-
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 1; j < n; j++) {
-      const dx = protons[j].x - protons[i].x;
-      const dy = protons[j].y - protons[i].y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > 0) {
-        potential += COULOMB_K / dist;
-      }
-    }
-  }
-
-  kineticVal.textContent = kinetic.toFixed(1);
-  potentialVal.textContent = potential.toFixed(1);
-  totalVal.textContent = (kinetic + potential).toFixed(1);
-
-  energyHistory.push({ kinetic, potential, total: kinetic + potential });
-  if (energyHistory.length > MAX_HISTORY) energyHistory.shift();
-
-  return { kinetic, potential };
-}
-
-// Draw energy graph
-function drawGraph() {
-  const w = graphCanvas.offsetWidth;
-  const h = graphCanvas.offsetHeight;
-  gctx.clearRect(0, 0, w, h);
-
-  if (energyHistory.length < 2) return;
-
-  let maxVal = 1;
-  for (const e of energyHistory) {
-    maxVal = Math.max(maxVal, e.kinetic, e.potential, e.total);
-  }
-  maxVal *= 1.1;
-
-  const len = energyHistory.length;
-  const xStep = w / (MAX_HISTORY - 1);
-  const xOff = (MAX_HISTORY - len) * xStep;
-
-  function drawLine(key, color) {
-    gctx.strokeStyle = color;
-    gctx.lineWidth = 1.5;
-    gctx.beginPath();
-    for (let i = 0; i < len; i++) {
-      const x = xOff + i * xStep;
-      const y = h - (energyHistory[i][key] / maxVal) * (h - 8) - 4;
-      if (i === 0) gctx.moveTo(x, y);
-      else gctx.lineTo(x, y);
-    }
-    gctx.stroke();
-  }
-
-  drawLine('potential', '#3b82f6');
-  drawLine('kinetic', '#f59e0b');
-  drawLine('total', '#22c55e');
-}
-
-// Physics step
-function step(dt) {
-  const n = protons.length;
-
-  for (let i = 0; i < n; i++) {
-    // Skip the dragged proton — it's held by the user
-    if (i === dragging) continue;
-    for (let j = i + 1; j < n; j++) {
-      if (j === dragging) continue;
-      const a = protons[i];
-      const b = protons[j];
-      let dx = b.x - a.x;
-      let dy = b.y - a.y;
-      let distSq = dx * dx + dy * dy;
-      if (distSq < MIN_DIST * MIN_DIST) distSq = MIN_DIST * MIN_DIST;
-      const dist = Math.sqrt(distSq);
-      const force = COULOMB_K / distSq;
-      const fx = force * (dx / dist);
-      const fy = force * (dy / dist);
-      a.vx -= fx * dt;
-      a.vy -= fy * dt;
-      b.vx += fx * dt;
-      b.vy += fy * dt;
-    }
-  }
-
-  // Dragged proton still exerts force on others but doesn't move from physics
-  if (dragging !== null) {
-    const d = protons[dragging];
-    for (let j = 0; j < n; j++) {
-      if (j === dragging) continue;
-      const b = protons[j];
-      let dx = b.x - d.x;
-      let dy = b.y - d.y;
-      let distSq = dx * dx + dy * dy;
-      if (distSq < MIN_DIST * MIN_DIST) distSq = MIN_DIST * MIN_DIST;
-      const dist = Math.sqrt(distSq);
-      const force = COULOMB_K / distSq;
-      const fx = force * (dx / dist);
-      const fy = force * (dy / dist);
-      b.vx += fx * dt;
-      b.vy += fy * dt;
-    }
-  }
-
-  for (let i = 0; i < n; i++) {
-    if (i === dragging) continue;
-    const p = protons[i];
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
-  }
-}
-
-// Warm sequential colormap: transparent → deep red → orange → yellow
-const COLORMAP = new Uint8Array(256 * 4);
-(function buildColormap() {
-  const stops = [
-    { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0 },
-    { t: 0.2,  r: 140, g: 15,  b: 5,   a: 77 },
-    { t: 0.5,  r: 220, g: 60,  b: 10,  a: 153 },
-    { t: 0.8,  r: 255, g: 180, b: 30,  a: 217 },
-    { t: 1.0,  r: 255, g: 250, b: 220, a: 255 },
-  ];
-  for (let i = 0; i < 256; i++) {
-    const t = i / 255;
-    let s0 = stops[0], s1 = stops[1];
-    for (let s = 0; s < stops.length - 1; s++) {
-      if (t >= stops[s].t && t <= stops[s + 1].t) {
-        s0 = stops[s]; s1 = stops[s + 1]; break;
-      }
-    }
-    const f = (t - s0.t) / (s1.t - s0.t);
-    const idx = i * 4;
-    COLORMAP[idx]     = s0.r + (s1.r - s0.r) * f;
-    COLORMAP[idx + 1] = s0.g + (s1.g - s0.g) * f;
-    COLORMAP[idx + 2] = s0.b + (s1.b - s0.b) * f;
-    COLORMAP[idx + 3] = s0.a + (s1.a - s0.a) * f;
-  }
-})();
-
-// Draw interaction energy density heat map at half resolution using ImageData
-// Shows only the cross-term 2(E₁·E₂) between all pairs — the interaction part
-function drawHeatmap() {
-  const fullW = canvas.width;
-  const fullH = canvas.height;
-  const scale = 0.5;
-  const w = Math.ceil(fullW * scale);
-  const h = Math.ceil(fullH * scale);
-  const invScale = 1 / scale;
-
-  hmCanvas.width = w;
-  hmCanvas.height = h;
-
-  const imageData = hmCtx.createImageData(w, h);
-  const data = imageData.data;
-  const n = protons.length;
-  if (n < 2) return; // Need at least 2 protons for interaction
-  const minR = PROTON_RADIUS;
-  const minRSq = minR * minR;
-  const CK = COULOMB_K; // include physical constant in field so values have meaningful scale
-
-  // Store per-proton field vectors
-  const exArr = new Float32Array(n);
-  const eyArr = new Float32Array(n);
-
-  // Fixed reference scale: log(1 + sensitivity * refMax)
-  // refMax ~5 corresponds to the cross-term magnitude near two close protons (~50px apart)
-  // Values above this saturate to full brightness; values far below fade to transparent
-  const sensitivity = 10.0;
-  const refMax = 5.0;
-  const logNorm = Math.log(1.0 + sensitivity * refMax);
-  const invLogNorm = 1.0 / logNorm;
-
-  for (let py = 0; py < h; py++) {
-    const worldY = py * invScale;
-    for (let px = 0; px < w; px++) {
-      const worldX = px * invScale;
-
-      // Compute individual field from each proton (with COULOMB_K)
-      for (let i = 0; i < n; i++) {
-        const dx = worldX - protons[i].x;
-        const dy = worldY - protons[i].y;
-        let rSq = dx * dx + dy * dy;
-        if (rSq < minRSq) rSq = minRSq;
-        const r = Math.sqrt(rSq);
-        const invR3 = CK / (rSq * r);
-        exArr[i] = dx * invR3;
-        eyArr[i] = dy * invR3;
-      }
-
-      // Sum pairwise cross-terms: 2 * (Ei · Ej)
-      let interaction = 0;
-      for (let i = 0; i < n; i++) {
-        for (let j = i + 1; j < n; j++) {
-          interaction += 2 * (exArr[i] * exArr[j] + eyArr[i] * eyArr[j]);
-        }
-      }
-
-      // Only show negative cross-term (where fields oppose = stored interaction energy)
-      // Positive regions are transparent
-      if (interaction < 0) {
-        const absVal = -interaction;
-        let magnitude = Math.log(1.0 + sensitivity * absVal) * invLogNorm;
-        if (magnitude > 1.0) magnitude = 1.0;
-        const ci = (magnitude * 255) | 0;
-        const di = (py * w + px) * 4;
-        const ci4 = ci * 4;
-        data[di]     = COLORMAP[ci4];
-        data[di + 1] = COLORMAP[ci4 + 1];
-        data[di + 2] = COLORMAP[ci4 + 2];
-        data[di + 3] = COLORMAP[ci4 + 3];
-      }
-    }
-  }
-
-  hmCtx.putImageData(imageData, 0, 0);
-
-  // Draw scaled up onto main canvas with bilinear interpolation
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(hmCanvas, 0, 0, fullW, fullH);
-}
-
-// Drawing
-function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // Heat map as bottom layer
-  if (showHeatmap && protons.length > 0) {
-    drawHeatmap();
-  }
-
-  if (running) {
-    for (let i = 0; i < protons.length; i++) {
-      for (let j = i + 1; j < protons.length; j++) {
-        const a = protons[i];
-        const b = protons[j];
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 150) {
-          const alpha = Math.max(0, 0.3 * (1 - dist / 150));
-          ctx.strokeStyle = `rgba(255, 100, 100, ${alpha})`;
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(a.x, a.y);
-          ctx.lineTo(b.x, b.y);
-          ctx.stroke();
-        }
-      }
-    }
-  }
-
-  for (let i = 0; i < protons.length; i++) {
-    const p = protons[i];
-
-    const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, PROTON_RADIUS * 2.5);
-    gradient.addColorStop(0, 'rgba(255, 80, 80, 0.4)');
-    gradient.addColorStop(1, 'rgba(255, 80, 80, 0)');
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, PROTON_RADIUS * 2.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    const bodyGrad = ctx.createRadialGradient(p.x - 3, p.y - 3, 1, p.x, p.y, PROTON_RADIUS);
-    bodyGrad.addColorStop(0, '#ff9999');
-    bodyGrad.addColorStop(0.7, '#ff4444');
-    bodyGrad.addColorStop(1, '#cc2222');
-    ctx.fillStyle = bodyGrad;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, PROTON_RADIUS, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 12px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('+', p.x, p.y + 1);
-  }
-}
-
-// Animation loop
-function loop() {
-  if (!running) return;
-  step(speed);
-  computeEnergy();
-  draw();
-  drawGraph();
-  animId = requestAnimationFrame(loop);
-}
-
-draw();
-</script>
 </body>
 </html>
