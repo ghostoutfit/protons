@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nuclear Force Simulation</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a1a;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #toolbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 20px;
+    background: #12122a;
+    border-bottom: 1px solid #2a2a4a;
+    z-index: 10;
+    flex-wrap: wrap;
+  }
+
+  #toolbar h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #ff6b6b;
+    margin-right: 8px;
+    white-space: nowrap;
+  }
+
+  .btn {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  #goBtn {
+    background: #22c55e;
+    color: #fff;
+  }
+  #goBtn:hover { background: #16a34a; }
+  #goBtn.running {
+    background: #ef4444;
+  }
+  #goBtn.running:hover { background: #dc2626; }
+
+  #clearBtn {
+    background: #374151;
+    color: #e0e0e0;
+  }
+  #clearBtn:hover { background: #4b5563; }
+
+  #addClusterBtn {
+    background: #6366f1;
+    color: #fff;
+  }
+  #addClusterBtn:hover { background: #4f46e5; }
+
+  #clearOffscreenBtn {
+    background: #374151;
+    color: #e0e0e0;
+  }
+  #clearOffscreenBtn:hover { background: #4b5563; }
+
+  .slider-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .slider-group label {
+    font-size: 12px;
+    color: #9ca3af;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .slider-group label span {
+    display: inline-block;
+    min-width: 3.2em;
+    text-align: right;
+  }
+
+  .slider-group input[type="range"] {
+    width: 80px;
+    accent-color: #6366f1;
+  }
+
+  .toggle-label {
+    font-size: 13px;
+    color: #9ca3af;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .toggle-label input[type="checkbox"] {
+    accent-color: #f59e0b;
+  }
+
+  #stats {
+    font-size: 13px;
+    color: #9ca3af;
+    margin-left: auto;
+    white-space: nowrap;
+  }
+
+  #tuningRow {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 6px 20px;
+    background: #0e0e22;
+    border-bottom: 1px solid #2a2a4a;
+    flex-wrap: wrap;
+  }
+
+  #main {
+    flex: 1;
+    display: flex;
+    position: relative;
+  }
+
+  #canvas {
+    flex: 1;
+    display: block;
+    cursor: default;
+  }
+
+  #energyPanel {
+    width: 260px;
+    background: #12122a;
+    border-left: 1px solid #2a2a4a;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    gap: 12px;
+  }
+
+  #energyPanel h2 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .energy-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+  }
+
+  .energy-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .energy-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+
+  .energy-value {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  #graphCanvas {
+    width: 100%;
+    height: 160px;
+    border-radius: 6px;
+    background: #0a0a1a;
+    border: 1px solid #2a2a4a;
+  }
+
+  .particle-bucket {
+    position: absolute;
+    bottom: 20px;
+    width: 60px;
+    height: 70px;
+    background: #1e1e3a;
+    border: 2px solid #4a4a6a;
+    border-radius: 0 0 12px 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    user-select: none;
+    z-index: 5;
+  }
+
+  .particle-bucket:hover {
+    background: #2a2a4a;
+  }
+
+  #protonBucket { left: 20px; }
+  #protonBucket:hover { border-color: #ff6b6b; }
+
+  #neutronBucket { left: 90px; }
+  #neutronBucket:hover { border-color: #aaaacc; }
+
+  .particle-bucket .bucket-label {
+    font-size: 10px;
+    color: #9ca3af;
+    margin-top: 4px;
+  }
+
+  .particle-bucket .bucket-ball {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: bold;
+    font-size: 14px;
+  }
+
+  .bucket-ball.proton {
+    background: radial-gradient(circle at 40% 40%, #ff9999, #ff4444 60%, #cc2222);
+  }
+
+  .bucket-ball.neutron {
+    background: radial-gradient(circle at 40% 40%, #ccccdd, #8888aa 60%, #666688);
+  }
+
+  #instructions {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(18, 18, 42, 0.85);
+    border: 1px solid #2a2a4a;
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-size: 13px;
+    color: #9ca3af;
+    pointer-events: none;
+    text-align: center;
+    transition: opacity 0.5s;
+  }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <h1>Nuclear Simulation</h1>
+  <button class="btn" id="goBtn">Go</button>
+  <button class="btn" id="clearBtn">Clear</button>
+  <button class="btn" id="addClusterBtn">Add Cluster</button>
+  <button class="btn" id="clearOffscreenBtn">Clear Offscreen</button>
+  <div class="slider-group">
+    <label>Speed: <span id="speedVal">3.0</span>x</label>
+    <input type="range" id="speedSlider" min="0" max="20" step="1" value="13">
+  </div>
+  <label class="toggle-label"><input type="checkbox" id="heatmapToggle" checked> Show energy between particles</label>
+  <span id="stats">Protons: 0 &nbsp; Neutrons: 0</span>
+</div>
+
+<div id="tuningRow">
+  <div class="slider-group">
+    <label>Coulomb: <span id="coulombVal">150</span></label>
+    <input type="range" id="coulombSlider" min="50" max="300" step="1" value="150">
+  </div>
+  <div class="slider-group">
+    <label>Strong: <span id="strongVal">350</span></label>
+    <input type="range" id="strongSlider" min="100" max="600" step="1" value="350">
+  </div>
+  <div class="slider-group">
+    <label>Range: <span id="rangeVal">1.5</span>x</label>
+    <input type="range" id="rangeSlider" min="1.0" max="2.0" step="0.05" value="1.5">
+  </div>
+  <div class="slider-group">
+    <label>Damping: <span id="dampVal">0.990</span></label>
+    <input type="range" id="dampSlider" min="0.93" max="0.99" step="0.005" value="0.99">
+  </div>
+</div>
+
+<div id="main">
+  <canvas id="canvas"></canvas>
+
+  <div id="energyPanel">
+    <h2>Energy</h2>
+    <div class="energy-row">
+      <span class="energy-label"><span class="energy-dot" style="background:#f59e0b"></span> Energy in motion</span>
+      <span class="energy-value" id="kineticVal">0</span>
+    </div>
+    <div class="energy-row">
+      <span class="energy-label"><span class="energy-dot" style="background:#3b82f6"></span> Energy in interactions</span>
+      <span class="energy-value" id="potentialVal">0</span>
+    </div>
+    <div class="energy-row" style="border-top: 1px solid #2a2a4a; padding-top: 8px;">
+      <span class="energy-label"><span class="energy-dot" style="background:#22c55e"></span> Total</span>
+      <span class="energy-value" id="totalVal">0</span>
+    </div>
+    <canvas id="graphCanvas"></canvas>
+  </div>
+
+  <div class="particle-bucket" id="protonBucket">
+    <div class="bucket-ball proton">+</div>
+    <span class="bucket-label">Proton</span>
+  </div>
+
+  <div class="particle-bucket" id="neutronBucket">
+    <div class="bucket-ball neutron">n</div>
+    <span class="bucket-label">Neutron</span>
+  </div>
+
+  <div id="instructions">Click to place protons, drag from buckets, or drag existing particles to reposition.</div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const graphCanvas = document.getElementById('graphCanvas');
+const gctx = graphCanvas.getContext('2d');
+const goBtn = document.getElementById('goBtn');
+const clearBtn = document.getElementById('clearBtn');
+const addClusterBtn = document.getElementById('addClusterBtn');
+const clearOffscreenBtn = document.getElementById('clearOffscreenBtn');
+const speedSlider = document.getElementById('speedSlider');
+const speedValEl = document.getElementById('speedVal');
+const statsEl = document.getElementById('stats');
+const instructionsEl = document.getElementById('instructions');
+const kineticVal = document.getElementById('kineticVal');
+const potentialVal = document.getElementById('potentialVal');
+const totalVal = document.getElementById('totalVal');
+const protonBucket = document.getElementById('protonBucket');
+const neutronBucket = document.getElementById('neutronBucket');
+const heatmapToggle = document.getElementById('heatmapToggle');
+
+// Tuning slider elements
+const coulombSlider = document.getElementById('coulombSlider');
+const strongSlider = document.getElementById('strongSlider');
+const rangeSlider = document.getElementById('rangeSlider');
+const dampSlider = document.getElementById('dampSlider');
+const coulombValEl = document.getElementById('coulombVal');
+const strongValEl = document.getElementById('strongVal');
+const rangeValEl = document.getElementById('rangeVal');
+const dampValEl = document.getElementById('dampVal');
+
+// Particles: { x, y, vx, vy, type: 'proton'|'neutron' }
+let particles = [];
+let running = false;
+let animId = null;
+let speed = 1.5;
+let showHeatmap = true;
+const PARTICLE_RADIUS = 10;
+const MIN_DIST = 20;
+
+// Tunable parameters
+let coulombStrength = 150;
+let strongForceStrength = 350;
+let strongForceRange = 1.5; // multiplier on (r1 + r2)
+let equilibriumRatio = 0.6; // equilibrium as fraction of strongForceRange
+let dampingFactor = 0.99;
+
+// Heat map offscreen canvas
+const hmCanvas = document.createElement('canvas');
+const hmCtx = hmCanvas.getContext('2d');
+
+// Drag state
+let dragging = null;
+let draggingNew = false;
+let draggingType = 'proton';
+let dragOffsetX = 0;
+let dragOffsetY = 0;
+
+// Energy history for graph
+const MAX_HISTORY = 600;
+let energyHistory = [];
+
+function resize() {
+  const toolbarH = document.getElementById('toolbar').offsetHeight +
+                   document.getElementById('tuningRow').offsetHeight;
+  const mainH = window.innerHeight - toolbarH;
+  canvas.width = canvas.parentElement.offsetWidth - 260;
+  canvas.height = mainH;
+  graphCanvas.width = graphCanvas.offsetWidth * devicePixelRatio;
+  graphCanvas.height = graphCanvas.offsetHeight * devicePixelRatio;
+  gctx.scale(devicePixelRatio, devicePixelRatio);
+  if (!running) { draw(); drawGraph(); }
+}
+window.addEventListener('resize', resize);
+setTimeout(resize, 0);
+
+function createParticle(x, y, type) {
+  return { x, y, vx: 0, vy: 0, type: type || 'proton' };
+}
+
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+function findParticleAt(x, y) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    const dx = p.x - x;
+    const dy = p.y - y;
+    if (dx * dx + dy * dy <= (PARTICLE_RADIUS + 4) * (PARTICLE_RADIUS + 4)) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function separateOverlaps() {
+  const minSep = PARTICLE_RADIUS * 2;
+  for (let iter = 0; iter < 10; iter++) {
+    let moved = false;
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+        const a = particles[i];
+        const b = particles[j];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < minSep && dist > 0) {
+          const overlap = (minSep - dist) / 2;
+          const nx = dx / dist;
+          const ny = dy / dist;
+          a.x -= nx * overlap;
+          a.y -= ny * overlap;
+          b.x += nx * overlap;
+          b.y += ny * overlap;
+          moved = true;
+        } else if (dist === 0) {
+          b.x += (Math.random() - 0.5) * minSep;
+          b.y += (Math.random() - 0.5) * minSep;
+          moved = true;
+        }
+      }
+    }
+    if (!moved) break;
+  }
+}
+
+// --- Bucket drags ---
+function setupBucketDrag(bucketEl, type) {
+  bucketEl.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const pos = getCanvasPos(e);
+    const newP = createParticle(pos.x, pos.y, type);
+    particles.push(newP);
+    dragging = particles.length - 1;
+    draggingNew = true;
+    draggingType = type;
+    updateStats();
+    hideInstructions();
+    if (!running) { draw(); }
+  });
+}
+setupBucketDrag(protonBucket, 'proton');
+setupBucketDrag(neutronBucket, 'neutron');
+
+// --- Canvas mouse events: click to place protons, drag existing ---
+let didDrag = false;
+canvas.addEventListener('mousedown', (e) => {
+  const pos = getCanvasPos(e);
+  const idx = findParticleAt(pos.x, pos.y);
+  didDrag = false;
+  if (idx >= 0) {
+    dragging = idx;
+    draggingNew = false;
+    dragOffsetX = particles[idx].x - pos.x;
+    dragOffsetY = particles[idx].y - pos.y;
+    particles[idx].vx = 0;
+    particles[idx].vy = 0;
+    canvas.style.cursor = 'grabbing';
+  }
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (dragging === null) {
+    const pos = getCanvasPos(e);
+    const idx = findParticleAt(pos.x, pos.y);
+    canvas.style.cursor = idx >= 0 ? 'grab' : 'default';
+    return;
+  }
+  const pos = getCanvasPos(e);
+  const p = particles[dragging];
+  didDrag = true;
+  if (draggingNew) {
+    p.x = pos.x;
+    p.y = pos.y;
+  } else {
+    p.x = pos.x + dragOffsetX;
+    p.y = pos.y + dragOffsetY;
+  }
+  p.vx = 0;
+  p.vy = 0;
+  if (!running) { computeEnergy(); draw(); drawGraph(); }
+});
+
+// Click on empty canvas = place proton
+canvas.addEventListener('click', (e) => {
+  if (didDrag) return;
+  const pos = getCanvasPos(e);
+  if (findParticleAt(pos.x, pos.y) >= 0) return;
+  particles.push(createParticle(pos.x, pos.y, 'proton'));
+  separateOverlaps();
+  updateStats();
+  computeEnergy();
+  draw();
+  drawGraph();
+  hideInstructions();
+});
+
+window.addEventListener('mouseup', () => {
+  if (dragging !== null) {
+    separateOverlaps();
+    if (!running) { computeEnergy(); draw(); drawGraph(); }
+  }
+  dragging = null;
+  draggingNew = false;
+  canvas.style.cursor = 'default';
+});
+
+// Add cluster: mix protons and neutrons based on what's already there
+addClusterBtn.addEventListener('click', () => {
+  const cx = canvas.width / 2 + (Math.random() - 0.5) * 100;
+  const cy = canvas.height / 2 + (Math.random() - 0.5) * 100;
+  const totalCount = 10 + Math.floor(Math.random() * 10);
+
+  // Estimate N/Z ratio: light elements ~1:1, heavier ~1.5:1 neutrons:protons
+  const existingProtons = particles.filter(p => p.type === 'proton').length;
+  const existingNeutrons = particles.filter(p => p.type === 'neutron').length;
+  const totalExisting = existingProtons + existingNeutrons;
+
+  // As we get more particles, shift toward more neutrons
+  const neutronRatio = Math.min(1.5, 1.0 + totalExisting / 80);
+  const protonFraction = 1 / (1 + neutronRatio);
+
+  // Decide exact counts upfront so the ratio is predictable
+  let numProtons = Math.round(totalCount * protonFraction);
+  let numNeutrons = totalCount - numProtons;
+  // Small jitter: shift at most 1 either way
+  const jitter = Math.floor(Math.random() * 3) - 1; // -1, 0, or 1
+  numProtons = Math.max(1, Math.min(totalCount - 1, numProtons + jitter));
+  numNeutrons = totalCount - numProtons;
+
+  // Build shuffled type array
+  const types = [];
+  for (let i = 0; i < numProtons; i++) types.push('proton');
+  for (let i = 0; i < numNeutrons; i++) types.push('neutron');
+  // Fisher-Yates shuffle for placement order
+  for (let i = types.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = types[i]; types[i] = types[j]; types[j] = tmp;
+  }
+
+  for (let i = 0; i < totalCount; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const r = PARTICLE_RADIUS * 2 + Math.random() * 40;
+    particles.push(createParticle(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r, types[i]));
+  }
+  separateOverlaps();
+  updateStats();
+  if (!running) { computeEnergy(); draw(); drawGraph(); }
+  hideInstructions();
+});
+
+// Go / Stop
+goBtn.addEventListener('click', () => {
+  running = !running;
+  goBtn.textContent = running ? 'Stop' : 'Go';
+  goBtn.classList.toggle('running', running);
+  if (running) loop();
+  else cancelAnimationFrame(animId);
+});
+
+// Clear
+clearBtn.addEventListener('click', () => {
+  particles = [];
+  energyHistory = [];
+  running = false;
+  goBtn.textContent = 'Go';
+  goBtn.classList.remove('running');
+  cancelAnimationFrame(animId);
+  updateStats();
+  computeEnergy();
+  draw();
+  drawGraph();
+});
+
+// Clear offscreen particles
+clearOffscreenBtn.addEventListener('click', () => {
+  const margin = PARTICLE_RADIUS * 2;
+  const w = canvas.width;
+  const h = canvas.height;
+  particles = particles.filter(p =>
+    p.x >= -margin && p.x <= w + margin &&
+    p.y >= -margin && p.y <= h + margin
+  );
+  updateStats();
+  computeEnergy();
+  if (!running) { draw(); drawGraph(); }
+});
+
+// Speed slider (non-linear stops)
+const SPEED_STOPS = [
+  0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5,
+  1.0, 1.5, 2.0, 2.5, 3.0,
+  4, 5, 6, 7, 8, 9, 10
+];
+function applySpeedSlider() {
+  const idx = parseInt(speedSlider.value);
+  const displaySpeed = SPEED_STOPS[idx];
+  speed = displaySpeed / 2;
+  speedValEl.textContent = displaySpeed.toFixed(1);
+}
+speedSlider.addEventListener('input', applySpeedSlider);
+
+// Tuning sliders
+coulombSlider.addEventListener('input', () => {
+  coulombStrength = parseFloat(coulombSlider.value);
+  coulombValEl.textContent = coulombStrength;
+  if (!running) { computeEnergy(); draw(); drawGraph(); }
+});
+strongSlider.addEventListener('input', () => {
+  strongForceStrength = parseFloat(strongSlider.value);
+  strongValEl.textContent = strongForceStrength;
+  if (!running) { computeEnergy(); draw(); drawGraph(); }
+});
+rangeSlider.addEventListener('input', () => {
+  strongForceRange = parseFloat(rangeSlider.value);
+  rangeValEl.textContent = strongForceRange.toFixed(2);
+  if (!running) { computeEnergy(); draw(); drawGraph(); }
+});
+dampSlider.addEventListener('input', () => {
+  dampingFactor = parseFloat(dampSlider.value);
+  dampValEl.textContent = dampingFactor.toFixed(3);
+});
+
+// Heatmap toggle
+heatmapToggle.addEventListener('change', () => {
+  showHeatmap = heatmapToggle.checked;
+  if (!running) draw();
+});
+
+function hideInstructions() {
+  instructionsEl.style.opacity = '0';
+  setTimeout(() => instructionsEl.style.display = 'none', 500);
+}
+
+function updateStats() {
+  const np = particles.filter(p => p.type === 'proton').length;
+  const nn = particles.filter(p => p.type === 'neutron').length;
+  statsEl.textContent = `Protons: ${np}  Neutrons: ${nn}`;
+}
+
+// Strong force cutoff distance for a pair
+function strongCutoff() {
+  return PARTICLE_RADIUS * 2 * strongForceRange;
+}
+
+// Compute forces between two particles (returns net force magnitude along the line)
+// Positive = repulsive, negative = attractive
+function pairForce(dist, distSq, aType, bType) {
+  let force = 0;
+  // Coulomb: only between protons
+  if (aType === 'proton' && bType === 'proton') {
+    force += coulombStrength / distSq;
+  }
+  // Strong force: equilibrium-based model
+  // Repulsive inside equilibrium, attractive outside, zero beyond range
+  const cutoff = strongCutoff();
+  if (dist < cutoff) {
+    const eqDist = cutoff * equilibriumRatio;
+    // Linear ramp: -1 at dist=0, 0 at eqDist, +1 at cutoff
+    // Then scale by strength/distSq
+    // Negative = attractive, positive = repulsive in our convention
+    // We want repulsive (positive) when dist < eqDist, attractive (negative) when dist > eqDist
+    const t = (dist - eqDist) / (cutoff - eqDist); // -eqDist/(cutoff-eqDist) to 1
+    // At dist=eqDist, t=0 -> force=0. At dist<eqDist, t<0 -> repulsive. At dist>eqDist, t>0 -> attractive.
+    force -= t * strongForceStrength / distSq;
+  }
+  return force;
+}
+
+// Compute energies
+function computeEnergy() {
+  let kinetic = 0;
+  let potential = 0;
+  const n = particles.length;
+
+  for (let i = 0; i < n; i++) {
+    const p = particles[i];
+    kinetic += 0.5 * (p.vx * p.vx + p.vy * p.vy);
+  }
+
+  const cutoff = strongCutoff();
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const dx = particles[j].x - particles[i].x;
+      const dy = particles[j].y - particles[i].y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 0) {
+        // Coulomb potential: between protons only
+        if (particles[i].type === 'proton' && particles[j].type === 'proton') {
+          potential += coulombStrength / dist;
+        }
+        // Strong force potential: equilibrium-based model
+        // Force is F = -t * S / r² where t = (r - eqDist) / (cutoff - eqDist)
+        if (dist < cutoff) {
+          const eqDist = cutoff * equilibriumRatio;
+          const span = cutoff - eqDist;
+          // t = (r - eqDist) / span, so F = -(r - eqDist)/(span) * S / r²
+          // Potential V = -integral of -F dr = integral of t*S/r² dr
+          // = (S/span) * integral of (r - eqDist)/r² dr = (S/span) * (ln(r) + eqDist/r)
+          // We use V relative to cutoff so V(cutoff)=0
+          const v = (Math.log(dist) + eqDist / dist) - (Math.log(cutoff) + eqDist / cutoff);
+          potential += (strongForceStrength / span) * v;
+        }
+      }
+    }
+  }
+
+  kineticVal.textContent = kinetic.toFixed(1);
+  potentialVal.textContent = potential.toFixed(1);
+  totalVal.textContent = (kinetic + potential).toFixed(1);
+
+  energyHistory.push({ kinetic, potential, total: kinetic + potential });
+  if (energyHistory.length > MAX_HISTORY) energyHistory.shift();
+
+  return { kinetic, potential };
+}
+
+// Draw energy graph
+function drawGraph() {
+  const w = graphCanvas.offsetWidth;
+  const h = graphCanvas.offsetHeight;
+  gctx.clearRect(0, 0, w, h);
+
+  if (energyHistory.length < 2) return;
+
+  let maxVal = 1;
+  for (const e of energyHistory) {
+    maxVal = Math.max(maxVal, Math.abs(e.kinetic), Math.abs(e.potential), Math.abs(e.total));
+  }
+  maxVal *= 1.1;
+
+  const len = energyHistory.length;
+  const xStep = w / (MAX_HISTORY - 1);
+  const xOff = (MAX_HISTORY - len) * xStep;
+
+  function drawLine(key, color) {
+    gctx.strokeStyle = color;
+    gctx.lineWidth = 1.5;
+    gctx.beginPath();
+    for (let i = 0; i < len; i++) {
+      const x = xOff + i * xStep;
+      const y = h - (energyHistory[i][key] / maxVal) * (h - 8) - 4;
+      if (i === 0) gctx.moveTo(x, y);
+      else gctx.lineTo(x, y);
+    }
+    gctx.stroke();
+  }
+
+  drawLine('potential', '#3b82f6');
+  drawLine('kinetic', '#f59e0b');
+  drawLine('total', '#22c55e');
+}
+
+// Physics step
+function step(dt) {
+  const n = particles.length;
+  const cutoff = strongCutoff();
+
+  // Track which particles are within strong force range of another
+  const inStrongRange = new Uint8Array(n);
+
+  for (let i = 0; i < n; i++) {
+    if (i === dragging) continue;
+    for (let j = i + 1; j < n; j++) {
+      if (j === dragging) continue;
+      const a = particles[i];
+      const b = particles[j];
+      let dx = b.x - a.x;
+      let dy = b.y - a.y;
+      let distSq = dx * dx + dy * dy;
+      if (distSq < MIN_DIST * MIN_DIST) distSq = MIN_DIST * MIN_DIST;
+      const dist = Math.sqrt(distSq);
+      const force = pairForce(dist, distSq, a.type, b.type);
+      const fx = force * (dx / dist);
+      const fy = force * (dy / dist);
+      a.vx -= fx * dt;
+      a.vy -= fy * dt;
+      b.vx += fx * dt;
+      b.vy += fy * dt;
+      // Mark if in strong force range
+      if (dist < cutoff) {
+        inStrongRange[i] = 1;
+        inStrongRange[j] = 1;
+      }
+    }
+  }
+
+  // Dragged particle still exerts force on others
+  if (dragging !== null) {
+    const d = particles[dragging];
+    for (let j = 0; j < n; j++) {
+      if (j === dragging) continue;
+      const b = particles[j];
+      let dx = b.x - d.x;
+      let dy = b.y - d.y;
+      let distSq = dx * dx + dy * dy;
+      if (distSq < MIN_DIST * MIN_DIST) distSq = MIN_DIST * MIN_DIST;
+      const dist = Math.sqrt(distSq);
+      const force = pairForce(dist, distSq, d.type, b.type);
+      const fx = force * (dx / dist);
+      const fy = force * (dy / dist);
+      b.vx += fx * dt;
+      b.vy += fy * dt;
+      if (dist < cutoff) {
+        inStrongRange[j] = 1;
+      }
+    }
+  }
+
+  // Conditional damping: only damp particles within strong force range
+  for (let i = 0; i < n; i++) {
+    if (i === dragging) continue;
+    if (inStrongRange[i]) {
+      particles[i].vx *= dampingFactor;
+      particles[i].vy *= dampingFactor;
+    }
+  }
+
+  for (let i = 0; i < n; i++) {
+    if (i === dragging) continue;
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+  }
+
+  // Hard-sphere collision: prevent overlap and resolve velocities
+  const minSep = PARTICLE_RADIUS * 2;
+  for (let iter = 0; iter < 5; iter++) {
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const a = particles[i];
+        const b = particles[j];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        const distSq = dx * dx + dy * dy;
+        if (distSq >= minSep * minSep) continue;
+        const dist = Math.sqrt(distSq);
+        if (dist === 0) {
+          dx = (Math.random() - 0.5) * 0.1;
+          dy = (Math.random() - 0.5) * 0.1;
+          const d2 = Math.sqrt(dx * dx + dy * dy);
+          if (d2 > 0) { dx /= d2; dy /= d2; }
+          else { dx = 1; dy = 0; }
+        }
+        const nx = (dist > 0) ? dx / dist : dx;
+        const ny = (dist > 0) ? dy / dist : dy;
+        const overlap = minSep - dist;
+        // Push apart (skip dragged particle's position)
+        const aFixed = (i === dragging);
+        const bFixed = (j === dragging);
+        if (aFixed && !bFixed) {
+          b.x += nx * overlap;
+          b.y += ny * overlap;
+        } else if (bFixed && !aFixed) {
+          a.x -= nx * overlap;
+          a.y -= ny * overlap;
+        } else if (!aFixed && !bFixed) {
+          a.x -= nx * overlap * 0.5;
+          a.y -= ny * overlap * 0.5;
+          b.x += nx * overlap * 0.5;
+          b.y += ny * overlap * 0.5;
+        }
+        // Velocity resolution: remove approaching component (elastic, equal mass)
+        if (!aFixed && !bFixed) {
+          const dvx = a.vx - b.vx;
+          const dvy = a.vy - b.vy;
+          const dvDotN = dvx * nx + dvy * ny;
+          if (dvDotN > 0) {
+            // Approaching: swap normal components (equal mass elastic collision)
+            a.vx -= dvDotN * nx;
+            a.vy -= dvDotN * ny;
+            b.vx += dvDotN * nx;
+            b.vy += dvDotN * ny;
+          }
+        } else if (aFixed && !bFixed) {
+          const dvDotN = b.vx * (-nx) + b.vy * (-ny);
+          if (dvDotN > 0) {
+            b.vx += 2 * dvDotN * nx;
+            b.vy += 2 * dvDotN * ny;
+          }
+        } else if (bFixed && !aFixed) {
+          const dvDotN = a.vx * nx + a.vy * ny;
+          if (dvDotN < 0) {
+            a.vx -= 2 * dvDotN * nx;
+            a.vy -= 2 * dvDotN * ny;
+          }
+        }
+      }
+    }
+  }
+}
+
+// Warm sequential colormap: transparent → deep red → orange → yellow
+const COLORMAP = new Uint8Array(256 * 4);
+(function buildColormap() {
+  const stops = [
+    { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0 },
+    { t: 0.2,  r: 140, g: 15,  b: 5,   a: 77 },
+    { t: 0.5,  r: 220, g: 60,  b: 10,  a: 153 },
+    { t: 0.8,  r: 255, g: 180, b: 30,  a: 217 },
+    { t: 1.0,  r: 255, g: 250, b: 220, a: 255 },
+  ];
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    let s0 = stops[0], s1 = stops[1];
+    for (let s = 0; s < stops.length - 1; s++) {
+      if (t >= stops[s].t && t <= stops[s + 1].t) {
+        s0 = stops[s]; s1 = stops[s + 1]; break;
+      }
+    }
+    const f = (t - s0.t) / (s1.t - s0.t);
+    const idx = i * 4;
+    COLORMAP[idx]     = s0.r + (s1.r - s0.r) * f;
+    COLORMAP[idx + 1] = s0.g + (s1.g - s0.g) * f;
+    COLORMAP[idx + 2] = s0.b + (s1.b - s0.b) * f;
+    COLORMAP[idx + 3] = s0.a + (s1.a - s0.a) * f;
+  }
+})();
+
+// Draw Coulomb interaction energy density heat map
+// Only proton-proton electric field cross-terms
+function drawHeatmap() {
+  const fullW = canvas.width;
+  const fullH = canvas.height;
+  const scale = 0.5;
+  const w = Math.ceil(fullW * scale);
+  const h = Math.ceil(fullH * scale);
+  const invScale = 1 / scale;
+
+  hmCanvas.width = w;
+  hmCanvas.height = h;
+
+  const imageData = hmCtx.createImageData(w, h);
+  const data = imageData.data;
+
+  // Only protons contribute to Coulomb field
+  const protonList = [];
+  for (let i = 0; i < particles.length; i++) {
+    if (particles[i].type === 'proton') protonList.push(particles[i]);
+  }
+  const np = protonList.length;
+  if (np < 2) return;
+
+  const minR = PARTICLE_RADIUS;
+  const minRSq = minR * minR;
+
+  const exArr = new Float32Array(np);
+  const eyArr = new Float32Array(np);
+
+  const sensitivity = 200.0;
+  const refMax = 0.5;
+  const logNorm = Math.log(1.0 + sensitivity * refMax);
+  const invLogNorm = 1.0 / logNorm;
+
+  for (let py = 0; py < h; py++) {
+    const worldY = py * invScale;
+    for (let px = 0; px < w; px++) {
+      const worldX = px * invScale;
+
+      // Coulomb field from each proton
+      for (let i = 0; i < np; i++) {
+        const dx = worldX - protonList[i].x;
+        const dy = worldY - protonList[i].y;
+        let rSq = dx * dx + dy * dy;
+        if (rSq < minRSq) rSq = minRSq;
+        const r = Math.sqrt(rSq);
+        const fieldMag = coulombStrength / (rSq * r);
+        exArr[i] = dx * fieldMag;
+        eyArr[i] = dy * fieldMag;
+      }
+
+      // Sum pairwise cross-terms: 2 * (Ei · Ej)
+      let interaction = 0;
+      for (let i = 0; i < np; i++) {
+        for (let j = i + 1; j < np; j++) {
+          interaction += 2 * (exArr[i] * exArr[j] + eyArr[i] * eyArr[j]);
+        }
+      }
+
+      // Only show negative cross-term
+      if (interaction < 0) {
+        const absVal = -interaction;
+        let magnitude = Math.log(1.0 + sensitivity * absVal) * invLogNorm;
+        if (magnitude > 1.0) magnitude = 1.0;
+        const ci = (magnitude * 255) | 0;
+        const di = (py * w + px) * 4;
+        const ci4 = ci * 4;
+        data[di]     = COLORMAP[ci4];
+        data[di + 1] = COLORMAP[ci4 + 1];
+        data[di + 2] = COLORMAP[ci4 + 2];
+        data[di + 3] = COLORMAP[ci4 + 3];
+      }
+    }
+  }
+
+  hmCtx.putImageData(imageData, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(hmCanvas, 0, 0, fullW, fullH);
+}
+
+// Drawing
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (showHeatmap && particles.length > 0) {
+    drawHeatmap();
+  }
+
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    const isProton = p.type === 'proton';
+
+    // Glow
+    const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, PARTICLE_RADIUS * 2.5);
+    if (isProton) {
+      gradient.addColorStop(0, 'rgba(255, 80, 80, 0.4)');
+      gradient.addColorStop(1, 'rgba(255, 80, 80, 0)');
+    } else {
+      gradient.addColorStop(0, 'rgba(160, 160, 200, 0.3)');
+      gradient.addColorStop(1, 'rgba(160, 160, 200, 0)');
+    }
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, PARTICLE_RADIUS * 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body
+    const bodyGrad = ctx.createRadialGradient(p.x - 3, p.y - 3, 1, p.x, p.y, PARTICLE_RADIUS);
+    if (isProton) {
+      bodyGrad.addColorStop(0, '#ff9999');
+      bodyGrad.addColorStop(0.7, '#ff4444');
+      bodyGrad.addColorStop(1, '#cc2222');
+    } else {
+      bodyGrad.addColorStop(0, '#ccccdd');
+      bodyGrad.addColorStop(0.7, '#8888aa');
+      bodyGrad.addColorStop(1, '#666688');
+    }
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, PARTICLE_RADIUS, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Label
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(isProton ? '+' : 'n', p.x, p.y + 1);
+  }
+}
+
+// Animation loop
+function loop() {
+  if (!running) return;
+  step(speed);
+  computeEnergy();
+  draw();
+  drawGraph();
+  animId = requestAnimationFrame(loop);
+}
+
+draw();
+</script>
+</body>
+</html>
