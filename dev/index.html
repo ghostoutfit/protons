@@ -84,6 +84,13 @@
     font-size: 12px;
     color: #9ca3af;
     white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .slider-group label span {
+    display: inline-block;
+    min-width: 3.2em;
+    text-align: right;
   }
 
   .slider-group input[type="range"] {
@@ -621,7 +628,7 @@ function applySpeedSlider() {
   const idx = parseInt(speedSlider.value);
   const displaySpeed = SPEED_STOPS[idx];
   speed = displaySpeed / 2;
-  speedValEl.textContent = displaySpeed % 1 === 0 ? displaySpeed.toFixed(1) : String(displaySpeed);
+  speedValEl.textContent = displaySpeed.toFixed(1);
 }
 speedSlider.addEventListener('input', applySpeedSlider);
 
