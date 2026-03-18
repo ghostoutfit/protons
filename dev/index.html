@@ -785,6 +785,72 @@ function step(dt) {
     p.x += p.vx * dt;
     p.y += p.vy * dt;
   }
+
+  // Hard-sphere collision: prevent overlap and resolve velocities
+  const minSep = PARTICLE_RADIUS * 2;
+  for (let iter = 0; iter < 5; iter++) {
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const a = particles[i];
+        const b = particles[j];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        const distSq = dx * dx + dy * dy;
+        if (distSq >= minSep * minSep) continue;
+        const dist = Math.sqrt(distSq);
+        if (dist === 0) {
+          dx = (Math.random() - 0.5) * 0.1;
+          dy = (Math.random() - 0.5) * 0.1;
+          const d2 = Math.sqrt(dx * dx + dy * dy);
+          if (d2 > 0) { dx /= d2; dy /= d2; }
+          else { dx = 1; dy = 0; }
+        }
+        const nx = (dist > 0) ? dx / dist : dx;
+        const ny = (dist > 0) ? dy / dist : dy;
+        const overlap = minSep - dist;
+        // Push apart (skip dragged particle's position)
+        const aFixed = (i === dragging);
+        const bFixed = (j === dragging);
+        if (aFixed && !bFixed) {
+          b.x += nx * overlap;
+          b.y += ny * overlap;
+        } else if (bFixed && !aFixed) {
+          a.x -= nx * overlap;
+          a.y -= ny * overlap;
+        } else if (!aFixed && !bFixed) {
+          a.x -= nx * overlap * 0.5;
+          a.y -= ny * overlap * 0.5;
+          b.x += nx * overlap * 0.5;
+          b.y += ny * overlap * 0.5;
+        }
+        // Velocity resolution: remove approaching component (elastic, equal mass)
+        if (!aFixed && !bFixed) {
+          const dvx = a.vx - b.vx;
+          const dvy = a.vy - b.vy;
+          const dvDotN = dvx * nx + dvy * ny;
+          if (dvDotN > 0) {
+            // Approaching: swap normal components (equal mass elastic collision)
+            a.vx -= dvDotN * nx;
+            a.vy -= dvDotN * ny;
+            b.vx += dvDotN * nx;
+            b.vy += dvDotN * ny;
+          }
+        } else if (aFixed && !bFixed) {
+          const dvDotN = b.vx * (-nx) + b.vy * (-ny);
+          if (dvDotN > 0) {
+            b.vx += 2 * dvDotN * nx;
+            b.vy += 2 * dvDotN * ny;
+          }
+        } else if (bFixed && !aFixed) {
+          const dvDotN = a.vx * nx + a.vy * ny;
+          if (dvDotN < 0) {
+            a.vx -= 2 * dvDotN * nx;
+            a.vy -= 2 * dvDotN * ny;
+          }
+        }
+      }
+    }
+  }
 }
 
 // Warm sequential colormap: transparent → deep red → orange → yellow
