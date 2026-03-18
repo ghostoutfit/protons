@@ -635,34 +635,50 @@ function step(dt) {
   }
 }
 
-// Precomputed colormap LUT (256 entries): transparent black → deep red → orange → yellow → white
-const COLORMAP = new Uint8Array(256 * 4);
-(function buildColormap() {
-  const stops = [
+// Precomputed diverging colormap LUT (512 entries, index 0–255 = negative, 256–511 = positive)
+// Blue (fields opposing) → transparent (zero) → orange/red (fields reinforcing)
+const COLORMAP_NEG = new Uint8Array(256 * 4); // negative side: blue
+const COLORMAP_POS = new Uint8Array(256 * 4); // positive side: orange/red
+(function buildColormaps() {
+  // Positive: transparent → deep red → orange → yellow-white
+  const posStops = [
     { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0 },
     { t: 0.2,  r: 140, g: 15,  b: 5,   a: 77 },
     { t: 0.5,  r: 220, g: 60,  b: 10,  a: 153 },
     { t: 0.8,  r: 255, g: 180, b: 30,  a: 217 },
     { t: 1.0,  r: 255, g: 250, b: 220, a: 255 },
   ];
-  for (let i = 0; i < 256; i++) {
-    const t = i / 255;
-    let s0 = stops[0], s1 = stops[1];
-    for (let s = 0; s < stops.length - 1; s++) {
-      if (t >= stops[s].t && t <= stops[s + 1].t) {
-        s0 = stops[s]; s1 = stops[s + 1]; break;
+  // Negative: transparent → deep blue → bright blue → cyan-white
+  const negStops = [
+    { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0 },
+    { t: 0.2,  r: 5,   g: 20,  b: 140, a: 77 },
+    { t: 0.5,  r: 20,  g: 70,  b: 220, a: 153 },
+    { t: 0.8,  r: 60,  g: 160, b: 255, a: 217 },
+    { t: 1.0,  r: 200, g: 235, b: 255, a: 255 },
+  ];
+  function fillLUT(lut, stops) {
+    for (let i = 0; i < 256; i++) {
+      const t = i / 255;
+      let s0 = stops[0], s1 = stops[1];
+      for (let s = 0; s < stops.length - 1; s++) {
+        if (t >= stops[s].t && t <= stops[s + 1].t) {
+          s0 = stops[s]; s1 = stops[s + 1]; break;
+        }
       }
+      const f = (t - s0.t) / (s1.t - s0.t);
+      const idx = i * 4;
+      lut[idx]     = s0.r + (s1.r - s0.r) * f;
+      lut[idx + 1] = s0.g + (s1.g - s0.g) * f;
+      lut[idx + 2] = s0.b + (s1.b - s0.b) * f;
+      lut[idx + 3] = s0.a + (s1.a - s0.a) * f;
     }
-    const f = (t - s0.t) / (s1.t - s0.t);
-    const idx = i * 4;
-    COLORMAP[idx]     = s0.r + (s1.r - s0.r) * f;
-    COLORMAP[idx + 1] = s0.g + (s1.g - s0.g) * f;
-    COLORMAP[idx + 2] = s0.b + (s1.b - s0.b) * f;
-    COLORMAP[idx + 3] = s0.a + (s1.a - s0.a) * f;
   }
+  fillLUT(COLORMAP_POS, posStops);
+  fillLUT(COLORMAP_NEG, negStops);
 })();
 
-// Draw energy density heat map at half resolution using ImageData
+// Draw interaction energy density heat map at half resolution using ImageData
+// Shows only the cross-term 2(E₁·E₂) between all pairs — the interaction part
 function drawHeatmap() {
   const fullW = canvas.width;
   const fullH = canvas.height;
@@ -677,18 +693,25 @@ function drawHeatmap() {
   const imageData = hmCtx.createImageData(w, h);
   const data = imageData.data;
   const n = protons.length;
+  if (n < 2) return; // Need at least 2 protons for interaction
   const minR = PROTON_RADIUS;
   const minRSq = minR * minR;
 
-  // First pass: compute E² for every pixel and find max
+  // Precompute per-proton field contributions, then sum pairwise cross-terms
+  // For each pixel: interaction = sum over all pairs (i<j) of 2*(Eix*Ejx + Eiy*Ejy)
   const uBuf = new Float32Array(w * h);
-  let uMax = 0;
+  let uMaxAbs = 0;
+
+  // Store per-proton field vectors for each pixel row to avoid recomputing
+  const exArr = new Float32Array(n);
+  const eyArr = new Float32Array(n);
 
   for (let py = 0; py < h; py++) {
     const worldY = py * invScale;
     for (let px = 0; px < w; px++) {
       const worldX = px * invScale;
-      let exTotal = 0, eyTotal = 0;
+
+      // Compute individual field from each proton
       for (let i = 0; i < n; i++) {
         const dx = worldX - protons[i].x;
         const dy = worldY - protons[i].y;
@@ -696,32 +719,44 @@ function drawHeatmap() {
         if (rSq < minRSq) rSq = minRSq;
         const r = Math.sqrt(rSq);
         const invR3 = 1 / (rSq * r);
-        exTotal += dx * invR3;
-        eyTotal += dy * invR3;
+        exArr[i] = dx * invR3;
+        eyArr[i] = dy * invR3;
       }
-      const u = exTotal * exTotal + eyTotal * eyTotal;
+
+      // Sum pairwise cross-terms: 2 * (Ei · Ej)
+      let interaction = 0;
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          interaction += 2 * (exArr[i] * exArr[j] + eyArr[i] * eyArr[j]);
+        }
+      }
+
       const idx = py * w + px;
-      uBuf[idx] = u;
-      if (u > uMax) uMax = u;
+      uBuf[idx] = interaction;
+      const absVal = interaction < 0 ? -interaction : interaction;
+      if (absVal > uMaxAbs) uMaxAbs = absVal;
     }
   }
 
-  if (uMax <= 0) return;
+  if (uMaxAbs <= 0) return;
 
-  // Logarithmic scaling: displayValue = log(1 + k*u) / log(1 + k*uMax)
+  // Signed log scaling: sign(u) * log(1 + k*|u|) / log(1 + k*uMaxAbs)
   const k = 1.0;
-  const logMax = Math.log(1.0 + k * uMax);
+  const logMax = Math.log(1.0 + k * uMaxAbs);
   const invLogMax = 1.0 / logMax;
 
   for (let i = 0; i < w * h; i++) {
-    const display = Math.log(1.0 + k * uBuf[i]) * invLogMax;
-    const ci = (display * 255) | 0;
+    const raw = uBuf[i];
+    const absRaw = raw < 0 ? -raw : raw;
+    const magnitude = Math.log(1.0 + k * absRaw) * invLogMax;
+    const ci = (magnitude * 255) | 0;
     const di = i * 4;
     const ci4 = ci * 4;
-    data[di]     = COLORMAP[ci4];
-    data[di + 1] = COLORMAP[ci4 + 1];
-    data[di + 2] = COLORMAP[ci4 + 2];
-    data[di + 3] = COLORMAP[ci4 + 3];
+    const lut = raw >= 0 ? COLORMAP_POS : COLORMAP_NEG;
+    data[di]     = lut[ci4];
+    data[di + 1] = lut[ci4 + 1];
+    data[di + 2] = lut[ci4 + 2];
+    data[di + 3] = lut[ci4 + 3];
   }
 
   hmCtx.putImageData(imageData, 0, 0);
