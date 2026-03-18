@@ -696,29 +696,33 @@ function drawHeatmap() {
   if (n < 2) return; // Need at least 2 protons for interaction
   const minR = PROTON_RADIUS;
   const minRSq = minR * minR;
+  const CK = COULOMB_K; // include physical constant in field so values have meaningful scale
 
-  // Precompute per-proton field contributions, then sum pairwise cross-terms
-  // For each pixel: interaction = sum over all pairs (i<j) of 2*(Eix*Ejx + Eiy*Ejy)
-  const uBuf = new Float32Array(w * h);
-  let uMaxAbs = 0;
-
-  // Store per-proton field vectors for each pixel row to avoid recomputing
+  // Store per-proton field vectors
   const exArr = new Float32Array(n);
   const eyArr = new Float32Array(n);
+
+  // Fixed reference scale: log(1 + sensitivity * refMax)
+  // refMax ~5 corresponds to the cross-term magnitude near two close protons (~50px apart)
+  // Values above this saturate to full brightness; values far below fade to transparent
+  const sensitivity = 10.0;
+  const refMax = 5.0;
+  const logNorm = Math.log(1.0 + sensitivity * refMax);
+  const invLogNorm = 1.0 / logNorm;
 
   for (let py = 0; py < h; py++) {
     const worldY = py * invScale;
     for (let px = 0; px < w; px++) {
       const worldX = px * invScale;
 
-      // Compute individual field from each proton
+      // Compute individual field from each proton (with COULOMB_K)
       for (let i = 0; i < n; i++) {
         const dx = worldX - protons[i].x;
         const dy = worldY - protons[i].y;
         let rSq = dx * dx + dy * dy;
         if (rSq < minRSq) rSq = minRSq;
         const r = Math.sqrt(rSq);
-        const invR3 = 1 / (rSq * r);
+        const invR3 = CK / (rSq * r);
         exArr[i] = dx * invR3;
         eyArr[i] = dy * invR3;
       }
@@ -731,32 +735,19 @@ function drawHeatmap() {
         }
       }
 
-      const idx = py * w + px;
-      uBuf[idx] = interaction;
+      // Signed log scaling with fixed reference (no per-frame normalization)
       const absVal = interaction < 0 ? -interaction : interaction;
-      if (absVal > uMaxAbs) uMaxAbs = absVal;
+      let magnitude = Math.log(1.0 + sensitivity * absVal) * invLogNorm;
+      if (magnitude > 1.0) magnitude = 1.0;
+      const ci = (magnitude * 255) | 0;
+      const di = (py * w + px) * 4;
+      const ci4 = ci * 4;
+      const lut = interaction >= 0 ? COLORMAP_POS : COLORMAP_NEG;
+      data[di]     = lut[ci4];
+      data[di + 1] = lut[ci4 + 1];
+      data[di + 2] = lut[ci4 + 2];
+      data[di + 3] = lut[ci4 + 3];
     }
-  }
-
-  if (uMaxAbs <= 0) return;
-
-  // Signed log scaling: sign(u) * log(1 + k*|u|) / log(1 + k*uMaxAbs)
-  const k = 1.0;
-  const logMax = Math.log(1.0 + k * uMaxAbs);
-  const invLogMax = 1.0 / logMax;
-
-  for (let i = 0; i < w * h; i++) {
-    const raw = uBuf[i];
-    const absRaw = raw < 0 ? -raw : raw;
-    const magnitude = Math.log(1.0 + k * absRaw) * invLogMax;
-    const ci = (magnitude * 255) | 0;
-    const di = i * 4;
-    const ci4 = ci * 4;
-    const lut = raw >= 0 ? COLORMAP_POS : COLORMAP_NEG;
-    data[di]     = lut[ci4];
-    data[di + 1] = lut[ci4 + 1];
-    data[di + 2] = lut[ci4 + 2];
-    data[di + 3] = lut[ci4 + 3];
   }
 
   hmCtx.putImageData(imageData, 0, 0);
