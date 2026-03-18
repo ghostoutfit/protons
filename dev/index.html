@@ -297,6 +297,12 @@ const PROTON_RADIUS = 10;
 const COULOMB_K = 800;
 const MIN_DIST = 20; // Minimum distance enforced so protons can't overlap
 
+// Strong force: short-range attractive, Yukawa-like
+// F_strong = -STRONG_K * exp(-dist/STRONG_RANGE) / dist^2  (negative = attractive)
+const STRONG_K = 8000;      // much stronger than Coulomb at short range
+const STRONG_RANGE = 18;    // characteristic decay length in pixels
+const STRONG_CUTOFF = 60;   // skip computation beyond this distance
+
 // Heat map offscreen canvas (half resolution for performance)
 const hmCanvas = document.createElement('canvas');
 const hmCtx = hmCanvas.getContext('2d');
@@ -531,7 +537,12 @@ function computeEnergy() {
       const dy = protons[j].y - protons[i].y;
       const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist > 0) {
+        // Coulomb potential (repulsive, positive)
         potential += COULOMB_K / dist;
+        // Strong force potential (attractive, negative): -STRONG_K * STRONG_RANGE * exp(-r/STRONG_RANGE) / r
+        if (dist < STRONG_CUTOFF) {
+          potential -= STRONG_K * STRONG_RANGE * Math.exp(-dist / STRONG_RANGE) / dist;
+        }
       }
     }
   }
@@ -598,7 +609,12 @@ function step(dt) {
       let distSq = dx * dx + dy * dy;
       if (distSq < MIN_DIST * MIN_DIST) distSq = MIN_DIST * MIN_DIST;
       const dist = Math.sqrt(distSq);
-      const force = COULOMB_K / distSq;
+      // Coulomb repulsion
+      let force = COULOMB_K / distSq;
+      // Strong force: attractive, short-range Yukawa
+      if (dist < STRONG_CUTOFF) {
+        force -= STRONG_K * Math.exp(-dist / STRONG_RANGE) / distSq;
+      }
       const fx = force * (dx / dist);
       const fy = force * (dy / dist);
       a.vx -= fx * dt;
@@ -619,7 +635,12 @@ function step(dt) {
       let distSq = dx * dx + dy * dy;
       if (distSq < MIN_DIST * MIN_DIST) distSq = MIN_DIST * MIN_DIST;
       const dist = Math.sqrt(distSq);
-      const force = COULOMB_K / distSq;
+      // Coulomb repulsion
+      let force = COULOMB_K / distSq;
+      // Strong force: attractive, short-range Yukawa
+      if (dist < STRONG_CUTOFF) {
+        force -= STRONG_K * Math.exp(-dist / STRONG_RANGE) / distSq;
+      }
       const fx = force * (dx / dist);
       const fy = force * (dy / dist);
       b.vx += fx * dt;
@@ -700,16 +721,21 @@ function drawHeatmap() {
     for (let px = 0; px < w; px++) {
       const worldX = px * invScale;
 
-      // Compute individual field from each proton (with COULOMB_K)
+      // Compute individual field from each proton (Coulomb + strong force)
       for (let i = 0; i < n; i++) {
         const dx = worldX - protons[i].x;
         const dy = worldY - protons[i].y;
         let rSq = dx * dx + dy * dy;
         if (rSq < minRSq) rSq = minRSq;
         const r = Math.sqrt(rSq);
-        const invR3 = CK / (rSq * r);
-        exArr[i] = dx * invR3;
-        eyArr[i] = dy * invR3;
+        // Coulomb field: k/r² radially outward → components = k*dx/r³
+        let fieldMag = CK / (rSq * r);
+        // Strong force field: attractive (inward), Yukawa decay
+        if (r < STRONG_CUTOFF) {
+          fieldMag -= STRONG_K * Math.exp(-r / STRONG_RANGE) / (rSq * r);
+        }
+        exArr[i] = dx * fieldMag;
+        eyArr[i] = dy * fieldMag;
       }
 
       // Sum pairwise cross-terms: 2 * (Ei · Ej)
@@ -752,27 +778,6 @@ function draw() {
   // Heat map as bottom layer
   if (showHeatmap && protons.length > 0) {
     drawHeatmap();
-  }
-
-  if (running) {
-    for (let i = 0; i < protons.length; i++) {
-      for (let j = i + 1; j < protons.length; j++) {
-        const a = protons[i];
-        const b = protons[j];
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 150) {
-          const alpha = Math.max(0, 0.3 * (1 - dist / 150));
-          ctx.strokeStyle = `rgba(255, 100, 100, ${alpha})`;
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(a.x, a.y);
-          ctx.lineTo(b.x, b.y);
-          ctx.stroke();
-        }
-      }
-    }
   }
 
   for (let i = 0; i < protons.length; i++) {
