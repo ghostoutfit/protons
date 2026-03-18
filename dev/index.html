@@ -785,6 +785,72 @@ function step(dt) {
     p.x += p.vx * dt;
     p.y += p.vy * dt;
   }
+
+  // Hard-sphere collision: prevent overlap and resolve velocities
+  const minSep = PARTICLE_RADIUS * 2;
+  for (let iter = 0; iter < 5; iter++) {
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const a = particles[i];
+        const b = particles[j];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        const distSq = dx * dx + dy * dy;
+        if (distSq >= minSep * minSep) continue;
+        const dist = Math.sqrt(distSq);
+        if (dist === 0) {
+          dx = (Math.random() - 0.5) * 0.1;
+          dy = (Math.random() - 0.5) * 0.1;
+          const d2 = Math.sqrt(dx * dx + dy * dy);
+          if (d2 > 0) { dx /= d2; dy /= d2; }
+          else { dx = 1; dy = 0; }
+        }
+        const nx = (dist > 0) ? dx / dist : dx;
+        const ny = (dist > 0) ? dy / dist : dy;
+        const overlap = minSep - dist;
+        // Push apart (skip dragged particle's position)
+        const aFixed = (i === dragging);
+        const bFixed = (j === dragging);
+        if (aFixed && !bFixed) {
+          b.x += nx * overlap;
+          b.y += ny * overlap;
+        } else if (bFixed && !aFixed) {
+          a.x -= nx * overlap;
+          a.y -= ny * overlap;
+        } else if (!aFixed && !bFixed) {
+          a.x -= nx * overlap * 0.5;
+          a.y -= ny * overlap * 0.5;
+          b.x += nx * overlap * 0.5;
+          b.y += ny * overlap * 0.5;
+        }
+        // Velocity resolution: remove approaching component (elastic, equal mass)
+        if (!aFixed && !bFixed) {
+          const dvx = a.vx - b.vx;
+          const dvy = a.vy - b.vy;
+          const dvDotN = dvx * nx + dvy * ny;
+          if (dvDotN > 0) {
+            // Approaching: swap normal components (equal mass elastic collision)
+            a.vx -= dvDotN * nx;
+            a.vy -= dvDotN * ny;
+            b.vx += dvDotN * nx;
+            b.vy += dvDotN * ny;
+          }
+        } else if (aFixed && !bFixed) {
+          const dvDotN = b.vx * (-nx) + b.vy * (-ny);
+          if (dvDotN > 0) {
+            b.vx += 2 * dvDotN * nx;
+            b.vy += 2 * dvDotN * ny;
+          }
+        } else if (bFixed && !aFixed) {
+          const dvDotN = a.vx * nx + a.vy * ny;
+          if (dvDotN < 0) {
+            a.vx -= 2 * dvDotN * nx;
+            a.vy -= 2 * dvDotN * ny;
+          }
+        }
+      }
+    }
+  }
 }
 
 // Warm sequential colormap: transparent → deep red → orange → yellow
@@ -814,8 +880,8 @@ const COLORMAP = new Uint8Array(256 * 4);
   }
 })();
 
-// Draw interaction energy density heat map
-// Computes combined Coulomb + strong force field cross-terms
+// Draw Coulomb interaction energy density heat map
+// Only proton-proton electric field cross-terms
 function drawHeatmap() {
   const fullW = canvas.width;
   const fullH = canvas.height;
@@ -829,14 +895,20 @@ function drawHeatmap() {
 
   const imageData = hmCtx.createImageData(w, h);
   const data = imageData.data;
-  const n = particles.length;
-  if (n < 2) return;
+
+  // Only protons contribute to Coulomb field
+  const protonList = [];
+  for (let i = 0; i < particles.length; i++) {
+    if (particles[i].type === 'proton') protonList.push(particles[i]);
+  }
+  const np = protonList.length;
+  if (np < 2) return;
+
   const minR = PARTICLE_RADIUS;
   const minRSq = minR * minR;
-  const cutoff = strongCutoff();
 
-  const exArr = new Float32Array(n);
-  const eyArr = new Float32Array(n);
+  const exArr = new Float32Array(np);
+  const eyArr = new Float32Array(np);
 
   const sensitivity = 10.0;
   const refMax = 5.0;
@@ -848,30 +920,22 @@ function drawHeatmap() {
     for (let px = 0; px < w; px++) {
       const worldX = px * invScale;
 
-      // Compute field from each particle (Coulomb for protons + strong for all)
-      for (let i = 0; i < n; i++) {
-        const dx = worldX - particles[i].x;
-        const dy = worldY - particles[i].y;
+      // Coulomb field from each proton
+      for (let i = 0; i < np; i++) {
+        const dx = worldX - protonList[i].x;
+        const dy = worldY - protonList[i].y;
         let rSq = dx * dx + dy * dy;
         if (rSq < minRSq) rSq = minRSq;
         const r = Math.sqrt(rSq);
-        let fieldMag = 0;
-        // Coulomb field: protons only
-        if (particles[i].type === 'proton') {
-          fieldMag += coulombStrength / (rSq * r);
-        }
-        // Strong force field: all particles, within range
-        if (r < cutoff) {
-          fieldMag -= strongForceStrength / (rSq * r);
-        }
+        const fieldMag = coulombStrength / (rSq * r);
         exArr[i] = dx * fieldMag;
         eyArr[i] = dy * fieldMag;
       }
 
       // Sum pairwise cross-terms: 2 * (Ei · Ej)
       let interaction = 0;
-      for (let i = 0; i < n; i++) {
-        for (let j = i + 1; j < n; j++) {
+      for (let i = 0; i < np; i++) {
+        for (let j = i + 1; j < np; j++) {
           interaction += 2 * (exArr[i] * exArr[j] + eyArr[i] * eyArr[j]);
         }
       }
