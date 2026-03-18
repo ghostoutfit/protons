@@ -357,6 +357,7 @@ const MIN_DIST = 20;
 let coulombStrength = 150;
 let strongForceStrength = 300;
 let strongForceRange = 2.0; // multiplier on (r1 + r2)
+let equilibriumRatio = 0.6; // equilibrium as fraction of strongForceRange
 let dampingFactor = 0.96;
 
 // Heat map offscreen canvas
@@ -629,10 +630,18 @@ function pairForce(dist, distSq, aType, bType) {
   if (aType === 'proton' && bType === 'proton') {
     force += coulombStrength / distSq;
   }
-  // Strong force: between all pairs, within range
+  // Strong force: equilibrium-based model
+  // Repulsive inside equilibrium, attractive outside, zero beyond range
   const cutoff = strongCutoff();
   if (dist < cutoff) {
-    force -= strongForceStrength / distSq;
+    const eqDist = cutoff * equilibriumRatio;
+    // Linear ramp: -1 at dist=0, 0 at eqDist, +1 at cutoff
+    // Then scale by strength/distSq
+    // Negative = attractive, positive = repulsive in our convention
+    // We want repulsive (positive) when dist < eqDist, attractive (negative) when dist > eqDist
+    const t = (dist - eqDist) / (cutoff - eqDist); // -eqDist/(cutoff-eqDist) to 1
+    // At dist=eqDist, t=0 -> force=0. At dist<eqDist, t<0 -> repulsive. At dist>eqDist, t>0 -> attractive.
+    force -= t * strongForceStrength / distSq;
   }
   return force;
 }
@@ -659,10 +668,17 @@ function computeEnergy() {
         if (particles[i].type === 'proton' && particles[j].type === 'proton') {
           potential += coulombStrength / dist;
         }
-        // Strong force potential: all pairs, within range
-        // Potential for a step-function force F=-S/r² is V = -S/r (integrated)
+        // Strong force potential: equilibrium-based model
+        // Force is F = -t * S / r² where t = (r - eqDist) / (cutoff - eqDist)
         if (dist < cutoff) {
-          potential -= strongForceStrength / dist;
+          const eqDist = cutoff * equilibriumRatio;
+          const span = cutoff - eqDist;
+          // t = (r - eqDist) / span, so F = -(r - eqDist)/(span) * S / r²
+          // Potential V = -integral of -F dr = integral of t*S/r² dr
+          // = (S/span) * integral of (r - eqDist)/r² dr = (S/span) * (ln(r) + eqDist/r)
+          // We use V relative to cutoff so V(cutoff)=0
+          const v = (Math.log(dist) + eqDist / dist) - (Math.log(cutoff) + eqDist / cutoff);
+          potential += (strongForceStrength / span) * v;
         }
       }
     }
@@ -910,8 +926,8 @@ function drawHeatmap() {
   const exArr = new Float32Array(np);
   const eyArr = new Float32Array(np);
 
-  const sensitivity = 10.0;
-  const refMax = 5.0;
+  const sensitivity = 40.0;
+  const refMax = 2.0;
   const logNorm = Math.log(1.0 + sensitivity * refMax);
   const invLogNorm = 1.0 / logNorm;
 
