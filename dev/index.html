@@ -880,8 +880,8 @@ const COLORMAP = new Uint8Array(256 * 4);
   }
 })();
 
-// Draw interaction energy density heat map
-// Computes combined Coulomb + strong force field cross-terms
+// Draw Coulomb interaction energy density heat map
+// Only proton-proton electric field cross-terms
 function drawHeatmap() {
   const fullW = canvas.width;
   const fullH = canvas.height;
@@ -895,14 +895,20 @@ function drawHeatmap() {
 
   const imageData = hmCtx.createImageData(w, h);
   const data = imageData.data;
-  const n = particles.length;
-  if (n < 2) return;
+
+  // Only protons contribute to Coulomb field
+  const protonList = [];
+  for (let i = 0; i < particles.length; i++) {
+    if (particles[i].type === 'proton') protonList.push(particles[i]);
+  }
+  const np = protonList.length;
+  if (np < 2) return;
+
   const minR = PARTICLE_RADIUS;
   const minRSq = minR * minR;
-  const cutoff = strongCutoff();
 
-  const exArr = new Float32Array(n);
-  const eyArr = new Float32Array(n);
+  const exArr = new Float32Array(np);
+  const eyArr = new Float32Array(np);
 
   const sensitivity = 10.0;
   const refMax = 5.0;
@@ -914,30 +920,22 @@ function drawHeatmap() {
     for (let px = 0; px < w; px++) {
       const worldX = px * invScale;
 
-      // Compute field from each particle (Coulomb for protons + strong for all)
-      for (let i = 0; i < n; i++) {
-        const dx = worldX - particles[i].x;
-        const dy = worldY - particles[i].y;
+      // Coulomb field from each proton
+      for (let i = 0; i < np; i++) {
+        const dx = worldX - protonList[i].x;
+        const dy = worldY - protonList[i].y;
         let rSq = dx * dx + dy * dy;
         if (rSq < minRSq) rSq = minRSq;
         const r = Math.sqrt(rSq);
-        let fieldMag = 0;
-        // Coulomb field: protons only
-        if (particles[i].type === 'proton') {
-          fieldMag += coulombStrength / (rSq * r);
-        }
-        // Strong force field: all particles, within range
-        if (r < cutoff) {
-          fieldMag -= strongForceStrength / (rSq * r);
-        }
+        const fieldMag = coulombStrength / (rSq * r);
         exArr[i] = dx * fieldMag;
         eyArr[i] = dy * fieldMag;
       }
 
       // Sum pairwise cross-terms: 2 * (Ei · Ej)
       let interaction = 0;
-      for (let i = 0; i < n; i++) {
-        for (let j = i + 1; j < n; j++) {
+      for (let i = 0; i < np; i++) {
+        for (let j = i + 1; j < np; j++) {
           interaction += 2 * (exArr[i] * exArr[j] + eyArr[i] * eyArr[j]);
         }
       }
