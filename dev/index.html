@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Proton Force Simulation</title>
+<title>Nuclear Force Simulation</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -71,17 +71,17 @@
   .slider-group {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
   }
 
   .slider-group label {
-    font-size: 13px;
+    font-size: 12px;
     color: #9ca3af;
     white-space: nowrap;
   }
 
   .slider-group input[type="range"] {
-    width: 100px;
+    width: 80px;
     accent-color: #6366f1;
   }
 
@@ -104,6 +104,16 @@
     color: #9ca3af;
     margin-left: auto;
     white-space: nowrap;
+  }
+
+  #tuningRow {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 6px 20px;
+    background: #0e0e22;
+    border-bottom: 1px solid #2a2a4a;
+    flex-wrap: wrap;
   }
 
   #main {
@@ -168,10 +178,9 @@
     border: 1px solid #2a2a4a;
   }
 
-  #bucket {
+  .particle-bucket {
     position: absolute;
     bottom: 20px;
-    left: 20px;
     width: 60px;
     height: 70px;
     background: #1e1e3a;
@@ -186,28 +195,40 @@
     z-index: 5;
   }
 
-  #bucket:hover {
-    border-color: #ff6b6b;
+  .particle-bucket:hover {
     background: #2a2a4a;
   }
 
-  #bucket .bucket-label {
+  #protonBucket { left: 20px; }
+  #protonBucket:hover { border-color: #ff6b6b; }
+
+  #neutronBucket { left: 90px; }
+  #neutronBucket:hover { border-color: #aaaacc; }
+
+  .particle-bucket .bucket-label {
     font-size: 10px;
     color: #9ca3af;
     margin-top: 4px;
   }
 
-  #bucket .bucket-proton {
+  .particle-bucket .bucket-ball {
     width: 22px;
     height: 22px;
     border-radius: 50%;
-    background: radial-gradient(circle at 40% 40%, #ff9999, #ff4444 60%, #cc2222);
     display: flex;
     align-items: center;
     justify-content: center;
     color: #fff;
     font-weight: bold;
     font-size: 14px;
+  }
+
+  .bucket-ball.proton {
+    background: radial-gradient(circle at 40% 40%, #ff9999, #ff4444 60%, #cc2222);
+  }
+
+  .bucket-ball.neutron {
+    background: radial-gradient(circle at 40% 40%, #ccccdd, #8888aa 60%, #666688);
   }
 
   #instructions {
@@ -230,7 +251,7 @@
 <body>
 
 <div id="toolbar">
-  <h1>Proton Simulation</h1>
+  <h1>Nuclear Simulation</h1>
   <button class="btn" id="goBtn">Go</button>
   <button class="btn" id="clearBtn">Clear</button>
   <button class="btn" id="addClusterBtn">Add Cluster</button>
@@ -239,7 +260,26 @@
     <input type="range" id="speedSlider" min="0.01" max="1" step="0.01" value="1">
   </div>
   <label class="toggle-label"><input type="checkbox" id="heatmapToggle"> Show energy between particles</label>
-  <span id="stats">Protons: 0</span>
+  <span id="stats">Protons: 0 &nbsp; Neutrons: 0</span>
+</div>
+
+<div id="tuningRow">
+  <div class="slider-group">
+    <label>Coulomb: <span id="coulombVal">150</span></label>
+    <input type="range" id="coulombSlider" min="50" max="300" step="1" value="150">
+  </div>
+  <div class="slider-group">
+    <label>Strong: <span id="strongVal">300</span></label>
+    <input type="range" id="strongSlider" min="100" max="600" step="1" value="300">
+  </div>
+  <div class="slider-group">
+    <label>Range: <span id="rangeVal">2.0</span>x</label>
+    <input type="range" id="rangeSlider" min="1.5" max="3.0" step="0.05" value="2.0">
+  </div>
+  <div class="slider-group">
+    <label>Damping: <span id="dampVal">0.96</span></label>
+    <input type="range" id="dampSlider" min="0.93" max="0.99" step="0.005" value="0.96">
+  </div>
 </div>
 
 <div id="main">
@@ -262,12 +302,17 @@
     <canvas id="graphCanvas"></canvas>
   </div>
 
-  <div id="bucket">
-    <div class="bucket-proton">+</div>
-    <span class="bucket-label">Drag me</span>
+  <div class="particle-bucket" id="protonBucket">
+    <div class="bucket-ball proton">+</div>
+    <span class="bucket-label">Proton</span>
   </div>
 
-  <div id="instructions">Click to place protons, drag from the bucket, or drag existing ones to reposition.</div>
+  <div class="particle-bucket" id="neutronBucket">
+    <div class="bucket-ball neutron">n</div>
+    <span class="bucket-label">Neutron</span>
+  </div>
+
+  <div id="instructions">Click to place protons, drag from buckets, or drag existing particles to reposition.</div>
 </div>
 
 <script>
@@ -280,36 +325,48 @@ const clearBtn = document.getElementById('clearBtn');
 const addClusterBtn = document.getElementById('addClusterBtn');
 const speedSlider = document.getElementById('speedSlider');
 const speedValEl = document.getElementById('speedVal');
-const stats = document.getElementById('stats');
-const instructions = document.getElementById('instructions');
+const statsEl = document.getElementById('stats');
+const instructionsEl = document.getElementById('instructions');
 const kineticVal = document.getElementById('kineticVal');
 const potentialVal = document.getElementById('potentialVal');
 const totalVal = document.getElementById('totalVal');
-const bucket = document.getElementById('bucket');
+const protonBucket = document.getElementById('protonBucket');
+const neutronBucket = document.getElementById('neutronBucket');
 const heatmapToggle = document.getElementById('heatmapToggle');
 
-let protons = [];
+// Tuning slider elements
+const coulombSlider = document.getElementById('coulombSlider');
+const strongSlider = document.getElementById('strongSlider');
+const rangeSlider = document.getElementById('rangeSlider');
+const dampSlider = document.getElementById('dampSlider');
+const coulombValEl = document.getElementById('coulombVal');
+const strongValEl = document.getElementById('strongVal');
+const rangeValEl = document.getElementById('rangeVal');
+const dampValEl = document.getElementById('dampVal');
+
+// Particles: { x, y, vx, vy, type: 'proton'|'neutron' }
+let particles = [];
 let running = false;
 let animId = null;
 let speed = 1.0;
 let showHeatmap = false;
-const PROTON_RADIUS = 10;
-const COULOMB_K = 800;
-const MIN_DIST = 20; // Minimum distance enforced so protons can't overlap
+const PARTICLE_RADIUS = 10;
+const MIN_DIST = 20;
 
-// Strong force: short-range attractive, Yukawa-like
-// F_strong = -STRONG_K * exp(-dist/STRONG_RANGE) / dist^2  (negative = attractive)
-const STRONG_K = 8000;      // much stronger than Coulomb at short range
-const STRONG_RANGE = 18;    // characteristic decay length in pixels
-const STRONG_CUTOFF = 60;   // skip computation beyond this distance
+// Tunable parameters
+let coulombStrength = 150;
+let strongForceStrength = 300;
+let strongForceRange = 2.0; // multiplier on (r1 + r2)
+let dampingFactor = 0.96;
 
-// Heat map offscreen canvas (half resolution for performance)
+// Heat map offscreen canvas
 const hmCanvas = document.createElement('canvas');
 const hmCtx = hmCanvas.getContext('2d');
 
 // Drag state
-let dragging = null;       // index of proton being dragged, or null
-let draggingNew = false;   // true if dragging a new proton from the bucket
+let dragging = null;
+let draggingNew = false;
+let draggingType = 'proton';
 let dragOffsetX = 0;
 let dragOffsetY = 0;
 
@@ -318,7 +375,8 @@ const MAX_HISTORY = 600;
 let energyHistory = [];
 
 function resize() {
-  const toolbarH = document.getElementById('toolbar').offsetHeight;
+  const toolbarH = document.getElementById('toolbar').offsetHeight +
+                   document.getElementById('tuningRow').offsetHeight;
   const mainH = window.innerHeight - toolbarH;
   canvas.width = canvas.parentElement.offsetWidth - 260;
   canvas.height = mainH;
@@ -330,8 +388,8 @@ function resize() {
 window.addEventListener('resize', resize);
 setTimeout(resize, 0);
 
-function createProton(x, y) {
-  return { x, y, vx: 0, vy: 0 };
+function createParticle(x, y, type) {
+  return { x, y, vx: 0, vy: 0, type: type || 'proton' };
 }
 
 function getCanvasPos(e) {
@@ -339,27 +397,26 @@ function getCanvasPos(e) {
   return { x: e.clientX - rect.left, y: e.clientY - rect.top };
 }
 
-function findProtonAt(x, y) {
-  for (let i = protons.length - 1; i >= 0; i--) {
-    const p = protons[i];
+function findParticleAt(x, y) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
     const dx = p.x - x;
     const dy = p.y - y;
-    if (dx * dx + dy * dy <= (PROTON_RADIUS + 4) * (PROTON_RADIUS + 4)) {
+    if (dx * dx + dy * dy <= (PARTICLE_RADIUS + 4) * (PARTICLE_RADIUS + 4)) {
       return i;
     }
   }
   return -1;
 }
 
-// Separate overlapping protons so none sit on top of each other
 function separateOverlaps() {
-  const minSep = PROTON_RADIUS * 2;
+  const minSep = PARTICLE_RADIUS * 2;
   for (let iter = 0; iter < 10; iter++) {
     let moved = false;
-    for (let i = 0; i < protons.length; i++) {
-      for (let j = i + 1; j < protons.length; j++) {
-        const a = protons[i];
-        const b = protons[j];
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+        const a = particles[i];
+        const b = particles[j];
         let dx = b.x - a.x;
         let dy = b.y - a.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
@@ -373,7 +430,6 @@ function separateOverlaps() {
           b.y += ny * overlap;
           moved = true;
         } else if (dist === 0) {
-          // Identical position — nudge randomly
           b.x += (Math.random() - 0.5) * minSep;
           b.y += (Math.random() - 0.5) * minSep;
           moved = true;
@@ -384,46 +440,50 @@ function separateOverlaps() {
   }
 }
 
-// --- Bucket drag: mousedown on bucket starts dragging a new proton ---
-bucket.addEventListener('mousedown', (e) => {
-  e.preventDefault();
-  const pos = getCanvasPos(e);
-  const newP = createProton(pos.x, pos.y);
-  protons.push(newP);
-  dragging = protons.length - 1;
-  draggingNew = true;
-  updateStats();
-  hideInstructions();
-  if (!running) { draw(); }
-});
+// --- Bucket drags ---
+function setupBucketDrag(bucketEl, type) {
+  bucketEl.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const pos = getCanvasPos(e);
+    const newP = createParticle(pos.x, pos.y, type);
+    particles.push(newP);
+    dragging = particles.length - 1;
+    draggingNew = true;
+    draggingType = type;
+    updateStats();
+    hideInstructions();
+    if (!running) { draw(); }
+  });
+}
+setupBucketDrag(protonBucket, 'proton');
+setupBucketDrag(neutronBucket, 'neutron');
 
-// --- Canvas mouse events: click to place, or drag existing protons ---
+// --- Canvas mouse events: click to place protons, drag existing ---
 let didDrag = false;
 canvas.addEventListener('mousedown', (e) => {
   const pos = getCanvasPos(e);
-  const idx = findProtonAt(pos.x, pos.y);
+  const idx = findParticleAt(pos.x, pos.y);
   didDrag = false;
   if (idx >= 0) {
     dragging = idx;
     draggingNew = false;
-    dragOffsetX = protons[idx].x - pos.x;
-    dragOffsetY = protons[idx].y - pos.y;
-    protons[idx].vx = 0;
-    protons[idx].vy = 0;
+    dragOffsetX = particles[idx].x - pos.x;
+    dragOffsetY = particles[idx].y - pos.y;
+    particles[idx].vx = 0;
+    particles[idx].vy = 0;
     canvas.style.cursor = 'grabbing';
   }
 });
 
 window.addEventListener('mousemove', (e) => {
   if (dragging === null) {
-    // Update cursor on hover
     const pos = getCanvasPos(e);
-    const idx = findProtonAt(pos.x, pos.y);
+    const idx = findParticleAt(pos.x, pos.y);
     canvas.style.cursor = idx >= 0 ? 'grab' : 'default';
     return;
   }
   const pos = getCanvasPos(e);
-  const p = protons[dragging];
+  const p = particles[dragging];
   didDrag = true;
   if (draggingNew) {
     p.x = pos.x;
@@ -437,11 +497,12 @@ window.addEventListener('mousemove', (e) => {
   if (!running) { computeEnergy(); draw(); drawGraph(); }
 });
 
+// Click on empty canvas = place proton
 canvas.addEventListener('click', (e) => {
   if (didDrag) return;
   const pos = getCanvasPos(e);
-  if (findProtonAt(pos.x, pos.y) >= 0) return;
-  protons.push(createProton(pos.x, pos.y));
+  if (findParticleAt(pos.x, pos.y) >= 0) return;
+  particles.push(createParticle(pos.x, pos.y, 'proton'));
   separateOverlaps();
   updateStats();
   computeEnergy();
@@ -460,15 +521,27 @@ window.addEventListener('mouseup', () => {
   canvas.style.cursor = 'default';
 });
 
-// Add a cluster of protons
+// Add cluster: mix protons and neutrons based on what's already there
 addClusterBtn.addEventListener('click', () => {
   const cx = canvas.width / 2 + (Math.random() - 0.5) * 100;
   const cy = canvas.height / 2 + (Math.random() - 0.5) * 100;
-  const count = 10 + Math.floor(Math.random() * 10);
-  for (let i = 0; i < count; i++) {
+  const totalCount = 10 + Math.floor(Math.random() * 10);
+
+  // Estimate N/Z ratio: light elements ~1:1, heavier ~1.5:1 neutrons:protons
+  const existingProtons = particles.filter(p => p.type === 'proton').length;
+  const existingNeutrons = particles.filter(p => p.type === 'neutron').length;
+  const totalExisting = existingProtons + existingNeutrons;
+
+  // As we get more particles, shift toward more neutrons
+  // ratio = neutrons per proton, ranges from ~1.0 (light) to ~1.5 (heavy)
+  const neutronRatio = Math.min(1.5, 1.0 + totalExisting / 80);
+  const protonFraction = 1 / (1 + neutronRatio);
+
+  for (let i = 0; i < totalCount; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const r = PROTON_RADIUS * 2 + Math.random() * 40;
-    protons.push(createProton(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r));
+    const r = PARTICLE_RADIUS * 2 + Math.random() * 40;
+    const type = Math.random() < protonFraction ? 'proton' : 'neutron';
+    particles.push(createParticle(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r, type));
   }
   separateOverlaps();
   updateStats();
@@ -487,7 +560,7 @@ goBtn.addEventListener('click', () => {
 
 // Clear
 clearBtn.addEventListener('click', () => {
-  protons = [];
+  particles = [];
   energyHistory = [];
   running = false;
   goBtn.textContent = 'Go';
@@ -505,6 +578,27 @@ speedSlider.addEventListener('input', () => {
   speedValEl.textContent = speed.toFixed(2);
 });
 
+// Tuning sliders
+coulombSlider.addEventListener('input', () => {
+  coulombStrength = parseFloat(coulombSlider.value);
+  coulombValEl.textContent = coulombStrength;
+  if (!running) { computeEnergy(); draw(); drawGraph(); }
+});
+strongSlider.addEventListener('input', () => {
+  strongForceStrength = parseFloat(strongSlider.value);
+  strongValEl.textContent = strongForceStrength;
+  if (!running) { computeEnergy(); draw(); drawGraph(); }
+});
+rangeSlider.addEventListener('input', () => {
+  strongForceRange = parseFloat(rangeSlider.value);
+  rangeValEl.textContent = strongForceRange.toFixed(2);
+  if (!running) { computeEnergy(); draw(); drawGraph(); }
+});
+dampSlider.addEventListener('input', () => {
+  dampingFactor = parseFloat(dampSlider.value);
+  dampValEl.textContent = dampingFactor.toFixed(3);
+});
+
 // Heatmap toggle
 heatmapToggle.addEventListener('change', () => {
   showHeatmap = heatmapToggle.checked;
@@ -512,36 +606,63 @@ heatmapToggle.addEventListener('change', () => {
 });
 
 function hideInstructions() {
-  instructions.style.opacity = '0';
-  setTimeout(() => instructions.style.display = 'none', 500);
+  instructionsEl.style.opacity = '0';
+  setTimeout(() => instructionsEl.style.display = 'none', 500);
 }
 
 function updateStats() {
-  stats.textContent = `Protons: ${protons.length}`;
+  const np = particles.filter(p => p.type === 'proton').length;
+  const nn = particles.filter(p => p.type === 'neutron').length;
+  statsEl.textContent = `Protons: ${np}  Neutrons: ${nn}`;
+}
+
+// Strong force cutoff distance for a pair
+function strongCutoff() {
+  return PARTICLE_RADIUS * 2 * strongForceRange;
+}
+
+// Compute forces between two particles (returns net force magnitude along the line)
+// Positive = repulsive, negative = attractive
+function pairForce(dist, distSq, aType, bType) {
+  let force = 0;
+  // Coulomb: only between protons
+  if (aType === 'proton' && bType === 'proton') {
+    force += coulombStrength / distSq;
+  }
+  // Strong force: between all pairs, within range
+  const cutoff = strongCutoff();
+  if (dist < cutoff) {
+    force -= strongForceStrength / distSq;
+  }
+  return force;
 }
 
 // Compute energies
 function computeEnergy() {
   let kinetic = 0;
   let potential = 0;
-  const n = protons.length;
+  const n = particles.length;
 
   for (let i = 0; i < n; i++) {
-    const p = protons[i];
+    const p = particles[i];
     kinetic += 0.5 * (p.vx * p.vx + p.vy * p.vy);
   }
 
+  const cutoff = strongCutoff();
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
-      const dx = protons[j].x - protons[i].x;
-      const dy = protons[j].y - protons[i].y;
+      const dx = particles[j].x - particles[i].x;
+      const dy = particles[j].y - particles[i].y;
       const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist > 0) {
-        // Coulomb potential (repulsive, positive)
-        potential += COULOMB_K / dist;
-        // Strong force potential (attractive, negative): -STRONG_K * STRONG_RANGE * exp(-r/STRONG_RANGE) / r
-        if (dist < STRONG_CUTOFF) {
-          potential -= STRONG_K * STRONG_RANGE * Math.exp(-dist / STRONG_RANGE) / dist;
+        // Coulomb potential: between protons only
+        if (particles[i].type === 'proton' && particles[j].type === 'proton') {
+          potential += coulombStrength / dist;
+        }
+        // Strong force potential: all pairs, within range
+        // Potential for a step-function force F=-S/r² is V = -S/r (integrated)
+        if (dist < cutoff) {
+          potential -= strongForceStrength / dist;
         }
       }
     }
@@ -567,7 +688,7 @@ function drawGraph() {
 
   let maxVal = 1;
   for (const e of energyHistory) {
-    maxVal = Math.max(maxVal, e.kinetic, e.potential, e.total);
+    maxVal = Math.max(maxVal, Math.abs(e.kinetic), Math.abs(e.potential), Math.abs(e.total));
   }
   maxVal *= 1.1;
 
@@ -595,62 +716,72 @@ function drawGraph() {
 
 // Physics step
 function step(dt) {
-  const n = protons.length;
+  const n = particles.length;
+  const cutoff = strongCutoff();
+
+  // Track which particles are within strong force range of another
+  const inStrongRange = new Uint8Array(n);
 
   for (let i = 0; i < n; i++) {
-    // Skip the dragged proton — it's held by the user
     if (i === dragging) continue;
     for (let j = i + 1; j < n; j++) {
       if (j === dragging) continue;
-      const a = protons[i];
-      const b = protons[j];
+      const a = particles[i];
+      const b = particles[j];
       let dx = b.x - a.x;
       let dy = b.y - a.y;
       let distSq = dx * dx + dy * dy;
       if (distSq < MIN_DIST * MIN_DIST) distSq = MIN_DIST * MIN_DIST;
       const dist = Math.sqrt(distSq);
-      // Coulomb repulsion
-      let force = COULOMB_K / distSq;
-      // Strong force: attractive, short-range Yukawa
-      if (dist < STRONG_CUTOFF) {
-        force -= STRONG_K * Math.exp(-dist / STRONG_RANGE) / distSq;
-      }
+      const force = pairForce(dist, distSq, a.type, b.type);
       const fx = force * (dx / dist);
       const fy = force * (dy / dist);
       a.vx -= fx * dt;
       a.vy -= fy * dt;
       b.vx += fx * dt;
       b.vy += fy * dt;
+      // Mark if in strong force range
+      if (dist < cutoff) {
+        inStrongRange[i] = 1;
+        inStrongRange[j] = 1;
+      }
     }
   }
 
-  // Dragged proton still exerts force on others but doesn't move from physics
+  // Dragged particle still exerts force on others
   if (dragging !== null) {
-    const d = protons[dragging];
+    const d = particles[dragging];
     for (let j = 0; j < n; j++) {
       if (j === dragging) continue;
-      const b = protons[j];
+      const b = particles[j];
       let dx = b.x - d.x;
       let dy = b.y - d.y;
       let distSq = dx * dx + dy * dy;
       if (distSq < MIN_DIST * MIN_DIST) distSq = MIN_DIST * MIN_DIST;
       const dist = Math.sqrt(distSq);
-      // Coulomb repulsion
-      let force = COULOMB_K / distSq;
-      // Strong force: attractive, short-range Yukawa
-      if (dist < STRONG_CUTOFF) {
-        force -= STRONG_K * Math.exp(-dist / STRONG_RANGE) / distSq;
-      }
+      const force = pairForce(dist, distSq, d.type, b.type);
       const fx = force * (dx / dist);
       const fy = force * (dy / dist);
       b.vx += fx * dt;
       b.vy += fy * dt;
+      if (dist < cutoff) {
+        inStrongRange[j] = 1;
+      }
+    }
+  }
+
+  // Conditional damping: only damp particles within strong force range
+  for (let i = 0; i < n; i++) {
+    if (i === dragging) continue;
+    if (inStrongRange[i]) {
+      particles[i].vx *= dampingFactor;
+      particles[i].vy *= dampingFactor;
     }
   }
 
   for (let i = 0; i < n; i++) {
     if (i === dragging) continue;
-    const p = protons[i];
+    const p = particles[i];
     p.x += p.vx * dt;
     p.y += p.vy * dt;
   }
@@ -683,8 +814,8 @@ const COLORMAP = new Uint8Array(256 * 4);
   }
 })();
 
-// Draw interaction energy density heat map at half resolution using ImageData
-// Shows only the cross-term 2(E₁·E₂) between all pairs — the interaction part
+// Draw interaction energy density heat map
+// Computes combined Coulomb + strong force field cross-terms
 function drawHeatmap() {
   const fullW = canvas.width;
   const fullH = canvas.height;
@@ -698,19 +829,15 @@ function drawHeatmap() {
 
   const imageData = hmCtx.createImageData(w, h);
   const data = imageData.data;
-  const n = protons.length;
-  if (n < 2) return; // Need at least 2 protons for interaction
-  const minR = PROTON_RADIUS;
+  const n = particles.length;
+  if (n < 2) return;
+  const minR = PARTICLE_RADIUS;
   const minRSq = minR * minR;
-  const CK = COULOMB_K; // include physical constant in field so values have meaningful scale
+  const cutoff = strongCutoff();
 
-  // Store per-proton field vectors
   const exArr = new Float32Array(n);
   const eyArr = new Float32Array(n);
 
-  // Fixed reference scale: log(1 + sensitivity * refMax)
-  // refMax ~5 corresponds to the cross-term magnitude near two close protons (~50px apart)
-  // Values above this saturate to full brightness; values far below fade to transparent
   const sensitivity = 10.0;
   const refMax = 5.0;
   const logNorm = Math.log(1.0 + sensitivity * refMax);
@@ -721,18 +848,21 @@ function drawHeatmap() {
     for (let px = 0; px < w; px++) {
       const worldX = px * invScale;
 
-      // Compute individual field from each proton (Coulomb + strong force)
+      // Compute field from each particle (Coulomb for protons + strong for all)
       for (let i = 0; i < n; i++) {
-        const dx = worldX - protons[i].x;
-        const dy = worldY - protons[i].y;
+        const dx = worldX - particles[i].x;
+        const dy = worldY - particles[i].y;
         let rSq = dx * dx + dy * dy;
         if (rSq < minRSq) rSq = minRSq;
         const r = Math.sqrt(rSq);
-        // Coulomb field: k/r² radially outward → components = k*dx/r³
-        let fieldMag = CK / (rSq * r);
-        // Strong force field: attractive (inward), Yukawa decay
-        if (r < STRONG_CUTOFF) {
-          fieldMag -= STRONG_K * Math.exp(-r / STRONG_RANGE) / (rSq * r);
+        let fieldMag = 0;
+        // Coulomb field: protons only
+        if (particles[i].type === 'proton') {
+          fieldMag += coulombStrength / (rSq * r);
+        }
+        // Strong force field: all particles, within range
+        if (r < cutoff) {
+          fieldMag -= strongForceStrength / (rSq * r);
         }
         exArr[i] = dx * fieldMag;
         eyArr[i] = dy * fieldMag;
@@ -746,8 +876,7 @@ function drawHeatmap() {
         }
       }
 
-      // Only show negative cross-term (where fields oppose = stored interaction energy)
-      // Positive regions are transparent
+      // Only show negative cross-term
       if (interaction < 0) {
         const absVal = -interaction;
         let magnitude = Math.log(1.0 + sensitivity * absVal) * invLogNorm;
@@ -764,8 +893,6 @@ function drawHeatmap() {
   }
 
   hmCtx.putImageData(imageData, 0, 0);
-
-  // Draw scaled up onto main canvas with bilinear interpolation
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(hmCanvas, 0, 0, fullW, fullH);
@@ -775,36 +902,50 @@ function drawHeatmap() {
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Heat map as bottom layer
-  if (showHeatmap && protons.length > 0) {
+  if (showHeatmap && particles.length > 0) {
     drawHeatmap();
   }
 
-  for (let i = 0; i < protons.length; i++) {
-    const p = protons[i];
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    const isProton = p.type === 'proton';
 
-    const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, PROTON_RADIUS * 2.5);
-    gradient.addColorStop(0, 'rgba(255, 80, 80, 0.4)');
-    gradient.addColorStop(1, 'rgba(255, 80, 80, 0)');
+    // Glow
+    const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, PARTICLE_RADIUS * 2.5);
+    if (isProton) {
+      gradient.addColorStop(0, 'rgba(255, 80, 80, 0.4)');
+      gradient.addColorStop(1, 'rgba(255, 80, 80, 0)');
+    } else {
+      gradient.addColorStop(0, 'rgba(160, 160, 200, 0.3)');
+      gradient.addColorStop(1, 'rgba(160, 160, 200, 0)');
+    }
     ctx.fillStyle = gradient;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, PROTON_RADIUS * 2.5, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, PARTICLE_RADIUS * 2.5, 0, Math.PI * 2);
     ctx.fill();
 
-    const bodyGrad = ctx.createRadialGradient(p.x - 3, p.y - 3, 1, p.x, p.y, PROTON_RADIUS);
-    bodyGrad.addColorStop(0, '#ff9999');
-    bodyGrad.addColorStop(0.7, '#ff4444');
-    bodyGrad.addColorStop(1, '#cc2222');
+    // Body
+    const bodyGrad = ctx.createRadialGradient(p.x - 3, p.y - 3, 1, p.x, p.y, PARTICLE_RADIUS);
+    if (isProton) {
+      bodyGrad.addColorStop(0, '#ff9999');
+      bodyGrad.addColorStop(0.7, '#ff4444');
+      bodyGrad.addColorStop(1, '#cc2222');
+    } else {
+      bodyGrad.addColorStop(0, '#ccccdd');
+      bodyGrad.addColorStop(0.7, '#8888aa');
+      bodyGrad.addColorStop(1, '#666688');
+    }
     ctx.fillStyle = bodyGrad;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, PROTON_RADIUS, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, PARTICLE_RADIUS, 0, Math.PI * 2);
     ctx.fill();
 
+    // Label
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 12px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('+', p.x, p.y + 1);
+    ctx.fillText(isProton ? '+' : 'n', p.x, p.y + 1);
   }
 }
 
