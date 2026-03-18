@@ -85,6 +85,20 @@
     accent-color: #6366f1;
   }
 
+  .toggle-label {
+    font-size: 13px;
+    color: #9ca3af;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .toggle-label input[type="checkbox"] {
+    accent-color: #f59e0b;
+  }
+
   #stats {
     font-size: 13px;
     color: #9ca3af;
@@ -224,6 +238,7 @@
     <label>Speed: <span id="speedVal">1.0</span>x</label>
     <input type="range" id="speedSlider" min="0.01" max="1" step="0.01" value="1">
   </div>
+  <label class="toggle-label"><input type="checkbox" id="heatmapToggle"> Show energy in field</label>
   <span id="stats">Protons: 0</span>
 </div>
 
@@ -271,14 +286,20 @@ const kineticVal = document.getElementById('kineticVal');
 const potentialVal = document.getElementById('potentialVal');
 const totalVal = document.getElementById('totalVal');
 const bucket = document.getElementById('bucket');
+const heatmapToggle = document.getElementById('heatmapToggle');
 
 let protons = [];
 let running = false;
 let animId = null;
 let speed = 1.0;
+let showHeatmap = false;
 const PROTON_RADIUS = 10;
 const COULOMB_K = 800;
 const MIN_DIST = 20; // Minimum distance enforced so protons can't overlap
+
+// Heat map offscreen canvas (half resolution for performance)
+const hmCanvas = document.createElement('canvas');
+const hmCtx = hmCanvas.getContext('2d');
 
 // Drag state
 let dragging = null;       // index of proton being dragged, or null
@@ -478,6 +499,12 @@ speedSlider.addEventListener('input', () => {
   speedValEl.textContent = speed.toFixed(2);
 });
 
+// Heatmap toggle
+heatmapToggle.addEventListener('change', () => {
+  showHeatmap = heatmapToggle.checked;
+  if (!running) draw();
+});
+
 function hideInstructions() {
   instructions.style.opacity = '0';
   setTimeout(() => instructions.style.display = 'none', 500);
@@ -608,9 +635,111 @@ function step(dt) {
   }
 }
 
+// Precomputed colormap LUT (256 entries): transparent black → deep red → orange → yellow → white
+const COLORMAP = new Uint8Array(256 * 4);
+(function buildColormap() {
+  const stops = [
+    { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0 },
+    { t: 0.2,  r: 140, g: 15,  b: 5,   a: 77 },
+    { t: 0.5,  r: 220, g: 60,  b: 10,  a: 153 },
+    { t: 0.8,  r: 255, g: 180, b: 30,  a: 217 },
+    { t: 1.0,  r: 255, g: 250, b: 220, a: 255 },
+  ];
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    let s0 = stops[0], s1 = stops[1];
+    for (let s = 0; s < stops.length - 1; s++) {
+      if (t >= stops[s].t && t <= stops[s + 1].t) {
+        s0 = stops[s]; s1 = stops[s + 1]; break;
+      }
+    }
+    const f = (t - s0.t) / (s1.t - s0.t);
+    const idx = i * 4;
+    COLORMAP[idx]     = s0.r + (s1.r - s0.r) * f;
+    COLORMAP[idx + 1] = s0.g + (s1.g - s0.g) * f;
+    COLORMAP[idx + 2] = s0.b + (s1.b - s0.b) * f;
+    COLORMAP[idx + 3] = s0.a + (s1.a - s0.a) * f;
+  }
+})();
+
+// Draw energy density heat map at half resolution using ImageData
+function drawHeatmap() {
+  const fullW = canvas.width;
+  const fullH = canvas.height;
+  const scale = 0.5;
+  const w = Math.ceil(fullW * scale);
+  const h = Math.ceil(fullH * scale);
+  const invScale = 1 / scale;
+
+  hmCanvas.width = w;
+  hmCanvas.height = h;
+
+  const imageData = hmCtx.createImageData(w, h);
+  const data = imageData.data;
+  const n = protons.length;
+  const minR = PROTON_RADIUS;
+  const minRSq = minR * minR;
+
+  // First pass: compute E² for every pixel and find max
+  const uBuf = new Float32Array(w * h);
+  let uMax = 0;
+
+  for (let py = 0; py < h; py++) {
+    const worldY = py * invScale;
+    for (let px = 0; px < w; px++) {
+      const worldX = px * invScale;
+      let exTotal = 0, eyTotal = 0;
+      for (let i = 0; i < n; i++) {
+        const dx = worldX - protons[i].x;
+        const dy = worldY - protons[i].y;
+        let rSq = dx * dx + dy * dy;
+        if (rSq < minRSq) rSq = minRSq;
+        const r = Math.sqrt(rSq);
+        const invR3 = 1 / (rSq * r);
+        exTotal += dx * invR3;
+        eyTotal += dy * invR3;
+      }
+      const u = exTotal * exTotal + eyTotal * eyTotal;
+      const idx = py * w + px;
+      uBuf[idx] = u;
+      if (u > uMax) uMax = u;
+    }
+  }
+
+  if (uMax <= 0) return;
+
+  // Logarithmic scaling: displayValue = log(1 + k*u) / log(1 + k*uMax)
+  const k = 1.0;
+  const logMax = Math.log(1.0 + k * uMax);
+  const invLogMax = 1.0 / logMax;
+
+  for (let i = 0; i < w * h; i++) {
+    const display = Math.log(1.0 + k * uBuf[i]) * invLogMax;
+    const ci = (display * 255) | 0;
+    const di = i * 4;
+    const ci4 = ci * 4;
+    data[di]     = COLORMAP[ci4];
+    data[di + 1] = COLORMAP[ci4 + 1];
+    data[di + 2] = COLORMAP[ci4 + 2];
+    data[di + 3] = COLORMAP[ci4 + 3];
+  }
+
+  hmCtx.putImageData(imageData, 0, 0);
+
+  // Draw scaled up onto main canvas with bilinear interpolation
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(hmCanvas, 0, 0, fullW, fullH);
+}
+
 // Drawing
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Heat map as bottom layer
+  if (showHeatmap && protons.length > 0) {
+    drawHeatmap();
+  }
 
   if (running) {
     for (let i = 0; i < protons.length; i++) {
