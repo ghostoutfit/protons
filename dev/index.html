@@ -415,6 +415,10 @@
     <label>Range: <span id="rangeVal">1.5</span>x</label>
     <input type="range" id="rangeSlider" min="1.0" max="2.0" step="0.05" value="1.5">
   </div>
+  <div class="slider-group">
+    <label>Damping: <span id="dampVal">1.00</span></label>
+    <input type="range" id="dampSlider" min="0.90" max="1.00" step="0.01" value="1.00">
+  </div>
 </div>
 
 <!-- ========================================
@@ -500,6 +504,8 @@ const rangeSlider = document.getElementById('rangeSlider');
 const coulombValEl = document.getElementById('coulombVal');
 const strongValEl = document.getElementById('strongVal');
 const rangeValEl = document.getElementById('rangeVal');
+const dampSlider = document.getElementById('dampSlider');
+const dampValEl = document.getElementById('dampVal');
 
 // ============================================================
 //  STATE & CONSTANTS
@@ -520,6 +526,7 @@ let coulombStrength = 150;      // Scales Coulomb repulsive force (proton-proton
 let strongForceStrength = 350;  // Scales strong nuclear force (all nucleon pairs)
 let strongForceRange = 1.5;     // Cutoff as multiplier on 2×radius
 let equilibriumRatio = 0.6;     // Where strong force = 0; below → repulsive, above → attractive
+let damping = 1.00;             // Velocity damping per frame (1.0 = no damping)
 const SUBSTEPS = 20;            // Subdivisions per frame for integration accuracy
 
 // ============================================================
@@ -916,6 +923,10 @@ rangeSlider.addEventListener('input', () => {
   rangeValEl.textContent = strongForceRange.toFixed(2);
   if (!running) { computeEnergy(); draw(); drawGraph(); }
 });
+dampSlider.addEventListener('input', () => {
+  damping = parseFloat(dampSlider.value);
+  dampValEl.textContent = damping.toFixed(2);
+});
 
 // ============================================================
 //  HEATMAP TOGGLE
@@ -960,7 +971,7 @@ function pairForce(dist, distSq, aType, bType) {
   // Repulsive inside equilibrium, attractive outside, zero beyond range
   const cutoff = strongCutoff();
   if (dist < cutoff) {
-    const eqDist = cutoff * equilibriumRatio;
+    const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
     // Linear ramp: -1 at dist=0, 0 at eqDist, +1 at cutoff
     // Then scale by strength/distSq
     // Negative = attractive, positive = repulsive in our convention
@@ -999,7 +1010,7 @@ function computeEnergy() {
         // Strong force potential: equilibrium-based model
         // Force is F = -t * S / r² where t = (r - eqDist) / (cutoff - eqDist)
         if (dist < cutoff) {
-          const eqDist = cutoff * equilibriumRatio;
+          const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
           const span = cutoff - eqDist;
           // t = (r - eqDist) / span, so F = -(r - eqDist)/(span) * S / r²
           // Potential V = -integral of -F dr = integral of t*S/r² dr
@@ -1259,10 +1270,12 @@ function step(dt) {
       }
     }
 
-    // Integrate positions
+    // Apply damping and integrate positions
     for (let i = 0; i < n; i++) {
       if (i === dragging) continue;
       const p = particles[i];
+      p.vx *= damping;
+      p.vy *= damping;
       p.x += p.vx * subDt;
       p.y += p.vy * subDt;
     }
@@ -1342,10 +1355,10 @@ const COLORMAP = new Uint8Array(256 * 4);
 (function buildColormap() {
   const stops = [
     { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0 },    // Transparent at zero energy
-    { t: 0.2,  r: 140, g: 15,  b: 5,   a: 77 },   // Deep red, faint
-    { t: 0.5,  r: 220, g: 60,  b: 10,  a: 153 },  // Orange
-    { t: 0.8,  r: 255, g: 180, b: 30,  a: 217 },  // Yellow-orange
-    { t: 1.0,  r: 255, g: 250, b: 220, a: 255 },  // Near-white at max energy
+    { t: 0.2,  r: 5,   g: 20,  b: 140, a: 77 },   // Bluish?
+    { t: 0.5,  r: 20,  g: 70,  b: 220, a: 153 },  // Bluish?
+    { t: 0.8,  r: 60,  g: 160, b: 255, a: 217 },  // Bluish?
+    { t: 1.0,  r: 200, g: 235, b: 255, a: 255 },  // Near-white at max energy
   ];
   for (let i = 0; i < 256; i++) {
     const t = i / 255;
