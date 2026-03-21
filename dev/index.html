@@ -1227,6 +1227,7 @@ graphGoLiveBtn.addEventListener('click', () => {
 function step(dt) {
   const n = particles.length;
   const subDt = dt / SUBSTEPS;  // Divide timestep for accuracy
+  const minSep = PARTICLE_RADIUS * 2;
 
   for (let sub = 0; sub < SUBSTEPS; sub++) {
     // Compute pairwise forces
@@ -1236,10 +1237,10 @@ function step(dt) {
         if (j === dragging) continue;
         const a = particles[i];
         const b = particles[j];
-        let dx = b.x - a.x;
-        let dy = b.y - a.y;
-        let distSq = dx * dx + dy * dy;
-        if (distSq < MIN_DIST * MIN_DIST) distSq = MIN_DIST * MIN_DIST;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const distSq = dx * dx + dy * dy;
+        if (distSq < 1) continue;  // Skip near-zero distance
         const dist = Math.sqrt(distSq);
         const force = pairForce(dist, distSq, a.type, b.type);
         const fx = force * (dx / dist);
@@ -1257,10 +1258,10 @@ function step(dt) {
       for (let j = 0; j < n; j++) {
         if (j === dragging) continue;
         const b = particles[j];
-        let dx = b.x - d.x;
-        let dy = b.y - d.y;
-        let distSq = dx * dx + dy * dy;
-        if (distSq < MIN_DIST * MIN_DIST) distSq = MIN_DIST * MIN_DIST;
+        const dx = b.x - d.x;
+        const dy = b.y - d.y;
+        const distSq = dx * dx + dy * dy;
+        if (distSq < 1) continue;
         const dist = Math.sqrt(distSq);
         const force = pairForce(dist, distSq, d.type, b.type);
         const fx = force * (dx / dist);
@@ -1270,40 +1271,37 @@ function step(dt) {
       }
     }
 
-    // Apply damping and integrate positions
+    // Integrate positions
     for (let i = 0; i < n; i++) {
       if (i === dragging) continue;
       const p = particles[i];
-      p.vx *= damping;
-      p.vy *= damping;
       p.x += p.vx * subDt;
       p.y += p.vy * subDt;
     }
-  }  // end substep loop
 
-  // Hard-sphere collision: prevent overlap and resolve velocities
-  const minSep = PARTICLE_RADIUS * 2;
-  for (let iter = 0; iter < 5; iter++) {
+    // Hard-sphere position constraint (no velocity changes — the strong
+    // force's repulsive core handles the dynamics; velocity swaps here
+    // would double-count and drain energy every substep)
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
         const a = particles[i];
         const b = particles[j];
         let dx = b.x - a.x;
         let dy = b.y - a.y;
-        const distSq = dx * dx + dy * dy;
-        if (distSq >= minSep * minSep) continue;
-        const dist = Math.sqrt(distSq);
+        const dSq = dx * dx + dy * dy;
+        if (dSq >= minSep * minSep) continue;
+        let dist = Math.sqrt(dSq);
         if (dist === 0) {
           dx = (Math.random() - 0.5) * 0.1;
           dy = (Math.random() - 0.5) * 0.1;
           const d2 = Math.sqrt(dx * dx + dy * dy);
           if (d2 > 0) { dx /= d2; dy /= d2; }
           else { dx = 1; dy = 0; }
+          dist = 0.001;
         }
-        const nx = (dist > 0) ? dx / dist : dx;
-        const ny = (dist > 0) ? dy / dist : dy;
+        const nx = dx / dist;
+        const ny = dy / dist;
         const overlap = minSep - dist;
-        // Push apart (skip dragged particle's position)
         const aFixed = (i === dragging);
         const bFixed = (j === dragging);
         if (aFixed && !bFixed) {
@@ -1318,32 +1316,16 @@ function step(dt) {
           b.x += nx * overlap * 0.5;
           b.y += ny * overlap * 0.5;
         }
-        // Velocity resolution: remove approaching component (elastic, equal mass)
-        if (!aFixed && !bFixed) {
-          const dvx = a.vx - b.vx;
-          const dvy = a.vy - b.vy;
-          const dvDotN = dvx * nx + dvy * ny;
-          if (dvDotN > 0) {
-            // Approaching: swap normal components (equal mass elastic collision)
-            a.vx -= dvDotN * nx;
-            a.vy -= dvDotN * ny;
-            b.vx += dvDotN * nx;
-            b.vy += dvDotN * ny;
-          }
-        } else if (aFixed && !bFixed) {
-          const dvDotN = b.vx * (-nx) + b.vy * (-ny);
-          if (dvDotN > 0) {
-            b.vx += 2 * dvDotN * nx;
-            b.vy += 2 * dvDotN * ny;
-          }
-        } else if (bFixed && !aFixed) {
-          const dvDotN = a.vx * nx + a.vy * ny;
-          if (dvDotN < 0) {
-            a.vx -= 2 * dvDotN * nx;
-            a.vy -= 2 * dvDotN * ny;
-          }
-        }
       }
+    }
+  }  // end substep loop
+
+  // Apply damping once per frame (not per substep)
+  if (damping < 1.0) {
+    for (let i = 0; i < n; i++) {
+      if (i === dragging) continue;
+      particles[i].vx *= damping;
+      particles[i].vy *= damping;
     }
   }
 }
