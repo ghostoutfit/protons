@@ -963,22 +963,21 @@ function strongCutoff() {
 // Positive = repulsive, negative = attractive
 function pairForce(dist, distSq, aType, bType) {
   let force = 0;
+  // Soften: clamp minimum distance to prevent 1/r² blow-up at close range
+  const minD = PARTICLE_RADIUS;
+  const softDistSq = Math.max(distSq, minD * minD);
+
   // Coulomb: only between protons
   if (aType === 'proton' && bType === 'proton') {
-    force += coulombStrength / distSq;  // F = K/r² (Coulomb's law)
+    force += coulombStrength / softDistSq;
   }
   // Strong force: equilibrium-based model
   // Repulsive inside equilibrium, attractive outside, zero beyond range
   const cutoff = strongCutoff();
   if (dist < cutoff) {
     const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
-    // Linear ramp: -1 at dist=0, 0 at eqDist, +1 at cutoff
-    // Then scale by strength/distSq
-    // Negative = attractive, positive = repulsive in our convention
-    // We want repulsive (positive) when dist < eqDist, attractive (negative) when dist > eqDist
-    const t = (dist - eqDist) / (cutoff - eqDist); // -eqDist/(cutoff-eqDist) to 1
-    // At dist=eqDist, t=0 -> force=0. At dist<eqDist, t<0 -> repulsive. At dist>eqDist, t>0 -> attractive.
-    force -= t * strongForceStrength / distSq;
+    const t = (dist - eqDist) / (cutoff - eqDist);
+    force -= t * strongForceStrength / softDistSq;
   }
   return force;
 }
@@ -1003,20 +1002,17 @@ function computeEnergy() {
       const dy = particles[j].y - particles[i].y;
       const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist > 0) {
+        // Use softened distance (matching pairForce) for consistency
+        const softDist = Math.max(dist, PARTICLE_RADIUS);
         // Coulomb potential: between protons only
         if (particles[i].type === 'proton' && particles[j].type === 'proton') {
-          potential += coulombStrength / dist;  // Coulomb PE = K/r (positive = repulsive)
+          potential += coulombStrength / softDist;
         }
         // Strong force potential: equilibrium-based model
-        // Force is F = -t * S / r² where t = (r - eqDist) / (cutoff - eqDist)
         if (dist < cutoff) {
           const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
           const span = cutoff - eqDist;
-          // t = (r - eqDist) / span, so F = -(r - eqDist)/(span) * S / r²
-          // Potential V = -integral of -F dr = integral of t*S/r² dr
-          // = (S/span) * integral of (r - eqDist)/r² dr = (S/span) * (ln(r) + eqDist/r)
-          // We use V relative to cutoff so V(cutoff)=0
-          const v = (Math.log(dist) + eqDist / dist) - (Math.log(cutoff) + eqDist / cutoff);
+          const v = (Math.log(softDist) + eqDist / softDist) - (Math.log(cutoff) + eqDist / cutoff);
           potential += (strongForceStrength / span) * v;
         }
       }
@@ -1270,12 +1266,60 @@ function step(dt) {
       }
     }
 
-    // Integrate positions (velocity Verlet / symplectic Euler)
+    // Integrate positions (symplectic Euler)
     for (let i = 0; i < n; i++) {
       if (i === dragging) continue;
       const p = particles[i];
       p.x += p.vx * subDt;
       p.y += p.vy * subDt;
+    }
+
+    // Hard-sphere constraint with elastic collision for approaching pairs.
+    // The force softening above caps repulsion, so this prevents residual
+    // overlap.  Only swap normal velocity when particles are approaching
+    // — this is an elastic equal-mass collision (conserves KE).
+    const minSep = PARTICLE_RADIUS * 2;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const a = particles[i];
+        const b = particles[j];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        const dSq = dx * dx + dy * dy;
+        if (dSq >= minSep * minSep) continue;
+        let d = Math.sqrt(dSq);
+        if (d < 0.001) { dx = 1; dy = 0; d = 0.001; }
+        const nx = dx / d;
+        const ny = dy / d;
+        const overlap = minSep - d;
+        const aFixed = (i === dragging);
+        const bFixed = (j === dragging);
+
+        // Position correction
+        if (aFixed && !bFixed) {
+          b.x += nx * overlap; b.y += ny * overlap;
+        } else if (bFixed && !aFixed) {
+          a.x -= nx * overlap; a.y -= ny * overlap;
+        } else if (!aFixed && !bFixed) {
+          a.x -= nx * overlap * 0.5; a.y -= ny * overlap * 0.5;
+          b.x += nx * overlap * 0.5; b.y += ny * overlap * 0.5;
+        }
+
+        // Elastic velocity swap (only if approaching)
+        const dvx = b.vx - a.vx;
+        const dvy = b.vy - a.vy;
+        const dvDotN = dvx * nx + dvy * ny;
+        if (dvDotN < 0) {  // approaching
+          if (aFixed) {
+            b.vx -= dvDotN * nx; b.vy -= dvDotN * ny;
+          } else if (bFixed) {
+            a.vx += dvDotN * nx; a.vy += dvDotN * ny;
+          } else {
+            a.vx += dvDotN * nx; a.vy += dvDotN * ny;
+            b.vx -= dvDotN * nx; b.vy -= dvDotN * ny;
+          }
+        }
+      }
     }
   }  // end substep loop
 
