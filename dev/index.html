@@ -971,7 +971,7 @@ function pairForce(dist, distSq, aType, bType) {
   // Repulsive inside equilibrium, attractive outside, zero beyond range
   const cutoff = strongCutoff();
   if (dist < cutoff) {
-    const eqDist = cutoff * equilibriumRatio;
+    const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
     // Linear ramp: -1 at dist=0, 0 at eqDist, +1 at cutoff
     // Then scale by strength/distSq
     // Negative = attractive, positive = repulsive in our convention
@@ -1010,7 +1010,7 @@ function computeEnergy() {
         // Strong force potential: equilibrium-based model
         // Force is F = -t * S / r² where t = (r - eqDist) / (cutoff - eqDist)
         if (dist < cutoff) {
-          const eqDist = cutoff * equilibriumRatio;
+          const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
           const span = cutoff - eqDist;
           // t = (r - eqDist) / span, so F = -(r - eqDist)/(span) * S / r²
           // Potential V = -integral of -F dr = integral of t*S/r² dr
