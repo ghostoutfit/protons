@@ -404,20 +404,20 @@
      ======================================== -->
 <div id="tuningRow">
   <div class="slider-group">
-    <label>Coulomb: <span id="coulombVal">150</span></label>
-    <input type="range" id="coulombSlider" min="50" max="300" step="1" value="150">
+    <label>Coulomb: <span id="coulombVal">30</span></label>
+    <input type="range" id="coulombSlider" min="5" max="200" step="1" value="30">
   </div>
   <div class="slider-group">
-    <label>Strong: <span id="strongVal">350</span></label>
-    <input type="range" id="strongSlider" min="100" max="600" step="1" value="350">
+    <label>Strong: <span id="strongVal">5.0</span></label>
+    <input type="range" id="strongSlider" min="0.5" max="30" step="0.5" value="5">
   </div>
   <div class="slider-group">
     <label>Range: <span id="rangeVal">1.5</span>x</label>
     <input type="range" id="rangeSlider" min="1.0" max="2.0" step="0.05" value="1.5">
   </div>
   <div class="slider-group">
-    <label>Damping: <span id="dampVal">1.00</span></label>
-    <input type="range" id="dampSlider" min="0.90" max="1.00" step="0.01" value="1.00">
+    <label>Damping: <span id="dampVal">0.98</span></label>
+    <input type="range" id="dampSlider" min="0.90" max="1.00" step="0.01" value="0.98">
   </div>
 </div>
 
@@ -522,11 +522,11 @@ const MIN_DIST = 20;  // Clamp distance so force doesn't blow up at overlap
 // ============================================================
 //  TUNABLE PHYSICS PARAMETERS
 // ============================================================
-let coulombStrength = 150;      // Scales Coulomb repulsive force (proton-proton only)
-let strongForceStrength = 350;  // Scales strong nuclear force (all nucleon pairs)
+let coulombStrength = 30;       // Scales Coulomb repulsive force (proton-proton only)
+let strongForceStrength = 5;    // Scales strong nuclear force (all nucleon pairs)
 let strongForceRange = 1.5;     // Cutoff as multiplier on 2×radius
 let equilibriumRatio = 0.6;     // Where strong force = 0; below → repulsive, above → attractive
-let damping = 1.00;             // Velocity damping per frame (1.0 = no damping)
+let damping = 0.98;             // Velocity damping per frame (1.0 = no damping)
 const SUBSTEPS = 20;            // Subdivisions per frame for integration accuracy
 
 // ============================================================
@@ -915,7 +915,7 @@ coulombSlider.addEventListener('input', () => {
 });
 strongSlider.addEventListener('input', () => {
   strongForceStrength = parseFloat(strongSlider.value);
-  strongValEl.textContent = strongForceStrength;
+  strongValEl.textContent = strongForceStrength.toFixed(1);
   if (!running) { computeEnergy(); draw(); drawGraph(); }
 });
 rangeSlider.addEventListener('input', () => {
@@ -963,21 +963,20 @@ function strongCutoff() {
 // Positive = repulsive, negative = attractive
 function pairForce(dist, distSq, aType, bType) {
   let force = 0;
-  // Soften: clamp minimum distance to prevent 1/r² blow-up at close range
-  const minD = PARTICLE_RADIUS;
-  const softDistSq = Math.max(distSq, minD * minD);
-
-  // Coulomb: only between protons
+  // Coulomb: only between protons (1/r² with softening to prevent blow-up)
   if (aType === 'proton' && bType === 'proton') {
+    const softDistSq = Math.max(distSq, PARTICLE_RADIUS * PARTICLE_RADIUS);
     force += coulombStrength / softDistSq;
   }
-  // Strong force: equilibrium-based model
-  // Repulsive inside equilibrium, attractive outside, zero beyond range
+  // Strong nuclear force: spring-like (no 1/r² — that's EM, not strong force)
+  // Linear ramp from repulsive to attractive across the equilibrium point,
+  // giving a proper quadratic potential well.
   const cutoff = strongCutoff();
   if (dist < cutoff) {
     const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
-    const t = (dist - eqDist) / (cutoff - eqDist);
-    force -= t * strongForceStrength / softDistSq;
+    const span = cutoff - eqDist;
+    const t = (dist - eqDist) / span;
+    force -= t * strongForceStrength;
   }
   return force;
 }
@@ -1002,18 +1001,19 @@ function computeEnergy() {
       const dy = particles[j].y - particles[i].y;
       const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist > 0) {
-        // Use softened distance (matching pairForce) for consistency
-        const softDist = Math.max(dist, PARTICLE_RADIUS);
-        // Coulomb potential: between protons only
+        // Coulomb potential: between protons only (with softening)
         if (particles[i].type === 'proton' && particles[j].type === 'proton') {
+          const softDist = Math.max(dist, PARTICLE_RADIUS);
           potential += coulombStrength / softDist;
         }
-        // Strong force potential: equilibrium-based model
+        // Strong force potential: quadratic well (matches spring-like force)
+        // F = -(r - eq)/span * S, so V = S/(2*span) * [(r-eq)² - span²]
+        // Referenced so V(cutoff) = 0; V(eq) = -S*span/2 (well minimum)
         if (dist < cutoff) {
           const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
           const span = cutoff - eqDist;
-          const v = (Math.log(softDist) + eqDist / softDist) - (Math.log(cutoff) + eqDist / cutoff);
-          potential += (strongForceStrength / span) * v;
+          const dr = dist - eqDist;
+          potential += strongForceStrength / (2 * span) * (dr * dr - span * span);
         }
       }
     }
@@ -1235,12 +1235,12 @@ function step(dt) {
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const distSq = dx * dx + dy * dy;
-        if (distSq < 1) continue;  // Skip near-zero distance
         const dist = Math.sqrt(distSq);
+        if (dist < 0.01) continue;  // Skip coincident particles
         const force = pairForce(dist, distSq, a.type, b.type);
         const fx = force * (dx / dist);
         const fy = force * (dy / dist);
-        a.vx -= fx * subDt;  // Newton's 3rd law: equal and opposite
+        a.vx -= fx * subDt;
         a.vy -= fy * subDt;
         b.vx += fx * subDt;
         b.vy += fy * subDt;
@@ -1256,8 +1256,8 @@ function step(dt) {
         const dx = b.x - d.x;
         const dy = b.y - d.y;
         const distSq = dx * dx + dy * dy;
-        if (distSq < 1) continue;
         const dist = Math.sqrt(distSq);
+        if (dist < 0.01) continue;
         const force = pairForce(dist, distSq, d.type, b.type);
         const fx = force * (dx / dist);
         const fy = force * (dy / dist);
@@ -1305,18 +1305,20 @@ function step(dt) {
           b.x += nx * overlap * 0.5; b.y += ny * overlap * 0.5;
         }
 
-        // Elastic velocity swap (only if approaching)
+        // Inelastic velocity correction: zero out approaching velocity
+        // (the strong force handles the rebound; this is just a safety net)
         const dvx = b.vx - a.vx;
         const dvy = b.vy - a.vy;
         const dvDotN = dvx * nx + dvy * ny;
         if (dvDotN < 0) {  // approaching
+          const half = dvDotN * 0.5;
           if (aFixed) {
             b.vx -= dvDotN * nx; b.vy -= dvDotN * ny;
           } else if (bFixed) {
             a.vx += dvDotN * nx; a.vy += dvDotN * ny;
           } else {
-            a.vx += dvDotN * nx; a.vy += dvDotN * ny;
-            b.vx -= dvDotN * nx; b.vy -= dvDotN * ny;
+            a.vx += half * nx; a.vy += half * ny;
+            b.vx -= half * nx; b.vy -= half * ny;
           }
         }
       }
