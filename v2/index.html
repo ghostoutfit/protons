@@ -294,10 +294,12 @@
   }
 
   #protonBucket { left: 20px; }
-  #protonBucket:hover { border-color: #ff6b6b; }
+  #protonBucket:hover, #protonBucket.selected { border-color: #ff6b6b; }
+  #protonBucket.selected { background: #2a2a4a; box-shadow: 0 0 8px rgba(255,107,107,0.4); }
 
   #neutronBucket { left: 90px; }
-  #neutronBucket:hover { border-color: #aaaacc; }
+  #neutronBucket:hover, #neutronBucket.selected { border-color: #aaaacc; }
+  #neutronBucket.selected { background: #2a2a4a; box-shadow: 0 0 8px rgba(170,170,204,0.4); }
 
   .particle-bucket .bucket-label {
     font-size: 10px;
@@ -496,6 +498,7 @@ let draggingNew = false;   // True if dragging a new particle from a bucket
 let draggingType = 'proton';
 let dragOffsetX = 0;
 let dragOffsetY = 0;
+let selectedBucketType = 'proton';  // Which particle type canvas clicks place
 
 // ============================================================
 //  ENERGY HISTORY (for graph)
@@ -591,11 +594,22 @@ function separateOverlaps() {
 }
 
 // ============================================================
-//  BUCKET DRAG: mousedown on bucket starts dragging a new particle
+//  BUCKET SELECTION & DRAG
+//  Clicking a bucket selects it (highlights it); canvas clicks
+//  then place the selected particle type. Dragging from a bucket
+//  also selects it and starts dragging a new particle.
 // ============================================================
+function selectBucket(type) {
+  selectedBucketType = type;
+  protonBucket.classList.toggle('selected', type === 'proton');
+  neutronBucket.classList.toggle('selected', type === 'neutron');
+}
+selectBucket('proton');  // Default selection
+
 function setupBucketDrag(bucketEl, type) {
   bucketEl.addEventListener('mousedown', (e) => {
     e.preventDefault();
+    selectBucket(type);
     const pos = getCanvasPos(e);
     const newP = createParticle(pos.x, pos.y, type);
     particles.push(newP);
@@ -651,12 +665,12 @@ window.addEventListener('mousemove', (e) => {
   if (!running) { computeEnergy(); draw(); drawGraph(); }
 });
 
-// Click on empty canvas = place a proton
+// Click on empty canvas = place the selected particle type
 canvas.addEventListener('click', (e) => {
   if (didDrag) return;
   const pos = getCanvasPos(e);
   if (findParticleAt(pos.x, pos.y) >= 0) return;
-  particles.push(createParticle(pos.x, pos.y, 'proton'));
+  particles.push(createParticle(pos.x, pos.y, selectedBucketType));
   separateOverlaps();
   updateStats();
   computeEnergy();
