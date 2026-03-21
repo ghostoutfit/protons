@@ -207,12 +207,55 @@
     font-variant-numeric: tabular-nums;
   }
 
+  #graphWrap {
+    position: relative;
+  }
+
   #graphCanvas {
     width: 100%;
     height: 160px;
     border-radius: 6px;
     background: #0a0a1a;
     border: 1px solid #2a2a4a;
+    cursor: crosshair;
+  }
+
+  #graphTooltip {
+    position: absolute;
+    pointer-events: none;
+    background: rgba(18, 18, 42, 0.92);
+    border: 1px solid #4a4a6a;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 11px;
+    color: #e0e0e0;
+    white-space: nowrap;
+    display: none;
+    z-index: 10;
+    font-variant-numeric: tabular-nums;
+  }
+
+  #graphControls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+  }
+
+  #graphControls button {
+    padding: 2px 8px;
+    font-size: 11px;
+    background: #1e1e3a;
+    color: #9ca3af;
+    border: 1px solid #3a3a5a;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  #graphControls button:hover { background: #2a2a4a; color: #e0e0e0; }
+
+  #graphControls span {
+    font-size: 11px;
+    color: #6b7280;
   }
 
   /* ========================================
@@ -348,7 +391,15 @@
       <span class="energy-label"><span class="energy-dot" style="background:#22c55e"></span> Total</span>
       <span class="energy-value" id="totalVal">0</span>
     </div>
-    <canvas id="graphCanvas"></canvas>
+    <div id="graphWrap">
+      <canvas id="graphCanvas"></canvas>
+      <div id="graphTooltip"></div>
+    </div>
+    <div id="graphControls">
+      <button id="graphAutoFit">Auto-fit</button>
+      <button id="graphGoLive">Go live</button>
+      <span id="graphHint">Scroll: zoom Y &middot; Drag: pan time</span>
+    </div>
   </div>
 
   <div class="particle-bucket" id="protonBucket">
@@ -436,8 +487,20 @@ let dragOffsetY = 0;
 // ============================================================
 //  ENERGY HISTORY (for graph)
 // ============================================================
-const MAX_HISTORY = 600;
+const MAX_HISTORY = 6000;  // Large buffer so we can scroll back in time
 let energyHistory = [];
+
+// ============================================================
+//  GRAPH INTERACTION STATE
+// ============================================================
+let graphViewEnd = -1;      // -1 = "live" (pinned to latest). Otherwise index into energyHistory
+const GRAPH_WINDOW = 600;   // How many samples are visible at once
+let graphYZoom = 1.0;       // Y-axis zoom multiplier (>1 = zoomed in)
+let graphYAutoFit = true;   // Auto-scale Y to fit visible data
+let graphDragging = false;
+let graphDragStartX = 0;
+let graphDragStartEnd = 0;
+let graphHoverX = -1;       // Mouse X position in CSS coords, -1 = not hovering
 
 // ============================================================
 //  LAYOUT / RESIZE
@@ -829,32 +892,57 @@ function computeEnergy() {
 }
 
 // ============================================================
-//  ENERGY GRAPH
+//  ENERGY GRAPH (interactive: pan, zoom, crosshair)
 // ============================================================
+const graphTooltip = document.getElementById('graphTooltip');
+const graphAutoFitBtn = document.getElementById('graphAutoFit');
+const graphGoLiveBtn = document.getElementById('graphGoLive');
+
+function getVisibleRange() {
+  const len = energyHistory.length;
+  if (len === 0) return { start: 0, end: 0 };
+  // "live" mode: show the latest GRAPH_WINDOW samples
+  let end = (graphViewEnd < 0) ? len - 1 : Math.min(graphViewEnd, len - 1);
+  let start = Math.max(0, end - GRAPH_WINDOW + 1);
+  end = start + Math.min(GRAPH_WINDOW, len) - 1;  // Clamp if fewer samples
+  return { start, end };
+}
+
 function drawGraph() {
   const w = graphCanvas.offsetWidth;
   const h = graphCanvas.offsetHeight;
   gctx.clearRect(0, 0, w, h);
 
-  if (energyHistory.length < 2) return;
+  const len = energyHistory.length;
+  if (len < 2) return;
 
+  const { start, end } = getVisibleRange();
+  const visCount = end - start + 1;
+  if (visCount < 2) return;
+
+  // Y-axis scaling: auto-fit to visible data or use manual zoom
   let maxVal = 1;
-  for (const e of energyHistory) {
+  for (let i = start; i <= end; i++) {
+    const e = energyHistory[i];
     maxVal = Math.max(maxVal, Math.abs(e.kinetic), Math.abs(e.potential), Math.abs(e.total));
   }
   maxVal *= 1.1;
+  if (!graphYAutoFit) {
+    maxVal /= graphYZoom;  // Manual zoom: smaller maxVal = more zoomed in
+  }
 
-  const len = energyHistory.length;
-  const xStep = w / (MAX_HISTORY - 1);
-  const xOff = (MAX_HISTORY - len) * xStep;
+  const xStep = w / (GRAPH_WINDOW - 1);
+  // Align so the visible samples fill from left to right
+  const xOff = (GRAPH_WINDOW - visCount) * xStep;
 
   function drawLine(key, color) {
     gctx.strokeStyle = color;
     gctx.lineWidth = 1.5;
     gctx.beginPath();
-    for (let i = 0; i < len; i++) {
+    for (let i = 0; i < visCount; i++) {
       const x = xOff + i * xStep;
-      const y = h - (energyHistory[i][key] / maxVal) * (h - 8) - 4;
+      const val = energyHistory[start + i][key];
+      const y = h - (val / maxVal) * (h - 8) - 4;
       if (i === 0) gctx.moveTo(x, y);
       else gctx.lineTo(x, y);
     }
@@ -864,7 +952,130 @@ function drawGraph() {
   drawLine('potential', '#3b82f6');
   drawLine('kinetic', '#f59e0b');
   drawLine('total', '#22c55e');
+
+  // Draw crosshair and tooltip at hover position
+  if (graphHoverX >= 0 && graphHoverX <= w) {
+    // Map mouse X to sample index
+    const sampleF = (graphHoverX - xOff) / xStep;
+    const sampleI = Math.round(sampleF);
+    if (sampleI >= 0 && sampleI < visCount) {
+      const e = energyHistory[start + sampleI];
+      const crossX = xOff + sampleI * xStep;
+
+      // Vertical crosshair line
+      gctx.strokeStyle = 'rgba(255,255,255,0.25)';
+      gctx.lineWidth = 1;
+      gctx.beginPath();
+      gctx.moveTo(crossX, 0);
+      gctx.lineTo(crossX, h);
+      gctx.stroke();
+
+      // Dots on each line
+      const lines = [
+        { key: 'kinetic', color: '#f59e0b' },
+        { key: 'potential', color: '#3b82f6' },
+        { key: 'total', color: '#22c55e' },
+      ];
+      for (const l of lines) {
+        const y = h - (e[l.key] / maxVal) * (h - 8) - 4;
+        gctx.fillStyle = l.color;
+        gctx.beginPath();
+        gctx.arc(crossX, y, 3, 0, Math.PI * 2);
+        gctx.fill();
+      }
+
+      // Position tooltip
+      graphTooltip.style.display = 'block';
+      graphTooltip.innerHTML =
+        `<span style="color:#f59e0b">KE</span> ${e.kinetic.toFixed(1)}<br>` +
+        `<span style="color:#3b82f6">PE</span> ${e.potential.toFixed(1)}<br>` +
+        `<span style="color:#22c55e">Tot</span> ${e.total.toFixed(1)}<br>` +
+        `<span style="color:#6b7280">t=${start + sampleI}</span>`;
+      // Place tooltip: prefer right of cursor, flip if near edge
+      const tipW = graphTooltip.offsetWidth;
+      let tipX = graphHoverX + 12;
+      if (tipX + tipW > w) tipX = graphHoverX - tipW - 8;
+      graphTooltip.style.left = tipX + 'px';
+      graphTooltip.style.top = '4px';
+    } else {
+      graphTooltip.style.display = 'none';
+    }
+  } else {
+    graphTooltip.style.display = 'none';
+  }
+
+  // Show "not live" indicator when scrolled back
+  if (graphViewEnd >= 0 && graphViewEnd < len - 1) {
+    gctx.fillStyle = 'rgba(255,100,100,0.7)';
+    gctx.font = '10px sans-serif';
+    gctx.textAlign = 'right';
+    gctx.fillText('PAUSED', w - 4, 12);
+  }
 }
+
+// --- Graph mouse events ---
+graphCanvas.addEventListener('mousedown', (e) => {
+  graphDragging = true;
+  const rect = graphCanvas.getBoundingClientRect();
+  graphDragStartX = e.clientX - rect.left;
+  // If live, pin to current position so drag starts from here
+  if (graphViewEnd < 0) {
+    graphViewEnd = energyHistory.length - 1;
+  }
+  graphDragStartEnd = graphViewEnd;
+});
+
+graphCanvas.addEventListener('mousemove', (e) => {
+  const rect = graphCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  graphHoverX = mx;
+
+  if (graphDragging) {
+    const dx = mx - graphDragStartX;
+    const w = graphCanvas.offsetWidth;
+    const xStep = w / (GRAPH_WINDOW - 1);
+    const sampleShift = Math.round(-dx / xStep);  // Drag left = go back in time
+    const len = energyHistory.length;
+    graphViewEnd = Math.max(GRAPH_WINDOW - 1, Math.min(len - 1, graphDragStartEnd + sampleShift));
+    // If dragged back to the latest, go live again
+    if (graphViewEnd >= len - 1) graphViewEnd = -1;
+  }
+
+  if (!running) drawGraph();
+});
+
+graphCanvas.addEventListener('mouseup', () => {
+  graphDragging = false;
+});
+
+graphCanvas.addEventListener('mouseleave', () => {
+  graphDragging = false;
+  graphHoverX = -1;
+  graphTooltip.style.display = 'none';
+  if (!running) drawGraph();
+});
+
+// Scroll to zoom Y axis
+graphCanvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  graphYAutoFit = false;
+  const zoomFactor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+  graphYZoom = Math.max(0.1, Math.min(100, graphYZoom * zoomFactor));
+  if (!running) drawGraph();
+}, { passive: false });
+
+// Auto-fit button: reset Y zoom to auto-scale
+graphAutoFitBtn.addEventListener('click', () => {
+  graphYAutoFit = true;
+  graphYZoom = 1.0;
+  if (!running) drawGraph();
+});
+
+// Go live button: jump to latest and pin
+graphGoLiveBtn.addEventListener('click', () => {
+  graphViewEnd = -1;
+  if (!running) drawGraph();
+});
 
 // ============================================================
 //  PHYSICS STEP (Coulomb + Strong Force + Hard-Sphere Collisions)
