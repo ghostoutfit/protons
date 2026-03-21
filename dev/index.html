@@ -1279,7 +1279,9 @@ function step(dt) {
       p.y += p.vy * subDt;
     }
 
-    // Hard-sphere collision resolution (inside substep loop for stability)
+    // Hard-sphere position constraint (no velocity changes — the strong
+    // force's repulsive core handles the dynamics; velocity swaps here
+    // would double-count and drain energy every substep)
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
         const a = particles[i];
@@ -1313,30 +1315,6 @@ function step(dt) {
           a.y -= ny * overlap * 0.5;
           b.x += nx * overlap * 0.5;
           b.y += ny * overlap * 0.5;
-        }
-        // Velocity resolution: remove approaching component (elastic, equal mass)
-        if (!aFixed && !bFixed) {
-          const dvx = a.vx - b.vx;
-          const dvy = a.vy - b.vy;
-          const dvDotN = dvx * nx + dvy * ny;
-          if (dvDotN > 0) {
-            a.vx -= dvDotN * nx;
-            a.vy -= dvDotN * ny;
-            b.vx += dvDotN * nx;
-            b.vy += dvDotN * ny;
-          }
-        } else if (aFixed && !bFixed) {
-          const dvDotN = b.vx * (-nx) + b.vy * (-ny);
-          if (dvDotN > 0) {
-            b.vx += 2 * dvDotN * nx;
-            b.vy += 2 * dvDotN * ny;
-          }
-        } else if (bFixed && !aFixed) {
-          const dvDotN = a.vx * nx + a.vy * ny;
-          if (dvDotN < 0) {
-            a.vx -= 2 * dvDotN * nx;
-            a.vy -= 2 * dvDotN * ny;
-          }
         }
       }
     }
