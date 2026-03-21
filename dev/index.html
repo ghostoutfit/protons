@@ -326,10 +326,6 @@
     <label>Range: <span id="rangeVal">1.5</span>x</label>
     <input type="range" id="rangeSlider" min="1.0" max="2.0" step="0.05" value="1.5">
   </div>
-  <div class="slider-group">
-    <label>Damping: <span id="dampVal">0.990</span></label>
-    <input type="range" id="dampSlider" min="0.93" max="0.99" step="0.005" value="0.99">
-  </div>
 </div>
 
 <!-- ========================================
@@ -397,11 +393,9 @@ const heatmapToggle = document.getElementById('heatmapToggle');
 const coulombSlider = document.getElementById('coulombSlider');
 const strongSlider = document.getElementById('strongSlider');
 const rangeSlider = document.getElementById('rangeSlider');
-const dampSlider = document.getElementById('dampSlider');
 const coulombValEl = document.getElementById('coulombVal');
 const strongValEl = document.getElementById('strongVal');
 const rangeValEl = document.getElementById('rangeVal');
-const dampValEl = document.getElementById('dampVal');
 
 // ============================================================
 //  STATE & CONSTANTS
@@ -422,7 +416,7 @@ let coulombStrength = 150;      // Scales Coulomb repulsive force (proton-proton
 let strongForceStrength = 350;  // Scales strong nuclear force (all nucleon pairs)
 let strongForceRange = 1.5;     // Cutoff as multiplier on 2×radius
 let equilibriumRatio = 0.6;     // Where strong force = 0; below → repulsive, above → attractive
-let dampingFactor = 0.99;       // Per-frame velocity damping for bound nucleons
+const SUBSTEPS = 20;            // Subdivisions per frame for integration accuracy
 
 // ============================================================
 //  HEATMAP OFFSCREEN CANVAS (half resolution for performance)
@@ -728,10 +722,6 @@ rangeSlider.addEventListener('input', () => {
   rangeValEl.textContent = strongForceRange.toFixed(2);
   if (!running) { computeEnergy(); draw(); drawGraph(); }
 });
-dampSlider.addEventListener('input', () => {
-  dampingFactor = parseFloat(dampSlider.value);
-  dampValEl.textContent = dampingFactor.toFixed(3);
-});
 
 // ============================================================
 //  HEATMAP TOGGLE
@@ -878,77 +868,63 @@ function drawGraph() {
 
 // ============================================================
 //  PHYSICS STEP (Coulomb + Strong Force + Hard-Sphere Collisions)
+//  Called once per frame; internally subdivides into SUBSTEPS
+//  for integration accuracy and energy conservation.
 // ============================================================
 function step(dt) {
   const n = particles.length;
-  const cutoff = strongCutoff();
+  const subDt = dt / SUBSTEPS;  // Divide timestep for accuracy
 
-  // Track which particles are within strong force range of another
-  const inStrongRange = new Uint8Array(n);
-
-  for (let i = 0; i < n; i++) {
-    if (i === dragging) continue;
-    for (let j = i + 1; j < n; j++) {
-      if (j === dragging) continue;
-      const a = particles[i];
-      const b = particles[j];
-      let dx = b.x - a.x;
-      let dy = b.y - a.y;
-      let distSq = dx * dx + dy * dy;
-      if (distSq < MIN_DIST * MIN_DIST) distSq = MIN_DIST * MIN_DIST;
-      const dist = Math.sqrt(distSq);
-      const force = pairForce(dist, distSq, a.type, b.type);
-      const fx = force * (dx / dist);
-      const fy = force * (dy / dist);
-      a.vx -= fx * dt;  // Newton's 3rd law: equal and opposite
-      a.vy -= fy * dt;
-      b.vx += fx * dt;
-      b.vy += fy * dt;
-      // Mark if in strong force range (for conditional damping)
-      if (dist < cutoff) {
-        inStrongRange[i] = 1;
-        inStrongRange[j] = 1;
+  for (let sub = 0; sub < SUBSTEPS; sub++) {
+    // Compute pairwise forces
+    for (let i = 0; i < n; i++) {
+      if (i === dragging) continue;
+      for (let j = i + 1; j < n; j++) {
+        if (j === dragging) continue;
+        const a = particles[i];
+        const b = particles[j];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let distSq = dx * dx + dy * dy;
+        if (distSq < MIN_DIST * MIN_DIST) distSq = MIN_DIST * MIN_DIST;
+        const dist = Math.sqrt(distSq);
+        const force = pairForce(dist, distSq, a.type, b.type);
+        const fx = force * (dx / dist);
+        const fy = force * (dy / dist);
+        a.vx -= fx * subDt;  // Newton's 3rd law: equal and opposite
+        a.vy -= fy * subDt;
+        b.vx += fx * subDt;
+        b.vy += fy * subDt;
       }
     }
-  }
 
-  // Dragged particle still exerts force on others
-  if (dragging !== null) {
-    const d = particles[dragging];
-    for (let j = 0; j < n; j++) {
-      if (j === dragging) continue;
-      const b = particles[j];
-      let dx = b.x - d.x;
-      let dy = b.y - d.y;
-      let distSq = dx * dx + dy * dy;
-      if (distSq < MIN_DIST * MIN_DIST) distSq = MIN_DIST * MIN_DIST;
-      const dist = Math.sqrt(distSq);
-      const force = pairForce(dist, distSq, d.type, b.type);
-      const fx = force * (dx / dist);
-      const fy = force * (dy / dist);
-      b.vx += fx * dt;
-      b.vy += fy * dt;
-      if (dist < cutoff) {
-        inStrongRange[j] = 1;
+    // Dragged particle still exerts force on others
+    if (dragging !== null) {
+      const d = particles[dragging];
+      for (let j = 0; j < n; j++) {
+        if (j === dragging) continue;
+        const b = particles[j];
+        let dx = b.x - d.x;
+        let dy = b.y - d.y;
+        let distSq = dx * dx + dy * dy;
+        if (distSq < MIN_DIST * MIN_DIST) distSq = MIN_DIST * MIN_DIST;
+        const dist = Math.sqrt(distSq);
+        const force = pairForce(dist, distSq, d.type, b.type);
+        const fx = force * (dx / dist);
+        const fy = force * (dy / dist);
+        b.vx += fx * subDt;
+        b.vy += fy * subDt;
       }
     }
-  }
 
-  // Conditional damping: only damp bound nucleons so free particles fly freely
-  for (let i = 0; i < n; i++) {
-    if (i === dragging) continue;
-    if (inStrongRange[i]) {
-      particles[i].vx *= dampingFactor;
-      particles[i].vy *= dampingFactor;
+    // Integrate positions
+    for (let i = 0; i < n; i++) {
+      if (i === dragging) continue;
+      const p = particles[i];
+      p.x += p.vx * subDt;
+      p.y += p.vy * subDt;
     }
-  }
-
-  for (let i = 0; i < n; i++) {
-    if (i === dragging) continue;
-    const p = particles[i];
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
-  }
+  }  // end substep loop
 
   // Hard-sphere collision: prevent overlap and resolve velocities
   const minSep = PARTICLE_RADIUS * 2;
