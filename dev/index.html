@@ -83,6 +83,17 @@
   }
   #clearOffscreenBtn:hover { background: #4b5563; }
 
+  #replayBtn {
+    background: #0e7490;
+    color: #fff;
+  }
+  #replayBtn:hover { background: #0891b2; }
+  #replayBtn:disabled {
+    background: #1e293b;
+    color: #4b5563;
+    cursor: not-allowed;
+  }
+
   /* ========================================
      SLIDER & TOGGLE CONTROLS
      ======================================== */
@@ -207,12 +218,55 @@
     font-variant-numeric: tabular-nums;
   }
 
+  #graphWrap {
+    position: relative;
+  }
+
   #graphCanvas {
     width: 100%;
     height: 160px;
     border-radius: 6px;
     background: #0a0a1a;
     border: 1px solid #2a2a4a;
+    cursor: crosshair;
+  }
+
+  #graphTooltip {
+    position: absolute;
+    pointer-events: none;
+    background: rgba(18, 18, 42, 0.92);
+    border: 1px solid #4a4a6a;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 11px;
+    color: #e0e0e0;
+    white-space: nowrap;
+    display: none;
+    z-index: 10;
+    font-variant-numeric: tabular-nums;
+  }
+
+  #graphControls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+  }
+
+  #graphControls button {
+    padding: 2px 8px;
+    font-size: 11px;
+    background: #1e1e3a;
+    color: #9ca3af;
+    border: 1px solid #3a3a5a;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  #graphControls button:hover { background: #2a2a4a; color: #e0e0e0; }
+
+  #graphControls span {
+    font-size: 11px;
+    color: #6b7280;
   }
 
   /* ========================================
@@ -240,10 +294,44 @@
   }
 
   #protonBucket { left: 20px; }
-  #protonBucket:hover { border-color: #ff6b6b; }
+  #protonBucket:hover, #protonBucket.selected { border-color: #ff6b6b; }
+  #protonBucket.selected { background: #2a2a4a; box-shadow: 0 0 8px rgba(255,107,107,0.4); }
 
   #neutronBucket { left: 90px; }
-  #neutronBucket:hover { border-color: #aaaacc; }
+  #neutronBucket:hover, #neutronBucket.selected { border-color: #aaaacc; }
+  #neutronBucket.selected { background: #2a2a4a; box-shadow: 0 0 8px rgba(170,170,204,0.4); }
+
+  #trashCan {
+    position: absolute;
+    bottom: 20px;
+    left: 160px;
+    width: 60px;
+    height: 70px;
+    background: #1e1e3a;
+    border: 2px solid #4a4a6a;
+    border-radius: 0 0 12px 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    z-index: 5;
+    transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+  }
+  #trashCan .trash-icon {
+    font-size: 22px;
+    line-height: 1;
+  }
+  #trashCan .bucket-label {
+    font-size: 10px;
+    color: #9ca3af;
+    margin-top: 4px;
+  }
+  #trashCan.drag-hover {
+    border-color: #ef4444;
+    background: #3a1a1a;
+    box-shadow: 0 0 12px rgba(239,68,68,0.5);
+  }
 
   .particle-bucket .bucket-label {
     font-size: 10px;
@@ -302,6 +390,7 @@
   <button class="btn" id="clearBtn">Clear</button>
   <button class="btn" id="addClusterBtn">Add Cluster</button>
   <button class="btn" id="clearOffscreenBtn">Clear Offscreen</button>
+  <button class="btn" id="replayBtn" disabled>Replay</button>
   <div class="slider-group">
     <label>Speed: <span id="speedVal">3.0</span>x</label>
     <input type="range" id="speedSlider" min="0" max="20" step="1" value="13">
@@ -326,10 +415,6 @@
     <label>Range: <span id="rangeVal">1.5</span>x</label>
     <input type="range" id="rangeSlider" min="1.0" max="2.0" step="0.05" value="1.5">
   </div>
-  <div class="slider-group">
-    <label>Damping: <span id="dampVal">0.990</span></label>
-    <input type="range" id="dampSlider" min="0.93" max="0.99" step="0.005" value="0.99">
-  </div>
 </div>
 
 <!-- ========================================
@@ -352,7 +437,15 @@
       <span class="energy-label"><span class="energy-dot" style="background:#22c55e"></span> Total</span>
       <span class="energy-value" id="totalVal">0</span>
     </div>
-    <canvas id="graphCanvas"></canvas>
+    <div id="graphWrap">
+      <canvas id="graphCanvas"></canvas>
+      <div id="graphTooltip"></div>
+    </div>
+    <div id="graphControls">
+      <button id="graphAutoFit">Auto-fit</button>
+      <button id="graphGoLive">Go live</button>
+      <span id="graphHint">Scroll: zoom Y &middot; Drag: pan time</span>
+    </div>
   </div>
 
   <div class="particle-bucket" id="protonBucket">
@@ -363,6 +456,11 @@
   <div class="particle-bucket" id="neutronBucket">
     <div class="bucket-ball neutron">n</div>
     <span class="bucket-label">Neutron</span>
+  </div>
+
+  <div id="trashCan">
+    <span class="trash-icon">🗑</span>
+    <span class="bucket-label">Delete</span>
   </div>
 
   <div id="instructions">Click to place protons, drag from buckets, or drag existing particles to reposition.</div>
@@ -380,6 +478,7 @@ const goBtn = document.getElementById('goBtn');
 const clearBtn = document.getElementById('clearBtn');
 const addClusterBtn = document.getElementById('addClusterBtn');
 const clearOffscreenBtn = document.getElementById('clearOffscreenBtn');
+const replayBtn = document.getElementById('replayBtn');
 const speedSlider = document.getElementById('speedSlider');
 const speedValEl = document.getElementById('speedVal');
 const statsEl = document.getElementById('stats');
@@ -390,6 +489,7 @@ const totalVal = document.getElementById('totalVal');
 const protonBucket = document.getElementById('protonBucket');
 const neutronBucket = document.getElementById('neutronBucket');
 const heatmapToggle = document.getElementById('heatmapToggle');
+const trashCan = document.getElementById('trashCan');
 
 // ============================================================
 //  TUNING SLIDER REFERENCES
@@ -397,11 +497,9 @@ const heatmapToggle = document.getElementById('heatmapToggle');
 const coulombSlider = document.getElementById('coulombSlider');
 const strongSlider = document.getElementById('strongSlider');
 const rangeSlider = document.getElementById('rangeSlider');
-const dampSlider = document.getElementById('dampSlider');
 const coulombValEl = document.getElementById('coulombVal');
 const strongValEl = document.getElementById('strongVal');
 const rangeValEl = document.getElementById('rangeVal');
-const dampValEl = document.getElementById('dampVal');
 
 // ============================================================
 //  STATE & CONSTANTS
@@ -422,7 +520,7 @@ let coulombStrength = 150;      // Scales Coulomb repulsive force (proton-proton
 let strongForceStrength = 350;  // Scales strong nuclear force (all nucleon pairs)
 let strongForceRange = 1.5;     // Cutoff as multiplier on 2×radius
 let equilibriumRatio = 0.6;     // Where strong force = 0; below → repulsive, above → attractive
-let dampingFactor = 0.99;       // Per-frame velocity damping for bound nucleons
+const SUBSTEPS = 20;            // Subdivisions per frame for integration accuracy
 
 // ============================================================
 //  HEATMAP OFFSCREEN CANVAS (half resolution for performance)
@@ -438,12 +536,25 @@ let draggingNew = false;   // True if dragging a new particle from a bucket
 let draggingType = 'proton';
 let dragOffsetX = 0;
 let dragOffsetY = 0;
+let selectedBucketType = 'proton';  // Which particle type canvas clicks place
 
 // ============================================================
 //  ENERGY HISTORY (for graph)
 // ============================================================
-const MAX_HISTORY = 600;
+const MAX_HISTORY = 6000;  // Large buffer so we can scroll back in time
 let energyHistory = [];
+
+// ============================================================
+//  GRAPH INTERACTION STATE
+// ============================================================
+let graphViewEnd = -1;      // -1 = "live" (pinned to latest). Otherwise index into energyHistory
+const GRAPH_WINDOW = 600;   // How many samples are visible at once
+let graphYZoom = 1.0;       // Y-axis zoom multiplier (>1 = zoomed in)
+let graphYAutoFit = true;   // Auto-scale Y to fit visible data
+let graphDragging = false;
+let graphDragStartX = 0;
+let graphDragStartEnd = 0;
+let graphHoverX = -1;       // Mouse X position in CSS coords, -1 = not hovering
 
 // ============================================================
 //  LAYOUT / RESIZE
@@ -521,11 +632,22 @@ function separateOverlaps() {
 }
 
 // ============================================================
-//  BUCKET DRAG: mousedown on bucket starts dragging a new particle
+//  BUCKET SELECTION & DRAG
+//  Clicking a bucket selects it (highlights it); canvas clicks
+//  then place the selected particle type. Dragging from a bucket
+//  also selects it and starts dragging a new particle.
 // ============================================================
+function selectBucket(type) {
+  selectedBucketType = type;
+  protonBucket.classList.toggle('selected', type === 'proton');
+  neutronBucket.classList.toggle('selected', type === 'neutron');
+}
+selectBucket('proton');  // Default selection
+
 function setupBucketDrag(bucketEl, type) {
   bucketEl.addEventListener('mousedown', (e) => {
     e.preventDefault();
+    selectBucket(type);
     const pos = getCanvasPos(e);
     const newP = createParticle(pos.x, pos.y, type);
     particles.push(newP);
@@ -559,6 +681,12 @@ canvas.addEventListener('mousedown', (e) => {
   }
 });
 
+function isOverTrash(e) {
+  const rect = trashCan.getBoundingClientRect();
+  return e.clientX >= rect.left && e.clientX <= rect.right &&
+         e.clientY >= rect.top && e.clientY <= rect.bottom;
+}
+
 window.addEventListener('mousemove', (e) => {
   if (dragging === null) {
     const pos = getCanvasPos(e);
@@ -578,15 +706,17 @@ window.addEventListener('mousemove', (e) => {
   }
   p.vx = 0;
   p.vy = 0;
+  // Highlight trash can when dragging over it
+  trashCan.classList.toggle('drag-hover', isOverTrash(e));
   if (!running) { computeEnergy(); draw(); drawGraph(); }
 });
 
-// Click on empty canvas = place a proton
+// Click on empty canvas = place the selected particle type
 canvas.addEventListener('click', (e) => {
   if (didDrag) return;
   const pos = getCanvasPos(e);
   if (findParticleAt(pos.x, pos.y) >= 0) return;
-  particles.push(createParticle(pos.x, pos.y, 'proton'));
+  particles.push(createParticle(pos.x, pos.y, selectedBucketType));
   separateOverlaps();
   updateStats();
   computeEnergy();
@@ -595,13 +725,20 @@ canvas.addEventListener('click', (e) => {
   hideInstructions();
 });
 
-window.addEventListener('mouseup', () => {
+window.addEventListener('mouseup', (e) => {
   if (dragging !== null) {
-    separateOverlaps();
+    if (isOverTrash(e)) {
+      // Delete the dragged particle
+      particles.splice(dragging, 1);
+      updateStats();
+    } else {
+      separateOverlaps();
+    }
     if (!running) { computeEnergy(); draw(); drawGraph(); }
   }
   dragging = null;
   draggingNew = false;
+  trashCan.classList.remove('drag-hover');
   canvas.style.cursor = 'default';
 });
 
@@ -652,14 +789,60 @@ addClusterBtn.addEventListener('click', () => {
 });
 
 // ============================================================
+//  SNAPSHOT STATE (captured when user presses Go)
+// ============================================================
+let snapshot = null;  // Deep copy of particles at simulation start
+
+function takeSnapshot() {
+  snapshot = particles.map(p => ({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, type: p.type }));
+  replayBtn.disabled = false;
+}
+
+function restoreSnapshot() {
+  if (!snapshot) return;
+  particles = snapshot.map(p => ({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, type: p.type }));
+}
+
+// ============================================================
 //  GO / STOP BUTTON
 // ============================================================
 goBtn.addEventListener('click', () => {
   running = !running;
   goBtn.textContent = running ? 'Stop' : 'Go';
   goBtn.classList.toggle('running', running);
-  if (running) loop();
-  else cancelAnimationFrame(animId);
+  if (running) {
+    takeSnapshot();  // Snapshot state at simulation start
+    loop();
+  } else {
+    cancelAnimationFrame(animId);
+  }
+});
+
+// ============================================================
+//  REPLAY BUTTON
+// ============================================================
+replayBtn.addEventListener('click', () => {
+  if (!snapshot) return;
+  // Stop current simulation if running
+  running = false;
+  cancelAnimationFrame(animId);
+  goBtn.textContent = 'Go';
+  goBtn.classList.remove('running');
+  // Restore particle state and clear energy data
+  restoreSnapshot();
+  energyHistory = [];
+  graphViewEnd = -1;  // Reset graph to live mode
+  graphYAutoFit = true;
+  graphYZoom = 1.0;
+  updateStats();
+  computeEnergy();
+  draw();
+  drawGraph();
+  // Auto-start the simulation
+  running = true;
+  goBtn.textContent = 'Stop';
+  goBtn.classList.add('running');
+  loop();
 });
 
 // ============================================================
@@ -668,10 +851,15 @@ goBtn.addEventListener('click', () => {
 clearBtn.addEventListener('click', () => {
   particles = [];
   energyHistory = [];
+  snapshot = null;
+  replayBtn.disabled = true;
   running = false;
   goBtn.textContent = 'Go';
   goBtn.classList.remove('running');
   cancelAnimationFrame(animId);
+  graphViewEnd = -1;
+  graphYAutoFit = true;
+  graphYZoom = 1.0;
   updateStats();
   computeEnergy();
   draw();
@@ -727,10 +915,6 @@ rangeSlider.addEventListener('input', () => {
   strongForceRange = parseFloat(rangeSlider.value);
   rangeValEl.textContent = strongForceRange.toFixed(2);
   if (!running) { computeEnergy(); draw(); drawGraph(); }
-});
-dampSlider.addEventListener('input', () => {
-  dampingFactor = parseFloat(dampSlider.value);
-  dampValEl.textContent = dampingFactor.toFixed(3);
 });
 
 // ============================================================
@@ -839,32 +1023,57 @@ function computeEnergy() {
 }
 
 // ============================================================
-//  ENERGY GRAPH
+//  ENERGY GRAPH (interactive: pan, zoom, crosshair)
 // ============================================================
+const graphTooltip = document.getElementById('graphTooltip');
+const graphAutoFitBtn = document.getElementById('graphAutoFit');
+const graphGoLiveBtn = document.getElementById('graphGoLive');
+
+function getVisibleRange() {
+  const len = energyHistory.length;
+  if (len === 0) return { start: 0, end: 0 };
+  // "live" mode: show the latest GRAPH_WINDOW samples
+  let end = (graphViewEnd < 0) ? len - 1 : Math.min(graphViewEnd, len - 1);
+  let start = Math.max(0, end - GRAPH_WINDOW + 1);
+  end = start + Math.min(GRAPH_WINDOW, len) - 1;  // Clamp if fewer samples
+  return { start, end };
+}
+
 function drawGraph() {
   const w = graphCanvas.offsetWidth;
   const h = graphCanvas.offsetHeight;
   gctx.clearRect(0, 0, w, h);
 
-  if (energyHistory.length < 2) return;
+  const len = energyHistory.length;
+  if (len < 2) return;
 
+  const { start, end } = getVisibleRange();
+  const visCount = end - start + 1;
+  if (visCount < 2) return;
+
+  // Y-axis scaling: auto-fit to visible data or use manual zoom
   let maxVal = 1;
-  for (const e of energyHistory) {
+  for (let i = start; i <= end; i++) {
+    const e = energyHistory[i];
     maxVal = Math.max(maxVal, Math.abs(e.kinetic), Math.abs(e.potential), Math.abs(e.total));
   }
   maxVal *= 1.1;
+  if (!graphYAutoFit) {
+    maxVal /= graphYZoom;  // Manual zoom: smaller maxVal = more zoomed in
+  }
 
-  const len = energyHistory.length;
-  const xStep = w / (MAX_HISTORY - 1);
-  const xOff = (MAX_HISTORY - len) * xStep;
+  const xStep = w / (GRAPH_WINDOW - 1);
+  // Align so the visible samples fill from left to right
+  const xOff = (GRAPH_WINDOW - visCount) * xStep;
 
   function drawLine(key, color) {
     gctx.strokeStyle = color;
     gctx.lineWidth = 1.5;
     gctx.beginPath();
-    for (let i = 0; i < len; i++) {
+    for (let i = 0; i < visCount; i++) {
       const x = xOff + i * xStep;
-      const y = h - (energyHistory[i][key] / maxVal) * (h - 8) - 4;
+      const val = energyHistory[start + i][key];
+      const y = h - (val / maxVal) * (h - 8) - 4;
       if (i === 0) gctx.moveTo(x, y);
       else gctx.lineTo(x, y);
     }
@@ -874,81 +1083,190 @@ function drawGraph() {
   drawLine('potential', '#3b82f6');
   drawLine('kinetic', '#f59e0b');
   drawLine('total', '#22c55e');
+
+  // Draw crosshair and tooltip at hover position
+  if (graphHoverX >= 0 && graphHoverX <= w) {
+    // Map mouse X to sample index
+    const sampleF = (graphHoverX - xOff) / xStep;
+    const sampleI = Math.round(sampleF);
+    if (sampleI >= 0 && sampleI < visCount) {
+      const e = energyHistory[start + sampleI];
+      const crossX = xOff + sampleI * xStep;
+
+      // Vertical crosshair line
+      gctx.strokeStyle = 'rgba(255,255,255,0.25)';
+      gctx.lineWidth = 1;
+      gctx.beginPath();
+      gctx.moveTo(crossX, 0);
+      gctx.lineTo(crossX, h);
+      gctx.stroke();
+
+      // Dots on each line
+      const lines = [
+        { key: 'kinetic', color: '#f59e0b' },
+        { key: 'potential', color: '#3b82f6' },
+        { key: 'total', color: '#22c55e' },
+      ];
+      for (const l of lines) {
+        const y = h - (e[l.key] / maxVal) * (h - 8) - 4;
+        gctx.fillStyle = l.color;
+        gctx.beginPath();
+        gctx.arc(crossX, y, 3, 0, Math.PI * 2);
+        gctx.fill();
+      }
+
+      // Position tooltip
+      graphTooltip.style.display = 'block';
+      graphTooltip.innerHTML =
+        `<span style="color:#f59e0b">KE</span> ${e.kinetic.toFixed(1)}<br>` +
+        `<span style="color:#3b82f6">PE</span> ${e.potential.toFixed(1)}<br>` +
+        `<span style="color:#22c55e">Tot</span> ${e.total.toFixed(1)}<br>` +
+        `<span style="color:#6b7280">t=${start + sampleI}</span>`;
+      // Place tooltip: prefer right of cursor, flip if near edge
+      const tipW = graphTooltip.offsetWidth;
+      let tipX = graphHoverX + 12;
+      if (tipX + tipW > w) tipX = graphHoverX - tipW - 8;
+      graphTooltip.style.left = tipX + 'px';
+      graphTooltip.style.top = '4px';
+    } else {
+      graphTooltip.style.display = 'none';
+    }
+  } else {
+    graphTooltip.style.display = 'none';
+  }
+
+  // Show "not live" indicator when scrolled back
+  if (graphViewEnd >= 0 && graphViewEnd < len - 1) {
+    gctx.fillStyle = 'rgba(255,100,100,0.7)';
+    gctx.font = '10px sans-serif';
+    gctx.textAlign = 'right';
+    gctx.fillText('PAUSED', w - 4, 12);
+  }
 }
+
+// --- Graph mouse events ---
+graphCanvas.addEventListener('mousedown', (e) => {
+  graphDragging = true;
+  const rect = graphCanvas.getBoundingClientRect();
+  graphDragStartX = e.clientX - rect.left;
+  // If live, pin to current position so drag starts from here
+  if (graphViewEnd < 0) {
+    graphViewEnd = energyHistory.length - 1;
+  }
+  graphDragStartEnd = graphViewEnd;
+});
+
+graphCanvas.addEventListener('mousemove', (e) => {
+  const rect = graphCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  graphHoverX = mx;
+
+  if (graphDragging) {
+    const dx = mx - graphDragStartX;
+    const w = graphCanvas.offsetWidth;
+    const xStep = w / (GRAPH_WINDOW - 1);
+    const sampleShift = Math.round(-dx / xStep);  // Drag left = go back in time
+    const len = energyHistory.length;
+    graphViewEnd = Math.max(GRAPH_WINDOW - 1, Math.min(len - 1, graphDragStartEnd + sampleShift));
+    // If dragged back to the latest, go live again
+    if (graphViewEnd >= len - 1) graphViewEnd = -1;
+  }
+
+  if (!running) drawGraph();
+});
+
+graphCanvas.addEventListener('mouseup', () => {
+  graphDragging = false;
+});
+
+graphCanvas.addEventListener('mouseleave', () => {
+  graphDragging = false;
+  graphHoverX = -1;
+  graphTooltip.style.display = 'none';
+  if (!running) drawGraph();
+});
+
+// Scroll to zoom Y axis
+graphCanvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  graphYAutoFit = false;
+  const zoomFactor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+  graphYZoom = Math.max(0.1, Math.min(100, graphYZoom * zoomFactor));
+  if (!running) drawGraph();
+}, { passive: false });
+
+// Auto-fit button: reset Y zoom to auto-scale
+graphAutoFitBtn.addEventListener('click', () => {
+  graphYAutoFit = true;
+  graphYZoom = 1.0;
+  if (!running) drawGraph();
+});
+
+// Go live button: jump to latest and pin
+graphGoLiveBtn.addEventListener('click', () => {
+  graphViewEnd = -1;
+  if (!running) drawGraph();
+});
 
 // ============================================================
 //  PHYSICS STEP (Coulomb + Strong Force + Hard-Sphere Collisions)
+//  Called once per frame; internally subdivides into SUBSTEPS
+//  for integration accuracy and energy conservation.
 // ============================================================
 function step(dt) {
   const n = particles.length;
-  const cutoff = strongCutoff();
+  const subDt = dt / SUBSTEPS;  // Divide timestep for accuracy
 
-  // Track which particles are within strong force range of another
-  const inStrongRange = new Uint8Array(n);
-
-  for (let i = 0; i < n; i++) {
-    if (i === dragging) continue;
-    for (let j = i + 1; j < n; j++) {
-      if (j === dragging) continue;
-      const a = particles[i];
-      const b = particles[j];
-      let dx = b.x - a.x;
-      let dy = b.y - a.y;
-      let distSq = dx * dx + dy * dy;
-      if (distSq < MIN_DIST * MIN_DIST) distSq = MIN_DIST * MIN_DIST;
-      const dist = Math.sqrt(distSq);
-      const force = pairForce(dist, distSq, a.type, b.type);
-      const fx = force * (dx / dist);
-      const fy = force * (dy / dist);
-      a.vx -= fx * dt;  // Newton's 3rd law: equal and opposite
-      a.vy -= fy * dt;
-      b.vx += fx * dt;
-      b.vy += fy * dt;
-      // Mark if in strong force range (for conditional damping)
-      if (dist < cutoff) {
-        inStrongRange[i] = 1;
-        inStrongRange[j] = 1;
+  for (let sub = 0; sub < SUBSTEPS; sub++) {
+    // Compute pairwise forces
+    for (let i = 0; i < n; i++) {
+      if (i === dragging) continue;
+      for (let j = i + 1; j < n; j++) {
+        if (j === dragging) continue;
+        const a = particles[i];
+        const b = particles[j];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let distSq = dx * dx + dy * dy;
+        if (distSq < MIN_DIST * MIN_DIST) distSq = MIN_DIST * MIN_DIST;
+        const dist = Math.sqrt(distSq);
+        const force = pairForce(dist, distSq, a.type, b.type);
+        const fx = force * (dx / dist);
+        const fy = force * (dy / dist);
+        a.vx -= fx * subDt;  // Newton's 3rd law: equal and opposite
+        a.vy -= fy * subDt;
+        b.vx += fx * subDt;
+        b.vy += fy * subDt;
       }
     }
-  }
 
-  // Dragged particle still exerts force on others
-  if (dragging !== null) {
-    const d = particles[dragging];
-    for (let j = 0; j < n; j++) {
-      if (j === dragging) continue;
-      const b = particles[j];
-      let dx = b.x - d.x;
-      let dy = b.y - d.y;
-      let distSq = dx * dx + dy * dy;
-      if (distSq < MIN_DIST * MIN_DIST) distSq = MIN_DIST * MIN_DIST;
-      const dist = Math.sqrt(distSq);
-      const force = pairForce(dist, distSq, d.type, b.type);
-      const fx = force * (dx / dist);
-      const fy = force * (dy / dist);
-      b.vx += fx * dt;
-      b.vy += fy * dt;
-      if (dist < cutoff) {
-        inStrongRange[j] = 1;
+    // Dragged particle still exerts force on others
+    if (dragging !== null) {
+      const d = particles[dragging];
+      for (let j = 0; j < n; j++) {
+        if (j === dragging) continue;
+        const b = particles[j];
+        let dx = b.x - d.x;
+        let dy = b.y - d.y;
+        let distSq = dx * dx + dy * dy;
+        if (distSq < MIN_DIST * MIN_DIST) distSq = MIN_DIST * MIN_DIST;
+        const dist = Math.sqrt(distSq);
+        const force = pairForce(dist, distSq, d.type, b.type);
+        const fx = force * (dx / dist);
+        const fy = force * (dy / dist);
+        b.vx += fx * subDt;
+        b.vy += fy * subDt;
       }
     }
-  }
 
-  // Conditional damping: only damp bound nucleons so free particles fly freely
-  for (let i = 0; i < n; i++) {
-    if (i === dragging) continue;
-    if (inStrongRange[i]) {
-      particles[i].vx *= dampingFactor;
-      particles[i].vy *= dampingFactor;
+    // Integrate positions
+    for (let i = 0; i < n; i++) {
+      if (i === dragging) continue;
+      const p = particles[i];
+      p.x += p.vx * subDt;
+      p.y += p.vy * subDt;
     }
-  }
-
-  for (let i = 0; i < n; i++) {
-    if (i === dragging) continue;
-    const p = particles[i];
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
-  }
+  }  // end substep loop
 
   // Hard-sphere collision: prevent overlap and resolve velocities
   const minSep = PARTICLE_RADIUS * 2;
