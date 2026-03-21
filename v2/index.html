@@ -301,6 +301,38 @@
   #neutronBucket:hover, #neutronBucket.selected { border-color: #aaaacc; }
   #neutronBucket.selected { background: #2a2a4a; box-shadow: 0 0 8px rgba(170,170,204,0.4); }
 
+  #trashCan {
+    position: absolute;
+    bottom: 20px;
+    left: 160px;
+    width: 60px;
+    height: 70px;
+    background: #1e1e3a;
+    border: 2px solid #4a4a6a;
+    border-radius: 0 0 12px 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    z-index: 5;
+    transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+  }
+  #trashCan .trash-icon {
+    font-size: 22px;
+    line-height: 1;
+  }
+  #trashCan .bucket-label {
+    font-size: 10px;
+    color: #9ca3af;
+    margin-top: 4px;
+  }
+  #trashCan.drag-hover {
+    border-color: #ef4444;
+    background: #3a1a1a;
+    box-shadow: 0 0 12px rgba(239,68,68,0.5);
+  }
+
   .particle-bucket .bucket-label {
     font-size: 10px;
     color: #9ca3af;
@@ -426,6 +458,11 @@
     <span class="bucket-label">Neutron</span>
   </div>
 
+  <div id="trashCan">
+    <span class="trash-icon">🗑</span>
+    <span class="bucket-label">Delete</span>
+  </div>
+
   <div id="instructions">Click to place protons, drag from buckets, or drag existing particles to reposition.</div>
 </div>
 
@@ -452,6 +489,7 @@ const totalVal = document.getElementById('totalVal');
 const protonBucket = document.getElementById('protonBucket');
 const neutronBucket = document.getElementById('neutronBucket');
 const heatmapToggle = document.getElementById('heatmapToggle');
+const trashCan = document.getElementById('trashCan');
 
 // ============================================================
 //  TUNING SLIDER REFERENCES
@@ -643,6 +681,12 @@ canvas.addEventListener('mousedown', (e) => {
   }
 });
 
+function isOverTrash(e) {
+  const rect = trashCan.getBoundingClientRect();
+  return e.clientX >= rect.left && e.clientX <= rect.right &&
+         e.clientY >= rect.top && e.clientY <= rect.bottom;
+}
+
 window.addEventListener('mousemove', (e) => {
   if (dragging === null) {
     const pos = getCanvasPos(e);
@@ -662,6 +706,8 @@ window.addEventListener('mousemove', (e) => {
   }
   p.vx = 0;
   p.vy = 0;
+  // Highlight trash can when dragging over it
+  trashCan.classList.toggle('drag-hover', isOverTrash(e));
   if (!running) { computeEnergy(); draw(); drawGraph(); }
 });
 
@@ -679,13 +725,20 @@ canvas.addEventListener('click', (e) => {
   hideInstructions();
 });
 
-window.addEventListener('mouseup', () => {
+window.addEventListener('mouseup', (e) => {
   if (dragging !== null) {
-    separateOverlaps();
+    if (isOverTrash(e)) {
+      // Delete the dragged particle
+      particles.splice(dragging, 1);
+      updateStats();
+    } else {
+      separateOverlaps();
+    }
     if (!running) { computeEnergy(); draw(); drawGraph(); }
   }
   dragging = null;
   draggingNew = false;
+  trashCan.classList.remove('drag-hover');
   canvas.style.cursor = 'default';
 });
 
