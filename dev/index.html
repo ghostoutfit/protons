@@ -1355,10 +1355,10 @@ const COLORMAP = new Uint8Array(256 * 4);
 (function buildColormap() {
   const stops = [
     { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0 },    // Transparent at zero energy
-    { t: 0.2,  r: 140, g: 15,  b: 5,   a: 77 },   // Deep red, faint
-    { t: 0.5,  r: 220, g: 60,  b: 10,  a: 153 },  // Orange
-    { t: 0.8,  r: 255, g: 180, b: 30,  a: 217 },  // Yellow-orange
-    { t: 1.0,  r: 255, g: 250, b: 220, a: 255 },  // Near-white at max energy
+    { t: 0.2,  r: 5,   g: 20,  b: 140, a: 77 },   // Bluish?
+    { t: 0.5,  r: 20,  g: 70,  b: 220, a: 153 },  // Bluish?
+    { t: 0.8,  r: 60,  g: 160, b: 255, a: 217 },  // Bluish?
+    { t: 1.0,  r: 200, g: 235, b: 255, a: 255 },  // Near-white at max energy
   ];
   for (let i = 0; i < 256; i++) {
     const t = i / 255;
