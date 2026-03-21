@@ -83,6 +83,17 @@
   }
   #clearOffscreenBtn:hover { background: #4b5563; }
 
+  #replayBtn {
+    background: #0e7490;
+    color: #fff;
+  }
+  #replayBtn:hover { background: #0891b2; }
+  #replayBtn:disabled {
+    background: #1e293b;
+    color: #4b5563;
+    cursor: not-allowed;
+  }
+
   /* ========================================
      SLIDER & TOGGLE CONTROLS
      ======================================== */
@@ -345,6 +356,7 @@
   <button class="btn" id="clearBtn">Clear</button>
   <button class="btn" id="addClusterBtn">Add Cluster</button>
   <button class="btn" id="clearOffscreenBtn">Clear Offscreen</button>
+  <button class="btn" id="replayBtn" disabled>Replay</button>
   <div class="slider-group">
     <label>Speed: <span id="speedVal">3.0</span>x</label>
     <input type="range" id="speedSlider" min="0" max="20" step="1" value="13">
@@ -427,6 +439,7 @@ const goBtn = document.getElementById('goBtn');
 const clearBtn = document.getElementById('clearBtn');
 const addClusterBtn = document.getElementById('addClusterBtn');
 const clearOffscreenBtn = document.getElementById('clearOffscreenBtn');
+const replayBtn = document.getElementById('replayBtn');
 const speedSlider = document.getElementById('speedSlider');
 const speedValEl = document.getElementById('speedVal');
 const statsEl = document.getElementById('stats');
@@ -709,14 +722,60 @@ addClusterBtn.addEventListener('click', () => {
 });
 
 // ============================================================
+//  SNAPSHOT STATE (captured when user presses Go)
+// ============================================================
+let snapshot = null;  // Deep copy of particles at simulation start
+
+function takeSnapshot() {
+  snapshot = particles.map(p => ({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, type: p.type }));
+  replayBtn.disabled = false;
+}
+
+function restoreSnapshot() {
+  if (!snapshot) return;
+  particles = snapshot.map(p => ({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, type: p.type }));
+}
+
+// ============================================================
 //  GO / STOP BUTTON
 // ============================================================
 goBtn.addEventListener('click', () => {
   running = !running;
   goBtn.textContent = running ? 'Stop' : 'Go';
   goBtn.classList.toggle('running', running);
-  if (running) loop();
-  else cancelAnimationFrame(animId);
+  if (running) {
+    takeSnapshot();  // Snapshot state at simulation start
+    loop();
+  } else {
+    cancelAnimationFrame(animId);
+  }
+});
+
+// ============================================================
+//  REPLAY BUTTON
+// ============================================================
+replayBtn.addEventListener('click', () => {
+  if (!snapshot) return;
+  // Stop current simulation if running
+  running = false;
+  cancelAnimationFrame(animId);
+  goBtn.textContent = 'Go';
+  goBtn.classList.remove('running');
+  // Restore particle state and clear energy data
+  restoreSnapshot();
+  energyHistory = [];
+  graphViewEnd = -1;  // Reset graph to live mode
+  graphYAutoFit = true;
+  graphYZoom = 1.0;
+  updateStats();
+  computeEnergy();
+  draw();
+  drawGraph();
+  // Auto-start the simulation
+  running = true;
+  goBtn.textContent = 'Stop';
+  goBtn.classList.add('running');
+  loop();
 });
 
 // ============================================================
@@ -725,10 +784,15 @@ goBtn.addEventListener('click', () => {
 clearBtn.addEventListener('click', () => {
   particles = [];
   energyHistory = [];
+  snapshot = null;
+  replayBtn.disabled = true;
   running = false;
   goBtn.textContent = 'Go';
   goBtn.classList.remove('running');
   cancelAnimationFrame(animId);
+  graphViewEnd = -1;
+  graphYAutoFit = true;
+  graphYZoom = 1.0;
   updateStats();
   computeEnergy();
   draw();
