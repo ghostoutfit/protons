@@ -1389,6 +1389,104 @@ function step(dt) {
       particles[i].vy *= damping;
     }
   }
+
+  // ---- Cluster spin suppression ----
+  // Detect clumps of 3+ particles within the strong force cutoff
+  // and remove their collective angular momentum. This prevents
+  // bound clusters from spinning up and injecting runaway energy.
+  //
+  // Algorithm:
+  //  1. Build adjacency: two particles are "bonded" if dist < cutoff
+  //  2. Flood-fill to find connected clusters
+  //  3. For each cluster of size >= 3, compute center-of-mass and
+  //     the total angular momentum L about that center
+  //  4. Subtract the rotational velocity component from every member
+  //     (v_rot = omega × r, where omega = L / I)
+
+  const cutoffSpin = strongCutoff();
+  const cutoffSpinSq = cutoffSpin * cutoffSpin;
+
+  // Build adjacency list (indices of bonded neighbors)
+  const adj = new Array(n);
+  for (let i = 0; i < n; i++) adj[i] = [];
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const dx = particles[j].x - particles[i].x;
+      const dy = particles[j].y - particles[i].y;
+      if (dx * dx + dy * dy < cutoffSpinSq) {
+        adj[i].push(j);
+        adj[j].push(i);
+      }
+    }
+  }
+
+  // Flood-fill to find connected clusters
+  const visited = new Uint8Array(n);
+  for (let seed = 0; seed < n; seed++) {
+    if (visited[seed]) continue;
+    if (adj[seed].length === 0) { visited[seed] = 1; continue; }
+
+    // BFS from seed
+    const cluster = [seed];
+    visited[seed] = 1;
+    let head = 0;
+    while (head < cluster.length) {
+      const cur = cluster[head++];
+      for (let k = 0; k < adj[cur].length; k++) {
+        const nb = adj[cur][k];
+        if (!visited[nb]) {
+          visited[nb] = 1;
+          cluster.push(nb);
+        }
+      }
+    }
+
+    // Only suppress spin for clusters of 3 or more particles
+    if (cluster.length < 3) continue;
+
+    // Compute center of mass position and velocity
+    let cmx = 0, cmy = 0, cvx = 0, cvy = 0;
+    const cLen = cluster.length;
+    for (let k = 0; k < cLen; k++) {
+      const p = particles[cluster[k]];
+      cmx += p.x;  cmy += p.y;
+      cvx += p.vx; cvy += p.vy;
+    }
+    cmx /= cLen; cmy /= cLen;
+    cvx /= cLen; cvy /= cLen;
+
+    // Compute total angular momentum L and moment of inertia I
+    // about the center of mass (unit mass per particle)
+    //   L = sum( r_i × v_i )   (scalar, 2D cross product)
+    //   I = sum( |r_i|² )
+    let L = 0, I = 0;
+    for (let k = 0; k < cLen; k++) {
+      const p = particles[cluster[k]];
+      const rx = p.x - cmx;
+      const ry = p.y - cmy;
+      const vxRel = p.vx - cvx;  // velocity relative to CM
+      const vyRel = p.vy - cvy;
+      L += rx * vyRel - ry * vxRel;  // 2D cross product
+      I += rx * rx + ry * ry;
+    }
+
+    if (I < 0.001) continue;  // degenerate — all at same point
+
+    // omega = L / I (angular velocity of the cluster)
+    const omega = L / I;
+
+    // Subtract the rotational component from each particle's velocity.
+    // v_rot = omega × r = (-omega * ry, omega * rx) in 2D.
+    // This zeros out collective spin while preserving linear momentum.
+    for (let k = 0; k < cLen; k++) {
+      if (cluster[k] === dragging) continue;
+      const p = particles[cluster[k]];
+      const rx = p.x - cmx;
+      const ry = p.y - cmy;
+      p.vx -= (-omega * ry);
+      p.vy -= (omega * rx);
+    }
+  }
 }
 
 // ============================================================
