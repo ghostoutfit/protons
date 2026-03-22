@@ -14,8 +14,10 @@
     background: #0a0a1a;
     color: #e0e0e0;
     font-family: 'Segoe UI', system-ui, sans-serif;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
     height: 100vh;
+    min-width: 860px;       /* Prevent layout collapse on narrow viewports */
     display: flex;
     flex-direction: column;
   }
@@ -178,6 +180,8 @@
      ======================================== */
   #energyPanel {
     width: 260px;
+    min-width: 220px;
+    flex-shrink: 0;
     background: #12122a;
     border-left: 1px solid #2a2a4a;
     display: flex;
@@ -570,7 +574,8 @@ function resize() {
   const toolbarH = document.getElementById('toolbar').offsetHeight +
                    document.getElementById('tuningRow').offsetHeight;
   const mainH = window.innerHeight - toolbarH;
-  canvas.width = canvas.parentElement.offsetWidth - 260;  // Subtract energy panel width
+  const panelW = document.getElementById('energyPanel').offsetWidth;
+  canvas.width = Math.max(canvas.parentElement.offsetWidth - panelW, 200);
   canvas.height = mainH;
   graphCanvas.width = graphCanvas.offsetWidth * devicePixelRatio;   // HiDPI: scale canvas buffer
   graphCanvas.height = graphCanvas.offsetHeight * devicePixelRatio;
