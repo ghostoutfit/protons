@@ -138,6 +138,44 @@
   }
 
   /* ========================================
+     THREE-POSITION STRONG FORCE TOGGLE
+     Only visible when the energy heatmap checkbox is active.
+     Uses radio-button styling as inline pill options.
+     ======================================== */
+  #strongModeGroup {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 4px;
+    transition: opacity 0.15s;
+  }
+
+  #strongModeGroup.hidden {
+    display: none;
+  }
+
+  #strongModeGroup label {
+    font-size: 11px;
+    color: #6b7280;
+    padding: 2px 8px;
+    border: 1px solid #3a3a5a;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+
+  #strongModeGroup input[type="radio"] {
+    display: none;
+  }
+
+  #strongModeGroup input[type="radio"]:checked + label {
+    background: #2a2a4a;
+    color: #e0e0e0;
+    border-color: #6366f1;
+  }
+
+  /* ========================================
      STATS DISPLAY
      ======================================== */
   #stats {
@@ -450,9 +488,15 @@
     <label>Speed: <span id="speedVal">3.0</span>x</label>
     <input type="range" id="speedSlider" min="0" max="20" step="1" value="13">
   </div>
-  <!-- Separate checkboxes: visualize electric and/or strong force energy independently -->
-  <label class="toggle-label"><input type="checkbox" id="electricHeatmapToggle" checked> Electric energy</label>
-  <label class="toggle-label"><input type="checkbox" id="strongHeatmapToggle"> Strong force energy</label>
+  <!-- Heatmap master toggle + three-position strong force rendering mode -->
+  <label class="toggle-label"><input type="checkbox" id="heatmapToggle" checked> Energy map</label>
+  <!-- Strong force render mode: only visible when heatmap is on -->
+  <span id="strongModeGroup">
+    Strong:
+    <input type="radio" name="strongMode" id="strongNone" value="none"><label for="strongNone">None</label>
+    <input type="radio" name="strongMode" id="strongHole" value="hole" checked><label for="strongHole">Hole</label>
+    <input type="radio" name="strongMode" id="strongPink" value="pink"><label for="strongPink">Pink glow</label>
+  </span>
   <span id="stats">Protons: 0 &nbsp; Neutrons: 0</span>
 </div>
 
@@ -549,9 +593,9 @@ const potentialVal = document.getElementById('potentialVal');
 const totalVal = document.getElementById('totalVal');
 const protonBucket = document.getElementById('protonBucket');
 const neutronBucket = document.getElementById('neutronBucket');
-// Separate toggle references for electric vs strong force energy overlays
-const electricHeatmapToggle = document.getElementById('electricHeatmapToggle');
-const strongHeatmapToggle = document.getElementById('strongHeatmapToggle');
+// Heatmap master toggle and strong force rendering mode
+const heatmapToggle = document.getElementById('heatmapToggle');
+const strongModeGroup = document.getElementById('strongModeGroup');
 const trashCan = document.getElementById('trashCan');
 
 // ============================================================
@@ -574,8 +618,8 @@ let particles = [];
 let running = false;
 let animId = null;
 let speed = 1.5;
-let showElectricHeatmap = true;   // Whether to render the Coulomb energy overlay
-let showStrongHeatmap = false;    // Whether to render the strong force energy overlay
+let showHeatmap = true;            // Master toggle for the energy density overlay
+let strongMode = 'hole';          // 'none' | 'hole' | 'pink' — how strong force renders
 const PARTICLE_RADIUS = 10;
 const MIN_DIST = 20;  // Clamp distance so force doesn't blow up at overlap
 
@@ -990,15 +1034,25 @@ dampSlider.addEventListener('input', () => {
 });
 
 // ============================================================
-//  HEATMAP TOGGLES (independent checkboxes for each energy type)
+//  HEATMAP TOGGLE + STRONG FORCE MODE SELECTOR
+//  The master checkbox shows/hides the whole energy density map.
+//  The three-position radio group (Hole / Pink glow / None)
+//  controls how the strong force cross-term renders alongside
+//  the Coulomb cross-term. It only appears when the heatmap is on.
 // ============================================================
-electricHeatmapToggle.addEventListener('change', () => {
-  showElectricHeatmap = electricHeatmapToggle.checked;
+heatmapToggle.addEventListener('change', () => {
+  showHeatmap = heatmapToggle.checked;
+  // Show/hide the strong mode selector based on master toggle
+  strongModeGroup.classList.toggle('hidden', !showHeatmap);
   if (!running) draw();
 });
-strongHeatmapToggle.addEventListener('change', () => {
-  showStrongHeatmap = strongHeatmapToggle.checked;
-  if (!running) draw();
+
+// Listen to all three radio buttons for strong force mode changes
+document.querySelectorAll('input[name="strongMode"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    strongMode = radio.value;
+    if (!running) draw();
+  });
 });
 
 // ============================================================
@@ -1401,45 +1455,92 @@ function step(dt) {
 }
 
 // ============================================================
-//  COLORMAP: Electric (Coulomb) energy — blue sequential
-//  Used for the Coulomb interaction cross-term heatmap.
+//  COLORMAP: Coulomb energy — blue sequential
+//  Maps the Coulomb cross-term interaction density to color.
 //  transparent → deep blue → bright blue → near-white
 // ============================================================
-const COLORMAP = new Uint8Array(256 * 4);
-(function buildColormap() {
+const COULOMB_COLORMAP = new Uint8Array(256 * 4);
+(function buildCoulombColormap() {
   const stops = [
-    { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0 },    // Transparent at zero energy
-    { t: 0.2,  r: 5,   g: 20,  b: 140, a: 77 },   // Bluish?
-    { t: 0.5,  r: 20,  g: 70,  b: 220, a: 153 },  // Bluish?
-    { t: 0.8,  r: 60,  g: 160, b: 255, a: 217 },  // Bluish?
-    { t: 1.0,  r: 200, g: 235, b: 255, a: 255 },  // Near-white at max energy
+    { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0 },
+    { t: 0.2,  r: 5,   g: 20,  b: 140, a: 77 },
+    { t: 0.5,  r: 20,  g: 70,  b: 220, a: 153 },
+    { t: 0.8,  r: 60,  g: 160, b: 255, a: 217 },
+    { t: 1.0,  r: 200, g: 235, b: 255, a: 255 },
   ];
   for (let i = 0; i < 256; i++) {
     const t = i / 255;
     let s0 = stops[0], s1 = stops[1];
     for (let s = 0; s < stops.length - 1; s++) {
-      if (t >= stops[s].t && t <= stops[s + 1].t) {
-        s0 = stops[s]; s1 = stops[s + 1]; break;
-      }
+      if (t >= stops[s].t && t <= stops[s + 1].t) { s0 = stops[s]; s1 = stops[s + 1]; break; }
     }
     const f = (t - s0.t) / (s1.t - s0.t);
     const idx = i * 4;
-    COLORMAP[idx]     = s0.r + (s1.r - s0.r) * f;
-    COLORMAP[idx + 1] = s0.g + (s1.g - s0.g) * f;
-    COLORMAP[idx + 2] = s0.b + (s1.b - s0.b) * f;
-    COLORMAP[idx + 3] = s0.a + (s1.a - s0.a) * f;
+    COULOMB_COLORMAP[idx]     = s0.r + (s1.r - s0.r) * f;
+    COULOMB_COLORMAP[idx + 1] = s0.g + (s1.g - s0.g) * f;
+    COULOMB_COLORMAP[idx + 2] = s0.b + (s1.b - s0.b) * f;
+    COULOMB_COLORMAP[idx + 3] = s0.a + (s1.a - s0.a) * f;
   }
 })();
 
 // ============================================================
-//  HEATMAP RENDERING
-//  Coulomb interaction energy density at half resolution.
-//  Shows only the cross-term 2(Ei·Ej) between proton pairs.
+//  COLORMAP: Strong force "Pink glow" mode
+//  transparent → pink → magenta → white
+//  Used when strongMode === 'pink'.
+// ============================================================
+const PINK_COLORMAP = new Uint8Array(256 * 4);
+(function buildPinkColormap() {
+  const stops = [
+    { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0 },
+    { t: 0.25, r: 160, g: 30,  b: 90,  a: 80 },    // Muted pink
+    { t: 0.5,  r: 220, g: 50,  b: 140, a: 160 },   // Hot pink
+    { t: 0.75, r: 200, g: 60,  b: 200, a: 220 },   // Magenta
+    { t: 1.0,  r: 255, g: 200, b: 255, a: 255 },   // Near-white pink
+  ];
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    let s0 = stops[0], s1 = stops[1];
+    for (let s = 0; s < stops.length - 1; s++) {
+      if (t >= stops[s].t && t <= stops[s + 1].t) { s0 = stops[s]; s1 = stops[s + 1]; break; }
+    }
+    const f = (t - s0.t) / (s1.t - s0.t);
+    const idx = i * 4;
+    PINK_COLORMAP[idx]     = s0.r + (s1.r - s0.r) * f;
+    PINK_COLORMAP[idx + 1] = s0.g + (s1.g - s0.g) * f;
+    PINK_COLORMAP[idx + 2] = s0.b + (s1.b - s0.b) * f;
+    PINK_COLORMAP[idx + 3] = s0.a + (s1.a - s0.a) * f;
+  }
+})();
+
+// ============================================================
+//  UNIFIED HEATMAP RENDERING
+//
+//  Computes BOTH the Coulomb cross-term AND the strong force
+//  cross-term in a single pass over each pixel, then renders
+//  them according to `strongMode`:
+//
+//  "none"  — Coulomb cross-term only (blue). Identical to v2.
+//
+//  "hole"  — A subtle warm ambient glow fills the entire map.
+//            Where the strong force cross-term is negative
+//            (bound nucleons), it subtracts from the ambient,
+//            creating a visible dark "hole." The Coulomb bright
+//            rim remains visible around the strong dark center.
+//
+//  "pink"  — The strong force cross-term magnitude is rendered
+//            through a pink/magenta colormap and layered on top
+//            of the blue Coulomb rendering. Brighter pink means
+//            more negative (deeper binding) interaction energy.
+//
+//  The strong force cross-term uses the same field approach as
+//  Coulomb: compute E-field per nucleon at each pixel, then sum
+//  cross-terms Ei·Ej. This captures the spatial energy density
+//  pattern of the strong force potential.
 // ============================================================
 function drawHeatmap() {
   const fullW = canvas.width;
   const fullH = canvas.height;
-  const scale = 0.5;
+  const scale = 0.5;                     // Half-resolution for performance
   const w = Math.ceil(fullW * scale);
   const h = Math.ceil(fullH * scale);
   const invScale = 1 / scale;
@@ -1450,64 +1551,185 @@ function drawHeatmap() {
   const imageData = hmCtx.createImageData(w, h);
   const data = imageData.data;
 
-  // Only protons contribute to Coulomb field
+  // Separate particle lists: protons for Coulomb, all nucleons for strong
   const protonList = [];
+  const allList = [];
   for (let i = 0; i < particles.length; i++) {
+    allList.push(particles[i]);
     if (particles[i].type === 'proton') protonList.push(particles[i]);
   }
-  const np = protonList.length;
-  if (np < 2) return;
+  const np = protonList.length;     // Proton count (for Coulomb)
+  const na = allList.length;        // All nucleon count (for strong)
+
+  // Need at least 2 particles for any cross-term
+  if (na < 2) return;
 
   const minR = PARTICLE_RADIUS;
   const minRSq = minR * minR;
 
+  // Coulomb field arrays (one E-vector per proton)
   const exArr = new Float32Array(np);
   const eyArr = new Float32Array(np);
 
-  // Log-scale normalization: maps energy density to 0–1 for colormap
-  const sensitivity = 5000.0; // How quickly dim values become visible
-  const refMax = 0.02;        // Energy density that maps to colormap=1.0
-  const logNorm = Math.log(1.0 + sensitivity * refMax);
-  const invLogNorm = 1.0 / logNorm;
+  // Strong force field arrays (one per nucleon)
+  // The strong force uses a Yukawa-like falloff: field ∝ exp(-r/λ)/r²
+  // where λ = cutoff/3 gives a natural decay within the cutoff range.
+  const sxArr = new Float32Array(na);
+  const syArr = new Float32Array(na);
+
+  const cutoff = strongCutoff();
+  const lambda = cutoff / 3;         // Decay length for Yukawa-like falloff
+  const needStrong = (strongMode !== 'none');
+
+  // Log-scale normalization for Coulomb (tuned for bright glow)
+  const cSens = 5000.0;
+  const cRef = 0.02;
+  const cLogNorm = Math.log(1.0 + cSens * cRef);
+  const cInvLog = 1.0 / cLogNorm;
+
+  // Log-scale normalization for strong force cross-term
+  const sSens = 5000.0;
+  const sRef = 0.02;
+  const sLogNorm = Math.log(1.0 + sSens * sRef);
+  const sInvLog = 1.0 / sLogNorm;
+
+  // Ambient glow level for "hole" mode (subtle warm tint, RGBA)
+  // This is the baseline that gets darkened where binding occurs
+  const ambientR = 40, ambientG = 25, ambientB = 15, ambientA = 50;
 
   for (let py = 0; py < h; py++) {
     const worldY = py * invScale;
     for (let px = 0; px < w; px++) {
       const worldX = px * invScale;
+      const di = (py * w + px) * 4;
 
-      // Coulomb field from each proton
-      for (let i = 0; i < np; i++) {
-        const dx = worldX - protonList[i].x;
-        const dy = worldY - protonList[i].y;
-        let rSq = dx * dx + dy * dy;
-        if (rSq < minRSq) rSq = minRSq;
-        const r = Math.sqrt(rSq);
-        const fieldMag = coulombStrength / (rSq * r);  // E-field magnitude: K/r²×(1/r) for direction
-        exArr[i] = dx * fieldMag;  // E-field x-component from this proton
-        eyArr[i] = dy * fieldMag;
-      }
-
-      // Cross-terms 2(Ei·Ej) isolate the interaction energy density,
-      // excluding each proton's self-energy (which is always positive).
-      let interaction = 0;
-      for (let i = 0; i < np; i++) {
-        for (let j = i + 1; j < np; j++) {
-          interaction += 2 * (exArr[i] * exArr[j] + eyArr[i] * eyArr[j]);
+      // --- Coulomb cross-term (proton-proton only) ---
+      // Compute E-field from each proton at this pixel, then sum
+      // cross-terms 2(Ei·Ej) to get interaction energy density.
+      let coulombCross = 0;
+      if (np >= 2) {
+        for (let i = 0; i < np; i++) {
+          const dx = worldX - protonList[i].x;
+          const dy = worldY - protonList[i].y;
+          let rSq = dx * dx + dy * dy;
+          if (rSq < minRSq) rSq = minRSq;
+          const r = Math.sqrt(rSq);
+          const fieldMag = coulombStrength / (rSq * r);
+          exArr[i] = dx * fieldMag;
+          eyArr[i] = dy * fieldMag;
+        }
+        for (let i = 0; i < np; i++) {
+          for (let j = i + 1; j < np; j++) {
+            coulombCross += 2 * (exArr[i] * exArr[j] + eyArr[i] * eyArr[j]);
+          }
         }
       }
 
-      // Negative cross-term = fields oppose = energy stored in the overlap region
-      if (interaction < 0) {
-        const absVal = -interaction;
-        let magnitude = Math.log(1.0 + sensitivity * absVal) * invLogNorm;  // Log compression
-        if (magnitude > 1.0) magnitude = 1.0;
-        const ci = (magnitude * 255) | 0;
-        const di = (py * w + px) * 4;
+      // --- Strong force cross-term (all nucleon pairs) ---
+      // Same approach as Coulomb but with Yukawa-like field:
+      // field ∝ exp(-r/λ) / r², giving short-range cross-terms.
+      let strongCross = 0;
+      if (needStrong && na >= 2) {
+        for (let i = 0; i < na; i++) {
+          const dx = worldX - allList[i].x;
+          const dy = worldY - allList[i].y;
+          let rSq = dx * dx + dy * dy;
+          if (rSq < minRSq) rSq = minRSq;
+          const r = Math.sqrt(rSq);
+          // Yukawa-like: strong field decays exponentially with range
+          const fieldMag = strongForceStrength * Math.exp(-r / lambda) / (rSq * r);
+          sxArr[i] = dx * fieldMag;
+          syArr[i] = dy * fieldMag;
+        }
+        for (let i = 0; i < na; i++) {
+          for (let j = i + 1; j < na; j++) {
+            strongCross += 2 * (sxArr[i] * sxArr[j] + syArr[i] * syArr[j]);
+          }
+        }
+      }
+
+      // --- Compose the pixel color based on strongMode ---
+
+      // Start with Coulomb: negative cross-term → blue glow
+      let r = 0, g = 0, b = 0, a = 0;
+      if (coulombCross < 0) {
+        const absVal = -coulombCross;
+        let mag = Math.log(1.0 + cSens * absVal) * cInvLog;
+        if (mag > 1.0) mag = 1.0;
+        const ci = (mag * 255) | 0;
         const ci4 = ci * 4;
-        data[di]     = COLORMAP[ci4];
-        data[di + 1] = COLORMAP[ci4 + 1];
-        data[di + 2] = COLORMAP[ci4 + 2];
-        data[di + 3] = COLORMAP[ci4 + 3];
+        r = COULOMB_COLORMAP[ci4];
+        g = COULOMB_COLORMAP[ci4 + 1];
+        b = COULOMB_COLORMAP[ci4 + 2];
+        a = COULOMB_COLORMAP[ci4 + 3];
+      }
+
+      if (strongMode === 'hole') {
+        // "Hole" mode: start with ambient warm glow, subtract where
+        // strong cross-term is negative (bound regions become dark).
+        // Then alpha-composite the Coulomb blue on top.
+
+        // Compute how much to subtract from the ambient
+        let subtraction = 0;
+        if (strongCross < 0) {
+          const absVal = -strongCross;
+          subtraction = Math.log(1.0 + sSens * absVal) * sInvLog;
+          if (subtraction > 1.0) subtraction = 1.0;
+        }
+
+        // Ambient with hole punched out: multiply ambient alpha by (1 - subtraction)
+        const holeAlpha = ambientA * (1.0 - subtraction);
+        const hR = ambientR;
+        const hG = ambientG;
+        const hB = ambientB;
+        const hA = holeAlpha;
+
+        // Alpha-composite Coulomb (foreground) over hole-ambient (background)
+        // Standard "over" compositing: result = fg + bg × (1 - fg_alpha)
+        const fgA = a / 255;
+        const bgA = hA / 255;
+        const outA = fgA + bgA * (1 - fgA);
+        if (outA > 0) {
+          data[di]     = (r * fgA + hR * bgA * (1 - fgA)) / outA;
+          data[di + 1] = (g * fgA + hG * bgA * (1 - fgA)) / outA;
+          data[di + 2] = (b * fgA + hB * bgA * (1 - fgA)) / outA;
+          data[di + 3] = outA * 255;
+        }
+
+      } else if (strongMode === 'pink') {
+        // "Pink glow" mode: render strong cross-term through pink colormap
+        // and alpha-composite it on top of the Coulomb blue.
+
+        // Start with Coulomb as the base layer
+        data[di] = r;  data[di + 1] = g;  data[di + 2] = b;  data[di + 3] = a;
+
+        // Layer pink glow on top where strong cross-term is negative
+        if (strongCross < 0) {
+          const absVal = -strongCross;
+          let mag = Math.log(1.0 + sSens * absVal) * sInvLog;
+          if (mag > 1.0) mag = 1.0;
+          const ci = (mag * 255) | 0;
+          const ci4 = ci * 4;
+          const pR = PINK_COLORMAP[ci4];
+          const pG = PINK_COLORMAP[ci4 + 1];
+          const pB = PINK_COLORMAP[ci4 + 2];
+          const pA = PINK_COLORMAP[ci4 + 3];
+
+          // Alpha-composite pink (foreground) over Coulomb (background)
+          const fgA = pA / 255;
+          const bgA = data[di + 3] / 255;
+          const outA = fgA + bgA * (1 - fgA);
+          if (outA > 0) {
+            data[di]     = (pR * fgA + data[di]     * bgA * (1 - fgA)) / outA;
+            data[di + 1] = (pG * fgA + data[di + 1] * bgA * (1 - fgA)) / outA;
+            data[di + 2] = (pB * fgA + data[di + 2] * bgA * (1 - fgA)) / outA;
+            data[di + 3] = outA * 255;
+          }
+        }
+
+      } else {
+        // "None" mode: Coulomb only, no strong force visualization
+        data[di] = r;  data[di + 1] = g;  data[di + 2] = b;  data[di + 3] = a;
       }
     }
   }
@@ -1519,179 +1741,15 @@ function drawHeatmap() {
 }
 
 // ============================================================
-//  COLORMAP: Strong force energy — warm red/orange/yellow
-//  Distinct from the blue Coulomb colormap so both can be
-//  overlaid simultaneously without confusion.
-//  transparent → deep red → orange → bright yellow
-// ============================================================
-const STRONG_COLORMAP = new Uint8Array(256 * 4);
-(function buildStrongColormap() {
-  const stops = [
-    { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0 },     // Transparent at zero
-    { t: 0.2,  r: 140, g: 10,  b: 5,   a: 77 },    // Deep red
-    { t: 0.5,  r: 220, g: 80,  b: 10,  a: 153 },   // Orange-red
-    { t: 0.8,  r: 255, g: 170, b: 40,  a: 217 },   // Warm orange
-    { t: 1.0,  r: 255, g: 240, b: 180, a: 255 },   // Bright yellow-white at max
-  ];
-  for (let i = 0; i < 256; i++) {
-    const t = i / 255;
-    let s0 = stops[0], s1 = stops[1];
-    for (let s = 0; s < stops.length - 1; s++) {
-      if (t >= stops[s].t && t <= stops[s + 1].t) {
-        s0 = stops[s]; s1 = stops[s + 1]; break;
-      }
-    }
-    const f = (t - s0.t) / (s1.t - s0.t);
-    const idx = i * 4;
-    STRONG_COLORMAP[idx]     = s0.r + (s1.r - s0.r) * f;
-    STRONG_COLORMAP[idx + 1] = s0.g + (s1.g - s0.g) * f;
-    STRONG_COLORMAP[idx + 2] = s0.b + (s1.b - s0.b) * f;
-    STRONG_COLORMAP[idx + 3] = s0.a + (s1.a - s0.a) * f;
-  }
-})();
-
-// ============================================================
-//  STRONG FORCE HEATMAP: offscreen canvas (half resolution)
-// ============================================================
-const shCanvas = document.createElement('canvas');
-const shCtx = shCanvas.getContext('2d');
-
-// ============================================================
-//  STRONG FORCE ENERGY HEATMAP
-//  Visualizes the strong nuclear force potential energy well.
-//  For each pixel, sums the strong-force potential from every
-//  nearby pair of nucleons (all types — proton+proton,
-//  proton+neutron, neutron+neutron). The energy is deepest
-//  (most negative = most bound) right at the equilibrium
-//  distance, making the potential well visible as a glow
-//  between closely-bound particles.
-//
-//  Unlike the Coulomb heatmap (which uses field cross-terms),
-//  this directly evaluates the strong potential at each pixel's
-//  distance from every nucleon pair midpoint, showing where
-//  binding energy is concentrated.
-// ============================================================
-function drawStrongHeatmap() {
-  const fullW = canvas.width;
-  const fullH = canvas.height;
-  const scale = 0.5;                     // Half-resolution for performance
-  const w = Math.ceil(fullW * scale);
-  const h = Math.ceil(fullH * scale);
-  const invScale = 1 / scale;
-
-  shCanvas.width = w;
-  shCanvas.height = h;
-
-  const imageData = shCtx.createImageData(w, h);
-  const data = imageData.data;
-
-  const n = particles.length;
-  if (n < 2) return;
-
-  const cutoff = strongCutoff();
-  const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
-  const span = cutoff - eqDist;
-
-  // Pre-compute bound pairs: only pairs within the strong force cutoff
-  // contribute to the energy well visualization. Store their midpoints
-  // and potential energy so we can paint the well around each pair.
-  const pairs = [];
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 1; j < n; j++) {
-      const dx = particles[j].x - particles[i].x;
-      const dy = particles[j].y - particles[i].y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < cutoff && dist > 0) {
-        // Strong force potential: V = S/(2*span) * [(r-eq)² - span²]
-        // This is negative inside the well (bound state), most negative at eq
-        const dr = dist - eqDist;
-        const potential = strongForceStrength / (2 * span) * (dr * dr - span * span);
-        pairs.push({
-          // Midpoint of the pair — center of the energy well
-          mx: (particles[i].x + particles[j].x) / 2,
-          my: (particles[i].y + particles[j].y) / 2,
-          // How deep the well is (more negative = more bound)
-          potential: potential,
-          // Half the pair separation — used to set glow radius
-          halfSep: dist / 2,
-          // Store the full separation for glow falloff
-          pairDist: dist,
-        });
-      }
-    }
-  }
-
-  if (pairs.length === 0) return;
-
-  // Glow radius: how far from the pair midpoint the visualization extends.
-  // Scales with the strong force cutoff so the glow covers the well region.
-  const glowRadius = cutoff * 0.8;
-  const glowRadiusSq = glowRadius * glowRadius;
-
-  // Sensitivity and normalization for log-scale mapping
-  // Tuned so that deeply-bound pairs glow brightly
-  const sensitivity = 200.0;
-  const refMax = 0.5;
-  const logNorm = Math.log(1.0 + sensitivity * refMax);
-  const invLogNorm = 1.0 / logNorm;
-
-  for (let py = 0; py < h; py++) {
-    const worldY = py * invScale;
-    for (let px = 0; px < w; px++) {
-      const worldX = px * invScale;
-
-      // Accumulate energy contribution from all nearby bound pairs
-      let totalEnergy = 0;
-      for (let k = 0; k < pairs.length; k++) {
-        const pair = pairs[k];
-        const dx = worldX - pair.mx;
-        const dy = worldY - pair.my;
-        const distSq = dx * dx + dy * dy;
-
-        // Only render within the glow radius of each pair midpoint
-        if (distSq < glowRadiusSq) {
-          // Gaussian-like falloff from the midpoint
-          // Stronger binding (more negative potential) = brighter glow
-          const falloff = 1.0 - distSq / glowRadiusSq;
-          // potential is negative for bound states; flip sign for brightness
-          totalEnergy += (-pair.potential) * falloff * falloff;
-        }
-      }
-
-      // Only render if there's meaningful energy (bound state = negative potential → positive here)
-      if (totalEnergy > 0) {
-        let magnitude = Math.log(1.0 + sensitivity * totalEnergy) * invLogNorm;
-        if (magnitude > 1.0) magnitude = 1.0;
-        const ci = (magnitude * 255) | 0;
-        const di = (py * w + px) * 4;
-        const ci4 = ci * 4;
-        data[di]     = STRONG_COLORMAP[ci4];
-        data[di + 1] = STRONG_COLORMAP[ci4 + 1];
-        data[di + 2] = STRONG_COLORMAP[ci4 + 2];
-        data[di + 3] = STRONG_COLORMAP[ci4 + 3];
-      }
-    }
-  }
-
-  shCtx.putImageData(imageData, 0, 0);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(shCanvas, 0, 0, fullW, fullH);
-}
-
-// ============================================================
 //  MAIN DRAW
 // ============================================================
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Render energy overlays — each is independent, controlled by its own checkbox.
-  // When both are enabled they layer on top of each other (blue electric + warm strong).
-  if (showElectricHeatmap && particles.length > 0) {
-    drawHeatmap();      // Coulomb cross-term (blue glow between protons)
-  }
-  if (showStrongHeatmap && particles.length > 0) {
-    drawStrongHeatmap();  // Strong force well (warm glow between bound nucleons)
+  // Render the unified energy density heatmap if the master toggle is on.
+  // The strong force rendering mode (none/hole/pink) is handled inside drawHeatmap().
+  if (showHeatmap && particles.length > 0) {
+    drawHeatmap();
   }
 
   for (let i = 0; i < particles.length; i++) {
