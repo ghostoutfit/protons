@@ -17,7 +17,7 @@
     overflow-x: auto;
     overflow-y: hidden;
     height: 100vh;
-    min-width: 860px;       /* Prevent layout collapse on narrow viewports */
+    min-width: 860px;
     display: flex;
     flex-direction: column;
   }
@@ -381,9 +381,60 @@
     text-align: center;
     transition: opacity 0.5s;
   }
+  /* ========================================
+     PORTRAIT ORIENTATION OVERLAY
+     ======================================== */
+  #portrait-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #0a0a1a;
+    color: #e0e0e0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 2rem;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+  }
+
+  #portrait-overlay .rotate-icon {
+    font-size: 64px;
+    margin-bottom: 1.5rem;
+  }
+
+  #portrait-overlay h2 {
+    font-size: 22px;
+    font-weight: 600;
+    color: #ff6b6b;
+    margin-bottom: 0.75rem;
+  }
+
+  #portrait-overlay p {
+    font-size: 16px;
+    color: #9ca3af;
+    max-width: 280px;
+  }
+
+  @media (max-width: 860px) and (orientation: portrait) {
+    #portrait-overlay {
+      display: flex;
+    }
+    body > *:not(#portrait-overlay) {
+      display: none !important;
+    }
+  }
 </style>
 </head>
 <body>
+
+<!-- Portrait orientation overlay (mobile only) -->
+<div id="portrait-overlay">
+  <div class="rotate-icon">&#x1F4F1;&#x21BB;</div>
+  <h2>Rotate Your Device</h2>
+  <p>Go horizontal to use this app</p>
+</div>
 
 <!-- ========================================
      TOOLBAR HTML
