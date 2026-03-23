@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fusion Zoom — v4</title>
+<style>
+  /* ========================================
+     RESET & BASE STYLES
+     ======================================== */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a1a;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ========================================
+     TOOLBAR — minimal: title + Go + Replay
+     ======================================== */
+  #toolbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 20px;
+    background: #12122a;
+    border-bottom: 1px solid #2a2a4a;
+    z-index: 10;
+  }
+
+  #toolbar h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #ff6b6b;
+    margin-right: 8px;
+    white-space: nowrap;
+  }
+
+  .btn {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  #goBtn {
+    background: #22c55e;
+    color: #fff;
+  }
+  #goBtn:hover { background: #16a34a; }
+  #goBtn.running {
+    background: #ef4444;
+  }
+  #goBtn.running:hover { background: #dc2626; }
+
+  #replayBtn {
+    background: #0e7490;
+    color: #fff;
+  }
+  #replayBtn:hover { background: #0891b2; }
+  #replayBtn:disabled {
+    background: #1e293b;
+    color: #4b5563;
+    cursor: not-allowed;
+  }
+
+  /* ========================================
+     CANVAS — fills remaining space
+     ======================================== */
+  #canvas {
+    flex: 1;
+    display: block;
+    cursor: default;
+  }
+
+  /* ========================================
+     PORTRAIT ORIENTATION OVERLAY (mobile)
+     ======================================== */
+  #portrait-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #0a0a1a;
+    color: #e0e0e0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 2rem;
+  }
+
+  #portrait-overlay .rotate-icon { font-size: 64px; margin-bottom: 1.5rem; }
+  #portrait-overlay h2 { font-size: 22px; font-weight: 600; color: #ff6b6b; margin-bottom: 0.75rem; }
+  #portrait-overlay p { font-size: 16px; color: #9ca3af; max-width: 280px; }
+
+  @media (max-width: 860px) and (orientation: portrait) {
+    #portrait-overlay { display: flex; }
+    body > *:not(#portrait-overlay) { display: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Portrait overlay (mobile) -->
+<div id="portrait-overlay">
+  <div class="rotate-icon">&#x1F4F1;&#x21BB;</div>
+  <h2>Rotate Your Device</h2>
+  <p>Go horizontal to use this app</p>
+</div>
+
+<!-- Toolbar: just title + Go + Replay -->
+<div id="toolbar">
+  <h1>Fusion Zoom</h1>
+  <button class="btn" id="goBtn">Go</button>
+  <button class="btn" id="replayBtn" disabled>Replay</button>
+</div>
+
+<!-- Full-bleed simulation canvas -->
+<canvas id="canvas"></canvas>
+
+<script>
+// ============================================================
+//  DOM REFERENCES
+// ============================================================
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const goBtn = document.getElementById('goBtn');
+const replayBtn = document.getElementById('replayBtn');
+
+// ============================================================
+//  PHYSICS CONSTANTS (same model as dev/v3)
+// ============================================================
+const PARTICLE_RADIUS = 10;
+const SUBSTEPS = 20;
+
+// Fixed physics parameters (no sliders in v4)
+const coulombStrength = 30;
+const strongForceStrength = 5;
+const strongForceRange = 1.5;      // cutoff = PARTICLE_RADIUS * 2 * 1.5 = 30px
+const equilibriumRatio = 0.6;
+const damping = 0.98;
+
+// ============================================================
+//  STATE
+// ============================================================
+let particles = [];       // Array of { x, y, vx, vy, type }
+let running = false;
+let animId = null;
+const speed = 1.5;        // dt per frame (internal, matches dev's 3.0x display)
+
+// ============================================================
+//  INITIAL CONDITIONS
+//  Two neutrons placed 300px apart horizontally, centered on
+//  the canvas, with inward velocities tuned to enter the
+//  strong force well and bind.
+//
+//  Strong force cutoff = 30px. Approach speed of ~0.8 px/frame
+//  gives a visually interesting approach that's slow enough to
+//  watch but fast enough to enter the well and not just crawl.
+// ============================================================
+function setupScenario() {
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+  const separation = 300;    // Starting distance (>> 30px cutoff)
+  const approachSpeed = 0.8; // px per internal dt unit
+
+  particles = [
+    { x: cx - separation / 2, y: cy, vx:  approachSpeed, vy: 0, type: 'neutron' },
+    { x: cx + separation / 2, y: cy, vx: -approachSpeed, vy: 0, type: 'neutron' },
+  ];
+}
+
+// Snapshot for replay
+let snapshot = null;
+
+function takeSnapshot() {
+  snapshot = particles.map(p => ({ ...p }));
+  replayBtn.disabled = false;
+}
+
+function restoreSnapshot() {
+  if (!snapshot) return;
+  particles = snapshot.map(p => ({ ...p }));
+}
+
+// ============================================================
+//  FORCE MODEL (identical to dev/v3)
+//  Coulomb: K/r² repulsion, proton-proton only
+//  Strong: spring-like linear ramp with equilibrium point
+// ============================================================
+function strongCutoff() {
+  return PARTICLE_RADIUS * 2 * strongForceRange;
+}
+
+function pairForce(dist, distSq, aType, bType) {
+  let force = 0;
+
+  // Coulomb: proton-proton only (irrelevant for neutron-neutron, but kept for completeness)
+  if (aType === 'proton' && bType === 'proton') {
+    const softDistSq = Math.max(distSq, PARTICLE_RADIUS * PARTICLE_RADIUS);
+    force += coulombStrength / softDistSq;
+  }
+
+  // Strong nuclear force: linear ramp giving quadratic potential well
+  // Below equilibrium → repulsive (positive), above → attractive (negative)
+  const cutoff = strongCutoff();
+  if (dist < cutoff) {
+    const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
+    const span = cutoff - eqDist;
+    const t = (dist - eqDist) / span;
+    force -= t * strongForceStrength;
+  }
+
+  return force;
+}
+
+// ============================================================
+//  PHYSICS STEP (forces + substep integration + hard-sphere)
+//  Same substep loop as dev/v3 for energy conservation.
+// ============================================================
+function step(dt) {
+  const n = particles.length;
+  const subDt = dt / SUBSTEPS;
+
+  for (let sub = 0; sub < SUBSTEPS; sub++) {
+    // Pairwise forces
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const a = particles[i];
+        const b = particles[j];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const distSq = dx * dx + dy * dy;
+        const dist = Math.sqrt(distSq);
+        if (dist < 0.01) continue;
+
+        const force = pairForce(dist, distSq, a.type, b.type);
+        const fx = force * (dx / dist);
+        const fy = force * (dy / dist);
+        a.vx -= fx * subDt;
+        a.vy -= fy * subDt;
+        b.vx += fx * subDt;
+        b.vy += fy * subDt;
+      }
+    }
+
+    // Integrate positions (symplectic Euler)
+    for (let i = 0; i < n; i++) {
+      particles[i].x += particles[i].vx * subDt;
+      particles[i].y += particles[i].vy * subDt;
+    }
+
+    // Hard-sphere collision constraint
+    const minSep = PARTICLE_RADIUS * 2;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const a = particles[i];
+        const b = particles[j];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        const dSq = dx * dx + dy * dy;
+        if (dSq >= minSep * minSep) continue;
+        let d = Math.sqrt(dSq);
+        if (d < 0.001) { dx = 1; dy = 0; d = 0.001; }
+        const nx = dx / d;
+        const ny = dy / d;
+        const overlap = minSep - d;
+
+        // Push apart equally
+        a.x -= nx * overlap * 0.5;
+        a.y -= ny * overlap * 0.5;
+        b.x += nx * overlap * 0.5;
+        b.y += ny * overlap * 0.5;
+
+        // Zero out approaching normal velocity (inelastic safety net)
+        const dvx = b.vx - a.vx;
+        const dvy = b.vy - a.vy;
+        const dvDotN = dvx * nx + dvy * ny;
+        if (dvDotN < 0) {
+          const half = dvDotN * 0.5;
+          a.vx += half * nx;
+          a.vy += half * ny;
+          b.vx -= half * nx;
+          b.vy -= half * ny;
+        }
+      }
+    }
+  }
+
+  // Damping once per frame
+  if (damping < 1.0) {
+    for (let i = 0; i < n; i++) {
+      particles[i].vx *= damping;
+      particles[i].vy *= damping;
+    }
+  }
+}
+
+// ============================================================
+//  DRAWING — particles + debug distance readout
+// ============================================================
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    const isProton = p.type === 'proton';
+
+    // Glow halo
+    const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, PARTICLE_RADIUS * 2.5);
+    if (isProton) {
+      gradient.addColorStop(0, 'rgba(255, 80, 80, 0.4)');
+      gradient.addColorStop(1, 'rgba(255, 80, 80, 0)');
+    } else {
+      gradient.addColorStop(0, 'rgba(160, 160, 200, 0.3)');
+      gradient.addColorStop(1, 'rgba(160, 160, 200, 0)');
+    }
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, PARTICLE_RADIUS * 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body with 3D highlight
+    const bodyGrad = ctx.createRadialGradient(p.x - 3, p.y - 3, 1, p.x, p.y, PARTICLE_RADIUS);
+    if (isProton) {
+      bodyGrad.addColorStop(0, '#ff9999');
+      bodyGrad.addColorStop(0.7, '#ff4444');
+      bodyGrad.addColorStop(1, '#cc2222');
+    } else {
+      bodyGrad.addColorStop(0, '#ccccdd');
+      bodyGrad.addColorStop(0.7, '#8888aa');
+      bodyGrad.addColorStop(1, '#666688');
+    }
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, PARTICLE_RADIUS, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Label
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(isProton ? '+' : 'n', p.x, p.y + 1);
+  }
+
+  // Debug readout: distance between the two neutrons and strong force status
+  if (particles.length === 2) {
+    const dx = particles[1].x - particles[0].x;
+    const dy = particles[1].y - particles[0].y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const cutoff = strongCutoff();
+    const inRange = dist < cutoff;
+    ctx.fillStyle = inRange ? '#22c55e' : '#6b7280';
+    ctx.font = '13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(
+      `dist: ${dist.toFixed(1)}px  cutoff: ${cutoff.toFixed(0)}px  ${inRange ? 'STRONG FORCE ACTIVE' : ''}`,
+      canvas.width / 2, 30
+    );
+  }
+}
+
+// ============================================================
+//  LAYOUT / RESIZE
+// ============================================================
+function resize() {
+  const toolbarH = document.getElementById('toolbar').offsetHeight;
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight - toolbarH;
+  if (!running) draw();
+}
+window.addEventListener('resize', resize);
+setTimeout(resize, 0);
+
+// ============================================================
+//  GO / STOP
+// ============================================================
+goBtn.addEventListener('click', () => {
+  running = !running;
+  goBtn.textContent = running ? 'Stop' : 'Go';
+  goBtn.classList.toggle('running', running);
+  if (running) {
+    if (particles.length === 0) setupScenario();
+    takeSnapshot();
+    loop();
+  } else {
+    cancelAnimationFrame(animId);
+  }
+});
+
+// ============================================================
+//  REPLAY — restore snapshot and auto-start
+// ============================================================
+replayBtn.addEventListener('click', () => {
+  if (!snapshot) return;
+  running = false;
+  cancelAnimationFrame(animId);
+  goBtn.textContent = 'Go';
+  goBtn.classList.remove('running');
+  restoreSnapshot();
+  draw();
+  // Auto-start
+  running = true;
+  goBtn.textContent = 'Stop';
+  goBtn.classList.add('running');
+  loop();
+});
+
+// ============================================================
+//  ANIMATION LOOP
+// ============================================================
+function loop() {
+  if (!running) return;
+  step(speed);
+  draw();
+  animId = requestAnimationFrame(loop);
+}
+
+// ============================================================
+//  INITIAL SETUP — place the two neutrons and draw
+// ============================================================
+setupScenario();
+draw();
+</script>
+</body>
+</html>
