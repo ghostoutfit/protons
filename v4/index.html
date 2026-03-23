@@ -222,6 +222,22 @@
     <input type="radio" name="strongMode" id="strongHole" value="hole" checked><label for="strongHole">Hole</label>
     <input type="radio" name="strongMode" id="strongPink" value="pink"><label for="strongPink">Pink glow</label>
   </span>
+  <label class="toggle-label" style="gap:6px;">
+    Range: <span id="v4RangeVal">2.0</span>x
+    <input type="range" id="v4RangeSlider" min="1.0" max="3.0" step="0.05" value="2.0" style="width:72px;accent-color:#6366f1;">
+  </label>
+  <label class="toggle-label" style="gap:6px;">
+    Collision:
+    <select id="collisionType" style="background:#1a1a3a;color:#e0e0e0;border:1px solid #3a3a5a;border-radius:4px;padding:2px 8px;font-size:12px;cursor:pointer;">
+      <option value="nn">n + n</option>
+      <option value="pn">p + n</option>
+      <option value="pp">p + p</option>
+    </select>
+  </label>
+  <label class="toggle-label" style="gap:6px;">
+    Speed: <span id="v4SpeedVal">0.50</span>
+    <input type="range" id="v4SpeedSlider" min="0.1" max="2.0" step="0.05" value="0.5" style="width:72px;accent-color:#6366f1;">
+  </label>
 </div>
 
 <!-- Full-bleed simulation canvas -->
@@ -254,11 +270,12 @@ const timeLabelEl = document.getElementById('timeLabel');
 const PARTICLE_RADIUS = 10;
 const SUBSTEPS = 20;
 
-// Fixed physics parameters (no sliders in v4)
+// Fixed physics parameters
 const coulombStrength = 30;
-const strongForceStrength = 3;    // very gentle pull — slow visible acceleration across the 60px well
-const strongForceRange = 3.0;      // cutoff = PARTICLE_RADIUS * 2 * 3.0 = 60px
-const equilibriumRatio = 0.35;    // equilibrium at ~21px ≈ touching distance with 60px cutoff
+const strongForceStrength = 3;    // gentle pull — slow visible acceleration across the well
+let strongForceRange = 2.0;        // cutoff = PARTICLE_RADIUS * 2 * strongForceRange (40px at 2x)
+let approachSpeed = 0.5;           // px per internal dt unit — initial inward velocity of each particle
+const equilibriumRatio = 0.35;    // equilibrium ≈ 35% of cutoff, clamped to touching distance
 const damping = 1.00;              // velocity damping per frame — lets bound pair settle
 
 // ============================================================
@@ -337,12 +354,15 @@ const hmCtx = hmCanvas.getContext('2d');
 function setupScenario() {
   const cx = canvas.width / 2;
   const cy = canvas.height / 2;
-  const separation = 300;    // Starting distance (>> 30px cutoff)
-  const approachSpeed = 0.5; // px per internal dt unit
+  const separation = 300;    // Starting distance (>> strong force cutoff)
+
+  const mode = document.getElementById('collisionType').value;
+  const leftType  = (mode === 'pp') ? 'proton' : (mode === 'pn') ? 'proton'  : 'neutron';
+  const rightType = (mode === 'pp') ? 'proton' : (mode === 'pn') ? 'neutron' : 'neutron';
 
   particles = [
-    { x: cx - separation / 2, y: cy, vx:  approachSpeed, vy: 0, type: 'neutron' },
-    { x: cx + separation / 2, y: cy, vx: -approachSpeed, vy: 0, type: 'neutron' },
+    { x: cx - separation / 2, y: cy, vx:  approachSpeed, vy: 0, type: leftType  },
+    { x: cx + separation / 2, y: cy, vx: -approachSpeed, vy: 0, type: rightType },
   ];
 }
 
@@ -572,7 +592,7 @@ function drawHeatmap() {
   }
   const np = protonList.length;
   const na = allList.length;
-  if (na < 2) return;
+  if (na < 2 && strongMode !== 'hole') return;
 
   const minR = PARTICLE_RADIUS;
   const minRSq = minR * minR;
@@ -644,17 +664,25 @@ function drawHeatmap() {
       }
 
       // --- Strong force hole field (for 'hole' mode only) ---
+      // Darkness = product of each pair's field influence at this pixel.
+      // Requires two particles — a single particle alone produces no darkness.
       let holeField = 0;
-      if (strongMode === 'hole' && na >= 1) {
-        const holeRadius = 40;  // dark zone extends 40px from each particle center
+      if (strongMode === 'hole' && na >= 2) {
+        const holeRadius = 40;
+        // Precompute per-particle influence at this pixel
+        const inf = new Float32Array(na);
         for (let i = 0; i < na; i++) {
           const dx = worldX - allList[i].x;
           const dy = worldY - allList[i].y;
-          const rSq = dx * dx + dy * dy;
-          const r = Math.sqrt(rSq < minRSq ? minRSq : rSq);
+          const r = Math.sqrt(dx * dx + dy * dy);
           if (r < holeRadius) {
-            const t = r / holeRadius;
-            holeField += Math.pow(1.0 - t, 3) * 8;  // cubic, scaled so surface = full black; drops sharply near edge
+            inf[i] = Math.pow(1.0 - r / holeRadius, 1.5);
+          }
+        }
+        // Sum pair products — only nonzero where both particles' fields overlap
+        for (let i = 0; i < na; i++) {
+          for (let j = i + 1; j < na; j++) {
+            holeField += inf[i] * inf[j] * 6;
           }
         }
       }
@@ -679,8 +707,9 @@ function drawHeatmap() {
         const holeDepth = Math.min(1.0, holeField);
         const fgA = a / 255;
         const bgA = ambientA / 255;
+        // Always composite over ambient — ambient is always present
         const outA = fgA + bgA * (1 - fgA);
-        let outR = 0, outG = 0, outB = 0;
+        let outR = ambientR, outG = ambientG, outB = ambientB;
         if (outA > 0) {
           outR = (r * fgA + ambientR * bgA * (1 - fgA)) / outA;
           outG = (g * fgA + ambientG * bgA * (1 - fgA)) / outA;
@@ -690,7 +719,7 @@ function drawHeatmap() {
         data[di]     = outR * visibility;
         data[di + 1] = outG * visibility;
         data[di + 2] = outB * visibility;
-        data[di + 3] = outA * visibility * 255;
+        data[di + 3] = Math.max(ambientA, outA * visibility * 255);
       } else if (strongMode === 'pink') {
         data[di] = r; data[di+1] = g; data[di+2] = b; data[di+3] = a;
         if (strongCross < 0) {
@@ -1140,16 +1169,25 @@ setTimeout(resize, 0);
 // ============================================================
 //  GO / STOP
 // ============================================================
+let hasRunOnce = false;
+
 goBtn.addEventListener('click', () => {
-  running = !running;
-  goBtn.textContent = running ? 'Stop' : 'Go';
-  goBtn.classList.toggle('running', running);
   if (running) {
-    if (particles.length === 0) setupScenario();
+    // Stop → show "New" for next click
+    running = false;
+    goBtn.textContent = 'New';
+    goBtn.classList.remove('running');
+    cancelAnimationFrame(animId);
+  } else {
+    // "Go" (first time) or "New" (after stopping) → fresh start
+    if (hasRunOnce) resetAndSetup();
+    else if (particles.length === 0) setupScenario();
+    hasRunOnce = true;
+    running = true;
+    goBtn.textContent = 'Stop';
+    goBtn.classList.add('running');
     takeSnapshot();
     loop();
-  } else {
-    cancelAnimationFrame(animId);
   }
 });
 
@@ -1232,6 +1270,52 @@ document.querySelectorAll('input[name="strongMode"]').forEach(radio => {
 });
 
 // ============================================================
+//  RANGE SLIDER + COLLISION TYPE
+// ============================================================
+document.getElementById('v4RangeSlider').addEventListener('input', function() {
+  strongForceRange = parseFloat(this.value);
+  document.getElementById('v4RangeVal').textContent = strongForceRange.toFixed(2);
+  if (!running) draw();
+});
+
+function resetAndSetup() {
+  running = false;
+  cancelAnimationFrame(animId);
+  goBtn.textContent = 'Go';
+  goBtn.classList.remove('running');
+  zoomT = 0;
+  zoomDirection = 0;
+  hasTriggeredZoom = false;
+  hasCollided = false;
+  smoothedKE = 0;
+  collisionKE = 0;
+  peakKE = 0;
+  frozenIE = 0;
+  collisionFrame = -1;
+  collisionTime = -1;
+  zoomEnergyHistory = [];
+  graphPreBuffer = [];
+  zoomOutBtn.style.display = 'none';
+  particleHistory = [];
+  scrubFrame = -1;
+  timeSlider.value = 0;
+  timeSlider.max = 0;
+  timeSlider.disabled = true;
+  timeLabelEl.textContent = '–';
+  snapshot = null;
+  replayBtn.disabled = true;
+  setupScenario();
+  draw();
+}
+
+document.getElementById('collisionType').addEventListener('change', resetAndSetup);
+
+document.getElementById('v4SpeedSlider').addEventListener('input', function() {
+  approachSpeed = parseFloat(this.value);
+  document.getElementById('v4SpeedVal').textContent = approachSpeed.toFixed(2);
+});
+
+// ============================================================
 //  ANIMATION LOOP — with zoom detection, speed modulation,
 //  history recording, and scrubber support
 // ============================================================
@@ -1250,7 +1334,7 @@ function loop() {
       const dx = particles[1].x - particles[0].x;
       const dy = particles[1].y - particles[0].y;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < 80) {   // start zoom just outside strong force range (cutoff = 60px)
+      if (dist < 80) {   // start zoom when particles are close — generous trigger for any range setting
         hasTriggeredZoom = true;
         zoomEnergyHistory = [];
         startZoomTransition(1);

@@ -512,8 +512,8 @@
     <input type="range" id="strongSlider" min="0.5" max="30" step="0.5" value="5">
   </div>
   <div class="slider-group">
-    <label>Range: <span id="rangeVal">1.5</span>x</label>
-    <input type="range" id="rangeSlider" min="1.0" max="2.0" step="0.05" value="1.5">
+    <label>Range: <span id="rangeVal">2.00</span>x</label>
+    <input type="range" id="rangeSlider" min="1.0" max="3.0" step="0.05" value="2.0">
   </div>
   <div class="slider-group">
     <label>Damping: <span id="dampVal">1.00</span></label>
@@ -631,7 +631,7 @@ const MIN_DIST = 20;  // Clamp distance so force doesn't blow up at overlap
 // ============================================================
 let coulombStrength = 30;       // Scales Coulomb repulsive force (proton-proton only)
 let strongForceStrength = 5;    // Scales strong nuclear force (all nucleon pairs)
-let strongForceRange = 1.5;     // Cutoff as multiplier on 2×radius
+let strongForceRange = 2.0;     // Cutoff as multiplier on 2×radius
 let equilibriumRatio = 0.6;     // Where strong force = 0; below → repulsive, above → attractive
 let damping = 1.00;             // Velocity damping per frame (1.0 = no damping)
 let ieOffset = 0;               // Display-only offset added to IE and Total (not stored in history)
@@ -1581,8 +1581,8 @@ function drawHeatmap() {
   const np = protonList.length;     // Proton count (for Coulomb)
   const na = allList.length;        // All nucleon count (for strong)
 
-  // Need at least 2 particles for any cross-term
-  if (na < 2) return;
+  // Need at least 2 particles for cross-terms (hole mode renders ambient with fewer)
+  if (na < 2 && strongMode !== 'hole') return;
 
   const minR = PARTICLE_RADIUS;
   const minRSq = minR * minR;
@@ -1670,19 +1670,23 @@ function drawHeatmap() {
       }
 
       // --- Strong force hole field (for 'hole' mode only) ---
-      // Sum a smooth radial decay from every nucleon. Each nucleon darkens a
-      // circular region out to the strong-force cutoff; contributions stack so
-      // bound clusters make a much deeper, wider black hole.
+      // Darkness = product of each pair's field influence at this pixel.
+      // Requires two particles — a single particle alone produces no darkness.
       let holeField = 0;
-      if (strongMode === 'hole' && na >= 1) {
+      if (strongMode === 'hole' && na >= 2) {
+        const holeRadius = cutoff;
+        const inf = new Float32Array(na);
         for (let i = 0; i < na; i++) {
           const dx = worldX - allList[i].x;
           const dy = worldY - allList[i].y;
-          const rSq = dx * dx + dy * dy;
-          const r = Math.sqrt(rSq < minRSq ? minRSq : rSq);
-          if (r < cutoff) {
-            const t = r / cutoff;                       // 0 at center, 1 at edge
-            holeField += (1.0 - t * t) * 1.5;          // 1.5× ensures center hits full black; smooth falloff to 0 at edge
+          const r = Math.sqrt(dx * dx + dy * dy);
+          if (r < holeRadius) {
+            inf[i] = Math.pow(1.0 - r / holeRadius, 1.5);
+          }
+        }
+        for (let i = 0; i < na; i++) {
+          for (let j = i + 1; j < na; j++) {
+            holeField += inf[i] * inf[j] * 6;
           }
         }
       }
@@ -1704,17 +1708,12 @@ function drawHeatmap() {
       }
 
       if (strongMode === 'hole') {
-        // "Hole" mode: big black void wherever the strong force reaches.
-        // holeField sums the radial decay from every nucleon — one nucleon
-        // creates a dark disc, two close nucleons merge into a deeper hole.
         const holeDepth = Math.min(1.0, holeField);
-
-        // Composite Coulomb (foreground) over ambient (background), then punch
-        // the hole through everything — ambient, Coulomb, all of it goes to black.
         const fgA = a / 255;
         const bgA = ambientA / 255;
+        // Always composite over ambient — ambient is always present
         const outA = fgA + bgA * (1 - fgA);
-        let outR = 0, outG = 0, outB = 0;
+        let outR = ambientR, outG = ambientG, outB = ambientB;
         if (outA > 0) {
           outR = (r * fgA + ambientR * bgA * (1 - fgA)) / outA;
           outG = (g * fgA + ambientG * bgA * (1 - fgA)) / outA;
@@ -1724,7 +1723,7 @@ function drawHeatmap() {
         data[di]     = outR * visibility;
         data[di + 1] = outG * visibility;
         data[di + 2] = outB * visibility;
-        data[di + 3] = outA * visibility * 255;
+        data[di + 3] = Math.max(ambientA, outA * visibility * 255);
 
       } else if (strongMode === 'pink') {
         // "Pink glow" mode: render strong cross-term through pink colormap
