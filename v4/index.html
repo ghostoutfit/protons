@@ -183,6 +183,15 @@ const ZOOM_MAGNIFICATION = 8;     // How much to magnify at full zoom
 const ZOOM_SPEED_RATIO = 0.1;     // 10% speed when fully zoomed
 
 // ============================================================
+//  ENERGY GRAPH STATE
+//  Accumulates energy samples from the moment zoom triggers.
+//  Tracks mutual KE (relative to center of mass), mutual PE
+//  (Coulomb + strong combined), and their total.
+// ============================================================
+let zoomEnergyHistory = [];       // Array of { ke, pe, total }
+const GRAPH_MAX_SAMPLES = 1200;   // Max samples to keep
+
+// ============================================================
 //  INITIAL CONDITIONS
 //  Two neutrons placed 300px apart horizontally, centered on
 //  the canvas, with inward velocities tuned to enter the
@@ -331,6 +340,156 @@ function step(dt) {
 }
 
 // ============================================================
+//  PAIR ENERGY COMPUTATION
+//  Computes the mutual energy of the two-particle system:
+//  - KE relative to center of mass (removes bulk translation)
+//  - PE from both Coulomb and strong force
+//  - Total = KE + PE
+// ============================================================
+function computePairEnergy() {
+  if (particles.length < 2) return null;
+  const a = particles[0];
+  const b = particles[1];
+
+  // Center-of-mass velocity (equal masses)
+  const cmvx = (a.vx + b.vx) / 2;
+  const cmvy = (a.vy + b.vy) / 2;
+
+  // Relative velocities (subtract CM motion)
+  const arvx = a.vx - cmvx;
+  const arvy = a.vy - cmvy;
+  const brvx = b.vx - cmvx;
+  const brvy = b.vy - cmvy;
+
+  // Mutual KE: kinetic energy in the CM frame
+  const ke = 0.5 * (arvx * arvx + arvy * arvy + brvx * brvx + brvy * brvy);
+
+  // Pair separation
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  let pe = 0;
+  if (dist > 0) {
+    // Coulomb potential (proton-proton only, but included for completeness)
+    if (a.type === 'proton' && b.type === 'proton') {
+      const softDist = Math.max(dist, PARTICLE_RADIUS);
+      pe += coulombStrength / softDist;
+    }
+
+    // Strong force potential: V = S/(2*span) * [(r-eq)² - span²]
+    const cutoff = strongCutoff();
+    if (dist < cutoff) {
+      const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
+      const span = cutoff - eqDist;
+      const dr = dist - eqDist;
+      pe += strongForceStrength / (2 * span) * (dr * dr - span * span);
+    }
+  }
+
+  return { ke, pe, total: ke + pe };
+}
+
+// ============================================================
+//  OVERLAY ENERGY GRAPH
+//  Drawn in screen space (not affected by zoom transform).
+//  Positioned in the bottom-right corner of the canvas.
+//  Same visual style as v3: amber KE, blue PE, green total.
+//  Fades in/out with zoomT.
+// ============================================================
+const GRAPH_W = 280;
+const GRAPH_H = 140;
+const GRAPH_PAD = 16;
+
+function drawOverlayGraph() {
+  if (zoomEnergyHistory.length < 2) return;
+
+  const alpha = zoomT;  // Fade with zoom level
+  if (alpha < 0.01) return;
+
+  // Position: bottom-right corner with padding
+  const gx = canvas.width - GRAPH_W - GRAPH_PAD;
+  const gy = canvas.height - GRAPH_H - GRAPH_PAD;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  // Background panel
+  ctx.fillStyle = 'rgba(10, 10, 26, 0.85)';
+  ctx.strokeStyle = 'rgba(42, 42, 74, 0.8)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(gx, gy, GRAPH_W, GRAPH_H, 6);
+  ctx.fill();
+  ctx.stroke();
+
+  // Compute Y-axis scale from visible data (auto-fit)
+  const len = zoomEnergyHistory.length;
+  const visStart = Math.max(0, len - 400);  // Show last 400 samples
+  let maxVal = 1;
+  for (let i = visStart; i < len; i++) {
+    const e = zoomEnergyHistory[i];
+    maxVal = Math.max(maxVal, Math.abs(e.ke), Math.abs(e.pe), Math.abs(e.total));
+  }
+  maxVal *= 1.15;  // A bit of headroom
+
+  const visCount = len - visStart;
+  const xStep = (GRAPH_W - 8) / Math.max(visCount - 1, 1);
+  const plotL = gx + 4;
+  const plotT = gy + 4;
+  const plotH = GRAPH_H - 8;
+
+  // Zero line
+  const zeroY = plotT + plotH - (-0 / maxVal) * (plotH - 4) - 2;
+  // Actually compute properly: val=0 → y position
+  const baseY = plotT + plotH - (0 / maxVal) * (plotH - 4) - 2;
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(plotL, baseY);
+  ctx.lineTo(plotL + GRAPH_W - 8, baseY);
+  ctx.stroke();
+
+  // Draw a trace line
+  function drawTrace(key, color) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let i = 0; i < visCount; i++) {
+      const e = zoomEnergyHistory[visStart + i];
+      const x = plotL + i * xStep;
+      const y = plotT + plotH - (e[key] / maxVal) * (plotH - 4) - 2;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  drawTrace('pe', '#3b82f6');    // Blue: potential energy
+  drawTrace('ke', '#f59e0b');    // Amber: kinetic energy
+  drawTrace('total', '#22c55e'); // Green: total
+
+  // Legend (top-left inside the graph)
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'left';
+  const legendX = gx + 10;
+  const legendY = gy + 14;
+  const labels = [
+    { text: 'KE (mutual)', color: '#f59e0b' },
+    { text: 'PE (field)',   color: '#3b82f6' },
+    { text: 'Total',        color: '#22c55e' },
+  ];
+  for (let i = 0; i < labels.length; i++) {
+    ctx.fillStyle = labels[i].color;
+    ctx.fillRect(legendX, legendY + i * 13 - 6, 8, 8);
+    ctx.fillStyle = '#9ca3af';
+    ctx.fillText(labels[i].text, legendX + 12, legendY + i * 13);
+  }
+
+  ctx.restore();
+}
+
+// ============================================================
 //  ZOOM HELPERS
 // ============================================================
 
@@ -468,6 +627,9 @@ function draw() {
       canvas.width / 2, 30
     );
   }
+
+  // Overlay energy graph (drawn in screen space, fades with zoom)
+  drawOverlayGraph();
 }
 
 // ============================================================
@@ -507,10 +669,11 @@ replayBtn.addEventListener('click', () => {
   cancelAnimationFrame(animId);
   goBtn.textContent = 'Go';
   goBtn.classList.remove('running');
-  // Reset zoom state
+  // Reset zoom and energy graph state
   zoomT = 0;
   zoomDirection = 0;
   hasTriggeredZoom = false;
+  zoomEnergyHistory = [];
   zoomOutBtn.style.display = 'none';
   // Restore and go
   restoreSnapshot();
@@ -543,6 +706,7 @@ function loop() {
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist < strongCutoff()) {
       hasTriggeredZoom = true;
+      zoomEnergyHistory = [];  // Start fresh energy history
       startZoomTransition(1);  // Begin zoom-in
     }
   }
@@ -554,6 +718,17 @@ function loop() {
   // At zoomT=0: full speed. At zoomT=1: 10% speed.
   const speedMul = 1 - zoomT * (1 - ZOOM_SPEED_RATIO);
   step(speed * speedMul);
+
+  // --- Accumulate energy samples once zoom has triggered ---
+  if (hasTriggeredZoom) {
+    const e = computePairEnergy();
+    if (e) {
+      zoomEnergyHistory.push(e);
+      if (zoomEnergyHistory.length > GRAPH_MAX_SAMPLES) {
+        zoomEnergyHistory.shift();
+      }
+    }
+  }
 
   draw();
   animId = requestAnimationFrame(loop);
