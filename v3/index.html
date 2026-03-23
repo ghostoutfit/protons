@@ -492,8 +492,8 @@
   <label class="toggle-label"><input type="checkbox" id="heatmapToggle" checked> Electric interaction energy</label>
   <span id="strongModeGroup">
     Strong:
-    <input type="radio" name="strongMode" id="strongNone" value="none"><label for="strongNone">None</label>
-    <input type="radio" name="strongMode" id="strongHole" value="hole" checked><label for="strongHole">Hole</label>
+    <input type="radio" name="strongMode" id="strongNone" value="none" checked><label for="strongNone">None</label>
+    <input type="radio" name="strongMode" id="strongHole" value="hole"><label for="strongHole">Hole</label>
     <input type="radio" name="strongMode" id="strongPink" value="pink"><label for="strongPink">Pink glow</label>
   </span>
   <span id="stats">Protons: 0 &nbsp; Neutrons: 0</span>
@@ -516,8 +516,8 @@
     <input type="range" id="rangeSlider" min="1.0" max="2.0" step="0.05" value="1.5">
   </div>
   <div class="slider-group">
-    <label>Damping: <span id="dampVal">0.98</span></label>
-    <input type="range" id="dampSlider" min="0.90" max="1.00" step="0.01" value="0.98">
+    <label>Damping: <span id="dampVal">1.00</span></label>
+    <input type="range" id="dampSlider" min="0.90" max="1.00" step="0.01" value="1.00">
   </div>
 </div>
 
@@ -618,7 +618,7 @@ let running = false;
 let animId = null;
 let speed = 1.5;
 let showCoulomb = true;            // Toggle for electric interaction energy overlay
-let strongMode = 'hole';          // 'none' | 'hole' | 'pink' — how strong force renders
+let strongMode = 'none';          // 'none' | 'hole' | 'pink' — how strong force renders
 const PARTICLE_RADIUS = 10;
 const MIN_DIST = 20;  // Clamp distance so force doesn't blow up at overlap
 
@@ -629,7 +629,7 @@ let coulombStrength = 30;       // Scales Coulomb repulsive force (proton-proton
 let strongForceStrength = 5;    // Scales strong nuclear force (all nucleon pairs)
 let strongForceRange = 1.5;     // Cutoff as multiplier on 2×radius
 let equilibriumRatio = 0.6;     // Where strong force = 0; below → repulsive, above → attractive
-let damping = 0.98;             // Velocity damping per frame (1.0 = no damping)
+let damping = 1.00;             // Velocity damping per frame (1.0 = no damping)
 const SUBSTEPS = 20;            // Subdivisions per frame for integration accuracy
 
 // ============================================================
@@ -1084,15 +1084,22 @@ function pairForce(dist, distSq, aType, bType) {
     const softDistSq = Math.max(distSq, PARTICLE_RADIUS * PARTICLE_RADIUS);
     force += coulombStrength / softDistSq;
   }
-  // Strong nuclear force: spring-like (no 1/r² — that's EM, not strong force)
-  // Linear ramp from repulsive to attractive across the equilibrium point,
-  // giving a proper quadratic potential well.
+  // Strong nuclear force: steep well with fast fall-in.
+  // Attractive region uses t^0.5 profile — force is stronger near equilibrium,
+  // so particles accelerate rapidly as they approach. Repulsive core is stiff
+  // to prevent collapse.
   const cutoff = strongCutoff();
   if (dist < cutoff) {
     const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
     const span = cutoff - eqDist;
     const t = (dist - eqDist) / span;
-    force -= t * strongForceStrength;
+    if (t >= 0) {
+      // Attractive: t^0.5 grows faster near equilibrium → rapid fall-in
+      force -= Math.pow(t, 0.5) * strongForceStrength;
+    } else {
+      // Repulsive core: 2.5× stiffer than original to prevent overlap
+      force -= t * strongForceStrength * 2.5;
+    }
   }
   return force;
 }
@@ -1122,14 +1129,18 @@ function computeEnergy() {
           const softDist = Math.max(dist, PARTICLE_RADIUS);
           potential += coulombStrength / softDist;
         }
-        // Strong force potential: quadratic well (matches spring-like force)
-        // F = -(r - eq)/span * S, so V = S/(2*span) * [(r-eq)² - span²]
-        // Referenced so V(cutoff) = 0; V(eq) = -S*span/2 (well minimum)
+        // Strong force potential: matches the t^0.5 / 2.5t force law.
+        // Attractive (t≥0): V = S·span·(2/3)·(t^1.5 − 1), zero at cutoff.
+        // Repulsive  (t<0): V = 1.25·S·span·t² − S·span·(2/3), continuous at t=0.
         if (dist < cutoff) {
           const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
           const span = cutoff - eqDist;
-          const dr = dist - eqDist;
-          potential += strongForceStrength / (2 * span) * (dr * dr - span * span);
+          const t = (dist - eqDist) / span;
+          if (t >= 0) {
+            potential += strongForceStrength * span * (2 / 3) * (Math.pow(t, 1.5) - 1);
+          } else {
+            potential += strongForceStrength * span * (1.25 * t * t - 2 / 3);
+          }
         }
       }
     }
@@ -1576,7 +1587,7 @@ function drawHeatmap() {
 
   const cutoff = strongCutoff();
   const lambda = cutoff / 3;         // Decay length for Yukawa-like falloff
-  const needStrong = (strongMode !== 'none');
+  const needStrong = (strongMode === 'pink');  // cross-term only needed for pink mode
 
   // Log-scale normalization for Coulomb (tuned for bright glow)
   const cSens = 5000.0;
@@ -1584,14 +1595,16 @@ function drawHeatmap() {
   const cLogNorm = Math.log(1.0 + cSens * cRef);
   const cInvLog = 1.0 / cLogNorm;
 
-  // Log-scale normalization for strong force cross-term
+  // Log-scale normalization for strong force cross-term.
+  // sRef calibrated to the actual cross-term magnitude between two close nucleons,
+  // so the hole reaches full depth when particles are at equilibrium distance.
   const sSens = 5000.0;
-  const sRef = 0.02;
+  const sRef = 0.001;
   const sLogNorm = Math.log(1.0 + sSens * sRef);
   const sInvLog = 1.0 / sLogNorm;
 
   // Ambient glow level for "hole" mode — bright enough to see the hole clearly
-  const ambientR = 100, ambientG = 65, ambientB = 35, ambientA = 140;
+  const ambientR = 50, ambientG = 140, ambientB = 220, ambientA = 185;
 
   for (let py = 0; py < h; py++) {
     const worldY = py * invScale;
@@ -1644,6 +1657,24 @@ function drawHeatmap() {
         }
       }
 
+      // --- Strong force hole field (for 'hole' mode only) ---
+      // Sum a smooth radial decay from every nucleon. Each nucleon darkens a
+      // circular region out to the strong-force cutoff; contributions stack so
+      // bound clusters make a much deeper, wider black hole.
+      let holeField = 0;
+      if (strongMode === 'hole' && na >= 1) {
+        for (let i = 0; i < na; i++) {
+          const dx = worldX - allList[i].x;
+          const dy = worldY - allList[i].y;
+          const rSq = dx * dx + dy * dy;
+          const r = Math.sqrt(rSq < minRSq ? minRSq : rSq);
+          if (r < cutoff) {
+            const t = r / cutoff;                       // 0 at center, 1 at edge
+            holeField += (1.0 - t * t) * 1.5;          // 1.5× ensures center hits full black; smooth falloff to 0 at edge
+          }
+        }
+      }
+
       // --- Compose the pixel color based on strongMode ---
 
       // Start with Coulomb: negative cross-term → blue glow
@@ -1661,36 +1692,27 @@ function drawHeatmap() {
       }
 
       if (strongMode === 'hole') {
-        // "Hole" mode: start with ambient warm glow, subtract where
-        // strong cross-term is negative (bound regions become dark).
-        // Then alpha-composite the Coulomb blue on top.
+        // "Hole" mode: big black void wherever the strong force reaches.
+        // holeField sums the radial decay from every nucleon — one nucleon
+        // creates a dark disc, two close nucleons merge into a deeper hole.
+        const holeDepth = Math.min(1.0, holeField);
 
-        // Compute how much to subtract from the ambient
-        let subtraction = 0;
-        if (strongCross < 0) {
-          const absVal = -strongCross;
-          subtraction = Math.log(1.0 + sSens * absVal) * sInvLog;
-          if (subtraction > 1.0) subtraction = 1.0;
-        }
-
-        // Ambient with hole punched out: multiply ambient alpha by (1 - subtraction)
-        const holeAlpha = ambientA * (1.0 - subtraction);
-        const hR = ambientR;
-        const hG = ambientG;
-        const hB = ambientB;
-        const hA = holeAlpha;
-
-        // Alpha-composite Coulomb (foreground) over hole-ambient (background)
-        // Standard "over" compositing: result = fg + bg × (1 - fg_alpha)
+        // Composite Coulomb (foreground) over ambient (background), then punch
+        // the hole through everything — ambient, Coulomb, all of it goes to black.
         const fgA = a / 255;
-        const bgA = hA / 255;
+        const bgA = ambientA / 255;
         const outA = fgA + bgA * (1 - fgA);
+        let outR = 0, outG = 0, outB = 0;
         if (outA > 0) {
-          data[di]     = (r * fgA + hR * bgA * (1 - fgA)) / outA;
-          data[di + 1] = (g * fgA + hG * bgA * (1 - fgA)) / outA;
-          data[di + 2] = (b * fgA + hB * bgA * (1 - fgA)) / outA;
-          data[di + 3] = outA * 255;
+          outR = (r * fgA + ambientR * bgA * (1 - fgA)) / outA;
+          outG = (g * fgA + ambientG * bgA * (1 - fgA)) / outA;
+          outB = (b * fgA + ambientB * bgA * (1 - fgA)) / outA;
         }
+        const visibility = 1.0 - holeDepth;
+        data[di]     = outR * visibility;
+        data[di + 1] = outG * visibility;
+        data[di + 2] = outB * visibility;
+        data[di + 3] = outA * visibility * 255;
 
       } else if (strongMode === 'pink') {
         // "Pink glow" mode: render strong cross-term through pink colormap
@@ -1752,19 +1774,21 @@ function draw() {
     const p = particles[i];
     const isProton = p.type === 'proton';
 
-    // Glow: radial gradient fading to transparent, larger than the particle
-    const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, PARTICLE_RADIUS * 2.5);
-    if (isProton) {
-      gradient.addColorStop(0, 'rgba(255, 80, 80, 0.4)');
-      gradient.addColorStop(1, 'rgba(255, 80, 80, 0)');
-    } else {
-      gradient.addColorStop(0, 'rgba(160, 160, 200, 0.3)');
-      gradient.addColorStop(1, 'rgba(160, 160, 200, 0)');
+    // Glow: skip in hole mode — the heatmap already owns that space
+    if (strongMode !== 'hole') {
+      const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, PARTICLE_RADIUS * 2.5);
+      if (isProton) {
+        gradient.addColorStop(0, 'rgba(255, 80, 80, 0.4)');
+        gradient.addColorStop(1, 'rgba(255, 80, 80, 0)');
+      } else {
+        gradient.addColorStop(0, 'rgba(160, 160, 200, 0.3)');
+        gradient.addColorStop(1, 'rgba(160, 160, 200, 0)');
+      }
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, PARTICLE_RADIUS * 2.5, 0, Math.PI * 2);
+      ctx.fill();
     }
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, PARTICLE_RADIUS * 2.5, 0, Math.PI * 2);
-    ctx.fill();
 
     // Body: offset inner highlight (-3,-3) gives a 3D spherical look
     const bodyGrad = ctx.createRadialGradient(p.x - 3, p.y - 3, 1, p.x, p.y, PARTICLE_RADIUS);

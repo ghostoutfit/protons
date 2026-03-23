@@ -136,6 +136,43 @@
   }
 
   /* ========================================
+     TIME SCRUBBER BAR
+     ======================================== */
+  #scrubBar {
+    height: 56px;
+    background: #0e0e22;
+    border-top: 1px solid #2a2a4a;
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    gap: 14px;
+    flex-shrink: 0;
+  }
+  #scrubBar .scrub-label {
+    font-size: 12px;
+    color: #6b7280;
+    white-space: nowrap;
+  }
+  #scrubBar .scrub-time {
+    font-size: 12px;
+    color: #6b7280;
+    white-space: nowrap;
+    min-width: 7em;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  #timeSlider {
+    flex: 1;
+    height: 10px;
+    accent-color: #6366f1;
+    cursor: pointer;
+  }
+  #timeSlider:disabled {
+    opacity: 0.25;
+    cursor: not-allowed;
+  }
+
+  /* ========================================
      PORTRAIT ORIENTATION OVERLAY (mobile)
      ======================================== */
   #portrait-overlay {
@@ -190,6 +227,13 @@
 <!-- Full-bleed simulation canvas -->
 <canvas id="canvas"></canvas>
 
+<!-- Time scrubber — drag to move forward/backward through the interaction -->
+<div id="scrubBar">
+  <span class="scrub-label">Time</span>
+  <input type="range" id="timeSlider" min="0" max="0" value="0" disabled>
+  <span class="scrub-time" id="timeLabel">–</span>
+</div>
+
 <script>
 // ============================================================
 //  DOM REFERENCES
@@ -201,6 +245,8 @@ const replayBtn = document.getElementById('replayBtn');
 const zoomOutBtn = document.getElementById('zoomOutBtn');
 const heatmapToggle = document.getElementById('heatmapToggle');
 const strongModeGroup = document.getElementById('strongModeGroup');
+const timeSlider = document.getElementById('timeSlider');
+const timeLabelEl = document.getElementById('timeLabel');
 
 // ============================================================
 //  PHYSICS CONSTANTS (same model as dev/v3)
@@ -210,9 +256,10 @@ const SUBSTEPS = 20;
 
 // Fixed physics parameters (no sliders in v4)
 const coulombStrength = 30;
-const strongForceStrength = 5;
-const strongForceRange = 1.5;      // cutoff = PARTICLE_RADIUS * 2 * 1.5 = 30px
-const equilibriumRatio = 0.6;
+const strongForceStrength = 3;    // very gentle pull — slow visible acceleration across the 60px well
+const strongForceRange = 3.0;      // cutoff = PARTICLE_RADIUS * 2 * 3.0 = 60px
+const equilibriumRatio = 0.35;    // equilibrium at ~21px ≈ touching distance with 60px cutoff
+const damping = 1.00;              // velocity damping per frame — lets bound pair settle
 
 // ============================================================
 //  STATE
@@ -220,7 +267,14 @@ const equilibriumRatio = 0.6;
 let particles = [];       // Array of { x, y, vx, vy, type }
 let running = false;
 let animId = null;
-const speed = 1.5;        // dt per frame (internal, matches dev's 3.0x display)
+const speed = 1.5;        // dt per frame — fast approach; zoom slows to ×ZOOM_SPEED_RATIO
+
+// ============================================================
+//  HISTORY & SCRUBBER
+// ============================================================
+const MAX_HISTORY = 4000;
+let particleHistory = [];  // Each entry: { p: [{x,y,vx,vy,type},...], zt: zoomT }
+let scrubFrame = -1;       // -1 = live, >=0 = paused at a historical frame
 
 // ============================================================
 //  ZOOM STATE
@@ -234,9 +288,17 @@ let zoomDirection = 0;            // +1 = zooming in, -1 = zooming out, 0 = idle
 let zoomStartTime = 0;            // performance.now() when transition started
 let zoomStartT = 0;               // zoomT value when transition started
 let hasTriggeredZoom = false;      // True once the pair first enters strong range
-const ZOOM_DURATION_MS = 500;     // Half-second transition
-const ZOOM_MAGNIFICATION = 8;     // How much to magnify at full zoom
-const ZOOM_SPEED_RATIO = 0.1;     // 10% speed when fully zoomed
+let hasCollided = false;           // True once particles first physically touch — gates quantum blur and freezes energy graph
+let smoothedKE = 0;               // Exponential moving average of internal KE — used for spread so it doesn't oscillate wildly
+let collisionKE = 0;              // KE at moment of first contact — used for jitter spread
+let peakKE = 0;                   // Peak KE from pre-buffer — used for graph display
+let frozenIE = 0;                 // IE at collision moment — frozen for post-collision graph display
+let collisionFrame = -1;          // particleHistory index when collision first occurred — used to gate jitter in scrubber
+let collisionTime = -1;           // performance.now() when collision occurred — graph stops 100ms after
+let graphCursor = -1;             // energy sample index to highlight in the graph (-1 = live/none)
+const ZOOM_DURATION_MS = 600;     // Fast zoom transition
+const ZOOM_MAGNIFICATION = 6;     // How much to magnify at full zoom
+const ZOOM_SPEED_RATIO = 0.5;     // Half speed when zoomed in
 
 // ============================================================
 //  ENERGY GRAPH STATE
@@ -244,7 +306,8 @@ const ZOOM_SPEED_RATIO = 0.1;     // 10% speed when fully zoomed
 //  Tracks mutual KE (relative to center of mass), mutual PE
 //  (Coulomb + strong combined), and their total.
 // ============================================================
-let zoomEnergyHistory = [];       // Array of { ke, pe, total }
+let zoomEnergyHistory = [];       // Array of { ke, pe, total } — flushed at collision
+let graphPreBuffer = [];          // Rolling buffer of { t, e } — last 200ms before collision
 const GRAPH_MAX_SAMPLES = 1200;   // Max samples to keep
 
 // ============================================================
@@ -400,6 +463,13 @@ function step(dt) {
     }
   }
 
+  // Apply damping only after first collision — free approach is undamped
+  if (hasCollided) {
+    for (let i = 0; i < n; i++) {
+      particles[i].vx *= damping;
+      particles[i].vy *= damping;
+    }
+  }
 }
 
 // ============================================================
@@ -513,18 +583,18 @@ function drawHeatmap() {
 
   const cutoff = strongCutoff();
   const lambda = cutoff / 3;
-  const needStrong = (strongMode !== 'none');
+  const needStrong = (strongMode === 'pink');  // cross-term only needed for pink mode
 
   // Log-scale normalization
   const cSens = 5000.0, cRef = 0.02;
   const cLogNorm = Math.log(1.0 + cSens * cRef);
   const cInvLog = 1.0 / cLogNorm;
-  const sSens = 5000.0, sRef = 0.02;
+  const sSens = 5000.0, sRef = 0.001;
   const sLogNorm = Math.log(1.0 + sSens * sRef);
   const sInvLog = 1.0 / sLogNorm;
 
   // Ambient glow for "hole" mode — bright enough to see the hole clearly
-  const ambientR = 100, ambientG = 65, ambientB = 35, ambientA = 140;
+  const ambientR = 50, ambientG = 140, ambientB = 220, ambientA = 185;
 
   for (let py = 0; py < h; py++) {
     // Map heatmap pixel → world coordinate (accounting for zoom viewport)
@@ -573,6 +643,22 @@ function drawHeatmap() {
         }
       }
 
+      // --- Strong force hole field (for 'hole' mode only) ---
+      let holeField = 0;
+      if (strongMode === 'hole' && na >= 1) {
+        const holeRadius = 40;  // dark zone extends 40px from each particle center
+        for (let i = 0; i < na; i++) {
+          const dx = worldX - allList[i].x;
+          const dy = worldY - allList[i].y;
+          const rSq = dx * dx + dy * dy;
+          const r = Math.sqrt(rSq < minRSq ? minRSq : rSq);
+          if (r < holeRadius) {
+            const t = r / holeRadius;
+            holeField += Math.pow(1.0 - t, 3) * 8;  // cubic, scaled so surface = full black; drops sharply near edge
+          }
+        }
+      }
+
       // --- Compose pixel based on strongMode ---
       let r = 0, g = 0, b = 0, a = 0;
 
@@ -590,21 +676,21 @@ function drawHeatmap() {
       }
 
       if (strongMode === 'hole') {
-        let subtraction = 0;
-        if (strongCross < 0) {
-          subtraction = Math.log(1.0 + sSens * (-strongCross)) * sInvLog;
-          if (subtraction > 1.0) subtraction = 1.0;
-        }
-        const hA = ambientA * (1.0 - subtraction);
+        const holeDepth = Math.min(1.0, holeField);
         const fgA = a / 255;
-        const bgA = hA / 255;
+        const bgA = ambientA / 255;
         const outA = fgA + bgA * (1 - fgA);
+        let outR = 0, outG = 0, outB = 0;
         if (outA > 0) {
-          data[di]     = (r * fgA + ambientR * bgA * (1 - fgA)) / outA;
-          data[di + 1] = (g * fgA + ambientG * bgA * (1 - fgA)) / outA;
-          data[di + 2] = (b * fgA + ambientB * bgA * (1 - fgA)) / outA;
-          data[di + 3] = outA * 255;
+          outR = (r * fgA + ambientR * bgA * (1 - fgA)) / outA;
+          outG = (g * fgA + ambientG * bgA * (1 - fgA)) / outA;
+          outB = (b * fgA + ambientB * bgA * (1 - fgA)) / outA;
         }
+        const visibility = 1.0 - holeDepth;
+        data[di]     = outR * visibility;
+        data[di + 1] = outG * visibility;
+        data[di + 2] = outB * visibility;
+        data[di + 3] = outA * visibility * 255;
       } else if (strongMode === 'pink') {
         data[di] = r; data[di+1] = g; data[di+2] = b; data[di+3] = a;
         if (strongCross < 0) {
@@ -698,8 +784,8 @@ function computePairEnergy() {
 //  Same visual style as v3: amber KE, blue PE, green total.
 //  Fades in/out with zoomT.
 // ============================================================
-const GRAPH_W = 280;
-const GRAPH_H = 140;
+const GRAPH_W = 392;
+const GRAPH_H = 280;
 const GRAPH_PAD = 16;
 
 function drawOverlayGraph() {
@@ -724,15 +810,13 @@ function drawOverlayGraph() {
   ctx.fill();
   ctx.stroke();
 
+  // HACK: +59.7 offset on IE and Total — dumb display fudge, replace with proper calibration later
+  const IE_HACK_OFFSET = 59.7;
+
   // Compute Y-axis scale from visible data (auto-fit)
   const len = zoomEnergyHistory.length;
-  const visStart = Math.max(0, len - 400);  // Show last 400 samples
-  let maxVal = 1;
-  for (let i = visStart; i < len; i++) {
-    const e = zoomEnergyHistory[i];
-    maxVal = Math.max(maxVal, Math.abs(e.ke), Math.abs(e.pe), Math.abs(e.total));
-  }
-  maxVal *= 1.15;  // A bit of headroom
+  const visStart = 0;  // Show all samples
+  const maxVal = 100;  // Fixed scale 0–100
 
   const visCount = len - visStart;
   const xStep = (GRAPH_W - 8) / Math.max(visCount - 1, 1);
@@ -751,40 +835,78 @@ function drawOverlayGraph() {
   ctx.lineTo(plotL + GRAPH_W - 8, baseY);
   ctx.stroke();
 
-  // Draw a trace line
+  // Draw a trace line. For pe and total, add collisionKE after impact so total stays flat.
   function drawTrace(key, color) {
     ctx.strokeStyle = color;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     for (let i = 0; i < visCount; i++) {
       const e = zoomEnergyHistory[visStart + i];
+      const postCollision = collisionTime >= 0 && e.t >= collisionTime;
+      const hackOffset = (key === 'pe' || key === 'total') ? IE_HACK_OFFSET : 0;
+      let val;
+      if (postCollision) {
+        if (key === 'ke')    val = peakKE;
+        else if (key === 'pe')    val = frozenIE;
+        else /* total */     val = frozenIE + peakKE;
+      } else {
+        val = e[key];
+      }
       const x = plotL + i * xStep;
-      const y = plotT + plotH - (e[key] / maxVal) * (plotH - 4) - 2;
+      const y = plotT + plotH - ((val + hackOffset) / maxVal) * (plotH - 4) - 2;
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
     ctx.stroke();
   }
 
-  drawTrace('pe', '#3b82f6');    // Blue: potential energy
+  drawTrace('pe', '#3b82f6');    // Blue: IE (interaction energy)
   drawTrace('ke', '#f59e0b');    // Amber: kinetic energy
   drawTrace('total', '#22c55e'); // Green: total
 
-  // Legend (top-left inside the graph)
-  ctx.font = '10px sans-serif';
+  // Cursor: vertical line at current scrub position
+  if (graphCursor >= 0) {
+    const ci = graphCursor - visStart;
+    if (ci >= 0 && ci < visCount) {
+      const cx = plotL + ci * xStep;
+      ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(cx, plotT);
+      ctx.lineTo(cx, plotT + plotH);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  // Resolve displayed sample: cursor position or latest
+  const displayIdx = (graphCursor >= 0 && graphCursor < len) ? graphCursor : len - 1;
+  const displayE = zoomEnergyHistory[displayIdx];
+  const displayPost = collisionTime >= 0 && displayE.t >= collisionTime;
+  const displayKE  = displayPost ? peakKE : displayE.ke;
+  const displayIE  = (displayPost ? frozenIE : displayE.pe) + IE_HACK_OFFSET;
+  const displayTot = (displayPost ? frozenIE + peakKE : displayE.total) + IE_HACK_OFFSET;
+
+  // Legend with live values
+  ctx.font = '13px sans-serif';
   ctx.textAlign = 'left';
   const legendX = gx + 10;
-  const legendY = gy + 14;
+  const legendY = gy + 18;
   const labels = [
-    { text: 'KE (mutual)', color: '#f59e0b' },
-    { text: 'PE (field)',   color: '#3b82f6' },
-    { text: 'Total',        color: '#22c55e' },
+    { text: 'KE (particle speed)', color: '#f59e0b', val: displayKE },
+    { text: 'IE (field)*',         color: '#3b82f6', val: displayIE },
+    { text: 'Total*',              color: '#22c55e', val: displayTot },
   ];
   for (let i = 0; i < labels.length; i++) {
     ctx.fillStyle = labels[i].color;
-    ctx.fillRect(legendX, legendY + i * 13 - 6, 8, 8);
+    ctx.fillRect(legendX, legendY + i * 18 - 7, 10, 10);
     ctx.fillStyle = '#9ca3af';
-    ctx.fillText(labels[i].text, legendX + 12, legendY + i * 13);
+    ctx.fillText(labels[i].text, legendX + 15, legendY + i * 18);
+    ctx.fillStyle = labels[i].color;
+    ctx.textAlign = 'right';
+    ctx.fillText(labels[i].val.toFixed(1), gx + GRAPH_W - 10, legendY + i * 18);
+    ctx.textAlign = 'left';
   }
 
   ctx.restore();
@@ -873,47 +995,77 @@ function draw() {
     drawHeatmap();
   }
 
+  // --- Quantum blur state: only active once particles have physically touched ---
+  const bound = hasCollided;
+  let quantumSpread = 0;
+  if (bound) {
+    const MIN_SPREAD = 6;
+    const MAX_SPREAD = 22;
+    const breathe = 1 + 0.18 * Math.sin(performance.now() * 0.0045);
+    quantumSpread = (MIN_SPREAD + Math.min(collisionKE, 10) * 1.2) * breathe;
+    if (quantumSpread > MAX_SPREAD) quantumSpread = MAX_SPREAD;
+  }
+
+  // Helper: draw one particle body at (px, py) at given opacity
+  function drawBody(px, py, isProton, alpha) {
+    ctx.globalAlpha = alpha;
+    const g = ctx.createRadialGradient(px - 3, py - 3, 1, px, py, PARTICLE_RADIUS);
+    if (isProton) {
+      g.addColorStop(0, '#ff9999');
+      g.addColorStop(0.7, '#ff4444');
+      g.addColorStop(1, '#cc2222');
+    } else {
+      g.addColorStop(0, '#ccccdd');
+      g.addColorStop(0.7, '#8888aa');
+      g.addColorStop(1, '#666688');
+    }
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(px, py, PARTICLE_RADIUS, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+  }
+
   // --- Draw particles in world space ---
   for (let i = 0; i < particles.length; i++) {
     const p = particles[i];
     const isProton = p.type === 'proton';
 
-    // Glow halo
-    const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, PARTICLE_RADIUS * 2.5);
-    if (isProton) {
-      gradient.addColorStop(0, 'rgba(255, 80, 80, 0.4)');
-      gradient.addColorStop(1, 'rgba(255, 80, 80, 0)');
-    } else {
-      gradient.addColorStop(0, 'rgba(160, 160, 200, 0.3)');
-      gradient.addColorStop(1, 'rgba(160, 160, 200, 0)');
-    }
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, PARTICLE_RADIUS * 2.5, 0, Math.PI * 2);
-    ctx.fill();
+    if (bound) {
+      // Quantum blur: ghost copies spread by Gaussian, radius breathing with KE
+      const NUM_GHOSTS = 10;
+      for (let g = 0; g < NUM_GHOSTS; g++) {
+        // Uniform disk — no Gaussian tails sending ghosts off-screen
+        const r = quantumSpread * Math.sqrt(Math.random());
+        const theta = Math.random() * Math.PI * 2;
+        drawBody(p.x + r * Math.cos(theta), p.y + r * Math.sin(theta), isProton, 0.10 + Math.random() * 0.08);
+      }
+      // Brighter core to anchor the eye
+      drawBody(p.x, p.y, isProton, 0.55);
 
-    // Body with 3D highlight
-    const bodyGrad = ctx.createRadialGradient(p.x - 3, p.y - 3, 1, p.x, p.y, PARTICLE_RADIUS);
-    if (isProton) {
-      bodyGrad.addColorStop(0, '#ff9999');
-      bodyGrad.addColorStop(0.7, '#ff4444');
-      bodyGrad.addColorStop(1, '#cc2222');
     } else {
-      bodyGrad.addColorStop(0, '#ccccdd');
-      bodyGrad.addColorStop(0.7, '#8888aa');
-      bodyGrad.addColorStop(1, '#666688');
+      // Normal rendering
+      if (strongMode !== 'hole') {
+        const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, PARTICLE_RADIUS * 2.5);
+        if (isProton) {
+          gradient.addColorStop(0, 'rgba(255, 80, 80, 0.4)');
+          gradient.addColorStop(1, 'rgba(255, 80, 80, 0)');
+        } else {
+          gradient.addColorStop(0, 'rgba(160, 160, 200, 0.3)');
+          gradient.addColorStop(1, 'rgba(160, 160, 200, 0)');
+        }
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, PARTICLE_RADIUS * 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      drawBody(p.x, p.y, isProton, 1.0);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(isProton ? '+' : 'n', p.x, p.y + 1);
     }
-    ctx.fillStyle = bodyGrad;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, PARTICLE_RADIUS, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Label
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 12px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(isProton ? '+' : 'n', p.x, p.y + 1);
   }
 
   ctx.restore();
@@ -939,12 +1091,47 @@ function draw() {
 }
 
 // ============================================================
+//  RENDER A HISTORICAL FRAME (used by scrubber)
+// ============================================================
+function renderFrame(idx) {
+  const frame = particleHistory[idx];
+  if (!frame) return;
+  // Temporarily inject historical state so draw() renders correctly
+  const liveParticles = particles;
+  const liveZoomT = zoomT;
+  const liveCollided = hasCollided;
+  const liveGraphCursor = graphCursor;
+  particles = frame.p;
+  zoomT = frame.zt;
+  // Jitter only if this frame is at or after the collision moment
+  hasCollided = (collisionFrame >= 0 && idx >= collisionFrame);
+  // Find the energy sample whose timestamp is closest to this frame's timestamp
+  if (frame.t !== undefined && zoomEnergyHistory.length > 0) {
+    let lo = 0, hi = zoomEnergyHistory.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (zoomEnergyHistory[mid].t < frame.t) lo = mid + 1;
+      else hi = mid;
+    }
+    graphCursor = lo;
+  } else {
+    graphCursor = -1;
+  }
+  draw();
+  particles = liveParticles;
+  zoomT = liveZoomT;
+  hasCollided = liveCollided;
+  graphCursor = liveGraphCursor;
+}
+
+// ============================================================
 //  LAYOUT / RESIZE
 // ============================================================
 function resize() {
   const toolbarH = document.getElementById('toolbar').offsetHeight;
+  const scrubH = document.getElementById('scrubBar').offsetHeight;
   canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight - toolbarH;
+  canvas.height = window.innerHeight - toolbarH - scrubH;
   if (!running) draw();
 }
 window.addEventListener('resize', resize);
@@ -975,12 +1162,26 @@ replayBtn.addEventListener('click', () => {
   cancelAnimationFrame(animId);
   goBtn.textContent = 'Go';
   goBtn.classList.remove('running');
-  // Reset zoom and energy graph state
+  // Reset zoom, energy, and history state
   zoomT = 0;
   zoomDirection = 0;
   hasTriggeredZoom = false;
+  hasCollided = false;
+  smoothedKE = 0;
+  collisionKE = 0;
+  peakKE = 0;
+  frozenIE = 0;
+  collisionFrame = -1;
+  collisionTime = -1;
   zoomEnergyHistory = [];
+  graphPreBuffer = [];
   zoomOutBtn.style.display = 'none';
+  particleHistory = [];
+  scrubFrame = -1;
+  timeSlider.value = 0;
+  timeSlider.max = 0;
+  timeSlider.disabled = true;
+  timeLabelEl.textContent = '–';
   // Restore and go
   restoreSnapshot();
   draw();
@@ -1000,6 +1201,22 @@ zoomOutBtn.addEventListener('click', () => {
 });
 
 // ============================================================
+//  TIME SCRUBBER
+// ============================================================
+timeSlider.addEventListener('input', () => {
+  const val = parseInt(timeSlider.value);
+  if (val >= particleHistory.length - 1) {
+    // Dragged back to live end — resume
+    scrubFrame = -1;
+    timeLabelEl.textContent = `${particleHistory.length}`;
+  } else {
+    scrubFrame = val;
+    timeLabelEl.textContent = `${val + 1} / ${particleHistory.length}`;
+    if (!running) renderFrame(val);
+  }
+});
+
+// ============================================================
 //  HEATMAP TOGGLE + STRONG FORCE MODE
 // ============================================================
 heatmapToggle.addEventListener('change', () => {
@@ -1015,43 +1232,100 @@ document.querySelectorAll('input[name="strongMode"]').forEach(radio => {
 });
 
 // ============================================================
-//  ANIMATION LOOP — with zoom detection and speed modulation
+//  ANIMATION LOOP — with zoom detection, speed modulation,
+//  history recording, and scrubber support
 // ============================================================
 function loop() {
   if (!running) return;
 
-  // --- Detect first entry into strong force range ---
-  if (!hasTriggeredZoom && particles.length === 2) {
-    const dx = particles[1].x - particles[0].x;
-    const dy = particles[1].y - particles[0].y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < strongCutoff()) {
-      hasTriggeredZoom = true;
-      zoomEnergyHistory = [];  // Start fresh energy history
-      startZoomTransition(1);  // Begin zoom-in
-    }
-  }
+  if (scrubFrame >= 0) {
+    // --- Scrub mode: physics paused, display historical frame ---
+    timeLabelEl.textContent = `${scrubFrame + 1} / ${particleHistory.length}`;
+    renderFrame(scrubFrame);
+  } else {
+    // --- Live mode: advance physics ---
 
-  // --- Update zoom transition ---
-  updateZoom();
-
-  // --- Modulate simulation speed based on zoom ---
-  // At zoomT=0: full speed. At zoomT=1: 10% speed.
-  const speedMul = 1 - zoomT * (1 - ZOOM_SPEED_RATIO);
-  step(speed * speedMul);
-
-  // --- Accumulate energy samples once zoom has triggered ---
-  if (hasTriggeredZoom) {
-    const e = computePairEnergy();
-    if (e) {
-      zoomEnergyHistory.push(e);
-      if (zoomEnergyHistory.length > GRAPH_MAX_SAMPLES) {
-        zoomEnergyHistory.shift();
+    // Detect first entry into strong force range
+    if (!hasTriggeredZoom && particles.length === 2) {
+      const dx = particles[1].x - particles[0].x;
+      const dy = particles[1].y - particles[0].y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 80) {   // start zoom just outside strong force range (cutoff = 60px)
+        hasTriggeredZoom = true;
+        zoomEnergyHistory = [];
+        startZoomTransition(1);
       }
     }
+
+    // Update zoom transition
+    updateZoom();
+
+    // Pause physics while zoom transition is in progress
+    if (zoomDirection === 0) {
+      const speedMul = 1 - zoomT * (1 - ZOOM_SPEED_RATIO);
+      step(speed * speedMul);
+    }
+
+    // Detect first physical contact — latches hasCollided permanently
+    if (!hasCollided && particles.length === 2) {
+      const cdx = particles[1].x - particles[0].x;
+      const cdy = particles[1].y - particles[0].y;
+      if (Math.sqrt(cdx * cdx + cdy * cdy) < PARTICLE_RADIUS * 2 + 1) {
+        hasCollided = true;
+        collisionFrame = particleHistory.length;  // next frame pushed will be index collisionFrame
+        collisionTime = performance.now();
+        // Flush pre-buffer (last 200ms) into the graph, preserving timestamps
+        zoomEnergyHistory = graphPreBuffer.map(s => ({ ...s.e, t: s.t }));
+        // Peak KE for graph (approach peak, before repulsive core slows them)
+        peakKE = graphPreBuffer.reduce((mx, s) => Math.max(mx, s.e.ke), 0);
+        // Freeze IE at the last pre-buffer sample (IE at moment of contact)
+        frozenIE = graphPreBuffer.length > 0 ? graphPreBuffer[graphPreBuffer.length - 1].e.pe : 0;
+        graphPreBuffer = [];
+        // Instantaneous KE for jitter spread (same as before)
+        const ce = computePairEnergy();
+        collisionKE = ce ? ce.ke : 0;
+      }
+    }
+
+    // Graph recording: 100ms pre-collision buffer + 100ms post-collision window.
+    const now = performance.now();
+    if (!hasCollided) {
+      const e = computePairEnergy();
+      if (e) {
+        graphPreBuffer.push({ t: now, e });
+        // Trim entries older than 100ms
+        const cutoffT = now - 100;
+        let i = 0;
+        while (i < graphPreBuffer.length && graphPreBuffer[i].t < cutoffT) i++;
+        if (i > 0) graphPreBuffer.splice(0, i);
+      }
+    } else if (collisionTime >= 0) {
+      if (now - collisionTime < 120) {
+        // Post-collision window: record live samples
+        const e = computePairEnergy();
+        if (e) {
+          zoomEnergyHistory.push({ ...e, t: now });
+          if (zoomEnergyHistory.length > GRAPH_MAX_SAMPLES) zoomEnergyHistory.shift();
+        }
+      }
+    }
+
+    // Record history snapshot — include current energy index so scrubber can drive graph cursor
+    particleHistory.push({ p: particles.map(p => ({ ...p })), zt: zoomT, t: now });
+    if (particleHistory.length > MAX_HISTORY) particleHistory.shift();
+
+    // Update slider to live (rightmost) position
+    timeSlider.disabled = false;
+    timeSlider.max = particleHistory.length - 1;
+    timeSlider.value = timeSlider.max;
+    timeLabelEl.textContent = `${particleHistory.length}`;
+
+    // Keep graph cursor at live end (most recent sample)
+    graphCursor = zoomEnergyHistory.length - 1;
+
+    draw();
   }
 
-  draw();
   animId = requestAnimationFrame(loop);
 }
 
