@@ -213,7 +213,6 @@ const coulombStrength = 30;
 const strongForceStrength = 5;
 const strongForceRange = 1.5;      // cutoff = PARTICLE_RADIUS * 2 * 1.5 = 30px
 const equilibriumRatio = 0.6;
-const damping = 0.98;
 
 // ============================================================
 //  STATE
@@ -401,66 +400,6 @@ function step(dt) {
     }
   }
 
-  // Damping once per frame — only when particles are within the
-  // strong force well. During free approach there's no reason to
-  // damp; without this guard, 0.98^200 kills 98% of KE before
-  // the neutrons even reach each other.
-  if (damping < 1.0 && n === 2) {
-    const a = particles[0], b = particles[1];
-    const ddx = b.x - a.x, ddy = b.y - a.y;
-    const ddist = Math.sqrt(ddx * ddx + ddy * ddy);
-    if (ddist < strongCutoff()) {
-      for (let i = 0; i < n; i++) {
-        particles[i].vx *= damping;
-        particles[i].vy *= damping;
-      }
-    }
-  }
-
-  // --- Position averaging / settling ---
-  // Once the two particles are within the strong force well and their
-  // relative speed is low, gently nudge them toward the equilibrium
-  // separation. This prevents visible jitter at high zoom. The blend
-  // rate is proportional to how slow they're moving — fast motion is
-  // unaffected, only the final settling is smoothed.
-  if (n === 2) {
-    const a = particles[0], b = particles[1];
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const cutoff2 = strongCutoff();
-
-    if (dist < cutoff2 && dist > 0) {
-      // Relative speed
-      const dvx = b.vx - a.vx;
-      const dvy = b.vy - a.vy;
-      const relSpeed = Math.sqrt(dvx * dvx + dvy * dvy);
-
-      // Only settle when relative speed is small (< 0.3 px/frame)
-      if (relSpeed < 0.3) {
-        const eqDist = Math.max(cutoff2 * equilibriumRatio, PARTICLE_RADIUS * 2);
-        const blend = 0.05 * (1 - relSpeed / 0.3); // Stronger blend at lower speed
-        const nx = dx / dist;
-        const ny = dy / dist;
-        const targetDist = eqDist;
-        const correction = (targetDist - dist) * blend * 0.5;
-
-        a.x -= nx * correction;
-        a.y -= ny * correction;
-        b.x += nx * correction;
-        b.y += ny * correction;
-
-        // Also damp relative velocity more aggressively when settling
-        const velDamp = 0.9;
-        const cmvx = (a.vx + b.vx) / 2;
-        const cmvy = (a.vy + b.vy) / 2;
-        a.vx = cmvx + (a.vx - cmvx) * velDamp;
-        a.vy = cmvy + (a.vy - cmvy) * velDamp;
-        b.vx = cmvx + (b.vx - cmvx) * velDamp;
-        b.vy = cmvy + (b.vy - cmvy) * velDamp;
-      }
-    }
-  }
 }
 
 // ============================================================
