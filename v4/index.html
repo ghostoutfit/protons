@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fusion Zoom — v4</title>
+<style>
+  /* ========================================
+     RESET & BASE STYLES
+     ======================================== */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a1a;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ========================================
+     TOOLBAR — minimal: title + Go + Replay
+     ======================================== */
+  #toolbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 20px;
+    background: #12122a;
+    border-bottom: 1px solid #2a2a4a;
+    z-index: 10;
+  }
+
+  #toolbar h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #ff6b6b;
+    margin-right: 8px;
+    white-space: nowrap;
+  }
+
+  .btn {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  #goBtn {
+    background: #22c55e;
+    color: #fff;
+  }
+  #goBtn:hover { background: #16a34a; }
+  #goBtn.running {
+    background: #ef4444;
+  }
+  #goBtn.running:hover { background: #dc2626; }
+
+  #replayBtn {
+    background: #0e7490;
+    color: #fff;
+  }
+  #replayBtn:hover { background: #0891b2; }
+  #replayBtn:disabled {
+    background: #1e293b;
+    color: #4b5563;
+    cursor: not-allowed;
+  }
+
+  #zoomOutBtn {
+    background: #7c3aed;
+    color: #fff;
+    display: none;
+  }
+  #zoomOutBtn:hover { background: #6d28d9; }
+
+  /* ========================================
+     STRONG FORCE VISUALIZATION TOGGLE
+     Three-position radio pill: Hole / Pink glow / None
+     ======================================== */
+  .toggle-label {
+    font-size: 13px;
+    color: #9ca3af;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .toggle-label input[type="checkbox"] {
+    accent-color: #f59e0b;
+  }
+
+  #strongModeGroup {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 4px;
+    transition: opacity 0.15s;
+  }
+
+  #strongModeGroup.hidden { display: none; }
+
+  #strongModeGroup label {
+    font-size: 11px;
+    color: #6b7280;
+    padding: 2px 8px;
+    border: 1px solid #3a3a5a;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+
+  #strongModeGroup input[type="radio"] { display: none; }
+
+  #strongModeGroup input[type="radio"]:checked + label {
+    background: #2a2a4a;
+    color: #e0e0e0;
+    border-color: #6366f1;
+  }
+
+  /* ========================================
+     CANVAS — fills remaining space
+     ======================================== */
+  #canvas {
+    flex: 1;
+    display: block;
+    cursor: default;
+  }
+
+  /* ========================================
+     PORTRAIT ORIENTATION OVERLAY (mobile)
+     ======================================== */
+  #portrait-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #0a0a1a;
+    color: #e0e0e0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 2rem;
+  }
+
+  #portrait-overlay .rotate-icon { font-size: 64px; margin-bottom: 1.5rem; }
+  #portrait-overlay h2 { font-size: 22px; font-weight: 600; color: #ff6b6b; margin-bottom: 0.75rem; }
+  #portrait-overlay p { font-size: 16px; color: #9ca3af; max-width: 280px; }
+
+  @media (max-width: 860px) and (orientation: portrait) {
+    #portrait-overlay { display: flex; }
+    body > *:not(#portrait-overlay) { display: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Portrait overlay (mobile) -->
+<div id="portrait-overlay">
+  <div class="rotate-icon">&#x1F4F1;&#x21BB;</div>
+  <h2>Rotate Your Device</h2>
+  <p>Go horizontal to use this app</p>
+</div>
+
+<!-- Toolbar: just title + Go + Replay -->
+<div id="toolbar">
+  <h1>Fusion Zoom</h1>
+  <button class="btn" id="goBtn">Go</button>
+  <button class="btn" id="replayBtn" disabled>Replay</button>
+  <button class="btn" id="zoomOutBtn">Zoom Out</button>
+  <!-- Energy map toggle + strong force render mode -->
+  <label class="toggle-label"><input type="checkbox" id="heatmapToggle" checked> Energy map</label>
+  <span id="strongModeGroup">
+    Strong:
+    <input type="radio" name="strongMode" id="strongNone" value="none"><label for="strongNone">None</label>
+    <input type="radio" name="strongMode" id="strongHole" value="hole" checked><label for="strongHole">Hole</label>
+    <input type="radio" name="strongMode" id="strongPink" value="pink"><label for="strongPink">Pink glow</label>
+  </span>
+</div>
+
+<!-- Full-bleed simulation canvas -->
+<canvas id="canvas"></canvas>
+
+<script>
+// ============================================================
+//  DOM REFERENCES
+// ============================================================
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const goBtn = document.getElementById('goBtn');
+const replayBtn = document.getElementById('replayBtn');
+const zoomOutBtn = document.getElementById('zoomOutBtn');
+const heatmapToggle = document.getElementById('heatmapToggle');
+const strongModeGroup = document.getElementById('strongModeGroup');
+
+// ============================================================
+//  PHYSICS CONSTANTS (same model as dev/v3)
+// ============================================================
+const PARTICLE_RADIUS = 10;
+const SUBSTEPS = 20;
+
+// Fixed physics parameters (no sliders in v4)
+const coulombStrength = 30;
+const strongForceStrength = 5;
+const strongForceRange = 1.5;      // cutoff = PARTICLE_RADIUS * 2 * 1.5 = 30px
+const equilibriumRatio = 0.6;
+const damping = 0.98;
+
+// ============================================================
+//  STATE
+// ============================================================
+let particles = [];       // Array of { x, y, vx, vy, type }
+let running = false;
+let animId = null;
+const speed = 1.5;        // dt per frame (internal, matches dev's 3.0x display)
+
+// ============================================================
+//  ZOOM STATE
+//  zoomT smoothly transitions from 0 (normal view) to 1 (fully
+//  zoomed). The transition takes ZOOM_DURATION_MS. When zoomed,
+//  the simulation runs at 10% speed and the viewport magnifies
+//  to center on the pair midpoint.
+// ============================================================
+let zoomT = 0;                    // Current interpolation: 0 = normal, 1 = zoomed
+let zoomDirection = 0;            // +1 = zooming in, -1 = zooming out, 0 = idle
+let zoomStartTime = 0;            // performance.now() when transition started
+let zoomStartT = 0;               // zoomT value when transition started
+let hasTriggeredZoom = false;      // True once the pair first enters strong range
+const ZOOM_DURATION_MS = 500;     // Half-second transition
+const ZOOM_MAGNIFICATION = 8;     // How much to magnify at full zoom
+const ZOOM_SPEED_RATIO = 0.1;     // 10% speed when fully zoomed
+
+// ============================================================
+//  ENERGY GRAPH STATE
+//  Accumulates energy samples from the moment zoom triggers.
+//  Tracks mutual KE (relative to center of mass), mutual PE
+//  (Coulomb + strong combined), and their total.
+// ============================================================
+let zoomEnergyHistory = [];       // Array of { ke, pe, total }
+const GRAPH_MAX_SAMPLES = 1200;   // Max samples to keep
+
+// ============================================================
+//  HEATMAP STATE
+// ============================================================
+let showHeatmap = true;           // Master toggle for energy density overlay
+let strongMode = 'hole';          // 'none' | 'hole' | 'pink'
+
+// Offscreen canvas for heatmap rendering (half resolution)
+const hmCanvas = document.createElement('canvas');
+const hmCtx = hmCanvas.getContext('2d');
+
+// ============================================================
+//  INITIAL CONDITIONS
+//  Two neutrons placed 300px apart horizontally, centered on
+//  the canvas, with inward velocities aimed at each other.
+//
+//  Strong force cutoff = 30px, equilibrium ~20px.
+//  Approach speed of 0.5 px/dt gives a visually pleasant pace:
+//  fast enough that the approach doesn't crawl, slow enough
+//  that during the 10% slowdown students can watch the energy
+//  graph traces evolve as the particles enter the well.
+//
+//  With damping = 0.98 the particles shed KE in the well and
+//  settle to the equilibrium distance over ~50-100 frames.
+// ============================================================
+function setupScenario() {
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+  const separation = 300;    // Starting distance (>> 30px cutoff)
+  const approachSpeed = 0.5; // px per internal dt unit
+
+  particles = [
+    { x: cx - separation / 2, y: cy, vx:  approachSpeed, vy: 0, type: 'neutron' },
+    { x: cx + separation / 2, y: cy, vx: -approachSpeed, vy: 0, type: 'neutron' },
+  ];
+}
+
+// Snapshot for replay
+let snapshot = null;
+
+function takeSnapshot() {
+  snapshot = particles.map(p => ({ ...p }));
+  replayBtn.disabled = false;
+}
+
+function restoreSnapshot() {
+  if (!snapshot) return;
+  particles = snapshot.map(p => ({ ...p }));
+}
+
+// ============================================================
+//  FORCE MODEL (identical to dev/v3)
+//  Coulomb: K/r² repulsion, proton-proton only
+//  Strong: spring-like linear ramp with equilibrium point
+// ============================================================
+function strongCutoff() {
+  return PARTICLE_RADIUS * 2 * strongForceRange;
+}
+
+function pairForce(dist, distSq, aType, bType) {
+  let force = 0;
+
+  // Coulomb: proton-proton only (irrelevant for neutron-neutron, but kept for completeness)
+  if (aType === 'proton' && bType === 'proton') {
+    const softDistSq = Math.max(distSq, PARTICLE_RADIUS * PARTICLE_RADIUS);
+    force += coulombStrength / softDistSq;
+  }
+
+  // Strong nuclear force: linear ramp giving quadratic potential well
+  // Below equilibrium → repulsive (positive), above → attractive (negative)
+  const cutoff = strongCutoff();
+  if (dist < cutoff) {
+    const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
+    const span = cutoff - eqDist;
+    const t = (dist - eqDist) / span;
+    force -= t * strongForceStrength;
+  }
+
+  return force;
+}
+
+// ============================================================
+//  PHYSICS STEP (forces + substep integration + hard-sphere)
+//  Same substep loop as dev/v3 for energy conservation.
+// ============================================================
+function step(dt) {
+  const n = particles.length;
+  const subDt = dt / SUBSTEPS;
+
+  for (let sub = 0; sub < SUBSTEPS; sub++) {
+    // Pairwise forces
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const a = particles[i];
+        const b = particles[j];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const distSq = dx * dx + dy * dy;
+        const dist = Math.sqrt(distSq);
+        if (dist < 0.01) continue;
+
+        const force = pairForce(dist, distSq, a.type, b.type);
+        const fx = force * (dx / dist);
+        const fy = force * (dy / dist);
+        a.vx -= fx * subDt;
+        a.vy -= fy * subDt;
+        b.vx += fx * subDt;
+        b.vy += fy * subDt;
+      }
+    }
+
+    // Integrate positions (symplectic Euler)
+    for (let i = 0; i < n; i++) {
+      particles[i].x += particles[i].vx * subDt;
+      particles[i].y += particles[i].vy * subDt;
+    }
+
+    // Hard-sphere collision constraint
+    const minSep = PARTICLE_RADIUS * 2;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const a = particles[i];
+        const b = particles[j];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        const dSq = dx * dx + dy * dy;
+        if (dSq >= minSep * minSep) continue;
+        let d = Math.sqrt(dSq);
+        if (d < 0.001) { dx = 1; dy = 0; d = 0.001; }
+        const nx = dx / d;
+        const ny = dy / d;
+        const overlap = minSep - d;
+
+        // Push apart equally
+        a.x -= nx * overlap * 0.5;
+        a.y -= ny * overlap * 0.5;
+        b.x += nx * overlap * 0.5;
+        b.y += ny * overlap * 0.5;
+
+        // Zero out approaching normal velocity (inelastic safety net)
+        const dvx = b.vx - a.vx;
+        const dvy = b.vy - a.vy;
+        const dvDotN = dvx * nx + dvy * ny;
+        if (dvDotN < 0) {
+          const half = dvDotN * 0.5;
+          a.vx += half * nx;
+          a.vy += half * ny;
+          b.vx -= half * nx;
+          b.vy -= half * ny;
+        }
+      }
+    }
+  }
+
+  // Damping once per frame
+  if (damping < 1.0) {
+    for (let i = 0; i < n; i++) {
+      particles[i].vx *= damping;
+      particles[i].vy *= damping;
+    }
+  }
+
+  // --- Position averaging / settling ---
+  // Once the two particles are within the strong force well and their
+  // relative speed is low, gently nudge them toward the equilibrium
+  // separation. This prevents visible jitter at high zoom. The blend
+  // rate is proportional to how slow they're moving — fast motion is
+  // unaffected, only the final settling is smoothed.
+  if (n === 2) {
+    const a = particles[0], b = particles[1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const cutoff2 = strongCutoff();
+
+    if (dist < cutoff2 && dist > 0) {
+      // Relative speed
+      const dvx = b.vx - a.vx;
+      const dvy = b.vy - a.vy;
+      const relSpeed = Math.sqrt(dvx * dvx + dvy * dvy);
+
+      // Only settle when relative speed is small (< 0.3 px/frame)
+      if (relSpeed < 0.3) {
+        const eqDist = Math.max(cutoff2 * equilibriumRatio, PARTICLE_RADIUS * 2);
+        const blend = 0.05 * (1 - relSpeed / 0.3); // Stronger blend at lower speed
+        const nx = dx / dist;
+        const ny = dy / dist;
+        const targetDist = eqDist;
+        const correction = (targetDist - dist) * blend * 0.5;
+
+        a.x -= nx * correction;
+        a.y -= ny * correction;
+        b.x += nx * correction;
+        b.y += ny * correction;
+
+        // Also damp relative velocity more aggressively when settling
+        const velDamp = 0.9;
+        const cmvx = (a.vx + b.vx) / 2;
+        const cmvy = (a.vy + b.vy) / 2;
+        a.vx = cmvx + (a.vx - cmvx) * velDamp;
+        a.vy = cmvy + (a.vy - cmvy) * velDamp;
+        b.vx = cmvx + (b.vx - cmvx) * velDamp;
+        b.vy = cmvy + (b.vy - cmvy) * velDamp;
+      }
+    }
+  }
+}
+
+// ============================================================
+//  COLORMAPS
+// ============================================================
+
+// Coulomb energy: blue sequential (transparent → deep blue → near-white)
+const COULOMB_COLORMAP = new Uint8Array(256 * 4);
+(function() {
+  const stops = [
+    { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0 },
+    { t: 0.2,  r: 5,   g: 20,  b: 140, a: 77 },
+    { t: 0.5,  r: 20,  g: 70,  b: 220, a: 153 },
+    { t: 0.8,  r: 60,  g: 160, b: 255, a: 217 },
+    { t: 1.0,  r: 200, g: 235, b: 255, a: 255 },
+  ];
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    let s0 = stops[0], s1 = stops[1];
+    for (let s = 0; s < stops.length - 1; s++) {
+      if (t >= stops[s].t && t <= stops[s + 1].t) { s0 = stops[s]; s1 = stops[s + 1]; break; }
+    }
+    const f = (t - s0.t) / (s1.t - s0.t);
+    const idx = i * 4;
+    COULOMB_COLORMAP[idx]     = s0.r + (s1.r - s0.r) * f;
+    COULOMB_COLORMAP[idx + 1] = s0.g + (s1.g - s0.g) * f;
+    COULOMB_COLORMAP[idx + 2] = s0.b + (s1.b - s0.b) * f;
+    COULOMB_COLORMAP[idx + 3] = s0.a + (s1.a - s0.a) * f;
+  }
+})();
+
+// Strong force "Pink glow" mode: transparent → pink → magenta → white
+const PINK_COLORMAP = new Uint8Array(256 * 4);
+(function() {
+  const stops = [
+    { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0 },
+    { t: 0.25, r: 160, g: 30,  b: 90,  a: 80 },
+    { t: 0.5,  r: 220, g: 50,  b: 140, a: 160 },
+    { t: 0.75, r: 200, g: 60,  b: 200, a: 220 },
+    { t: 1.0,  r: 255, g: 200, b: 255, a: 255 },
+  ];
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    let s0 = stops[0], s1 = stops[1];
+    for (let s = 0; s < stops.length - 1; s++) {
+      if (t >= stops[s].t && t <= stops[s + 1].t) { s0 = stops[s]; s1 = stops[s + 1]; break; }
+    }
+    const f = (t - s0.t) / (s1.t - s0.t);
+    const idx = i * 4;
+    PINK_COLORMAP[idx]     = s0.r + (s1.r - s0.r) * f;
+    PINK_COLORMAP[idx + 1] = s0.g + (s1.g - s0.g) * f;
+    PINK_COLORMAP[idx + 2] = s0.b + (s1.b - s0.b) * f;
+    PINK_COLORMAP[idx + 3] = s0.a + (s1.a - s0.a) * f;
+  }
+})();
+
+// ============================================================
+//  UNIFIED HEATMAP RENDERING
+//  Computes Coulomb and strong force cross-terms per pixel,
+//  renders based on strongMode. Drawn in world space so it
+//  zooms correctly with the canvas transform.
+//
+//  The heatmap covers the visible viewport (accounting for zoom).
+//  At high zoom, we render more pixels in world space for the
+//  smaller visible region, keeping detail sharp.
+// ============================================================
+function drawHeatmap() {
+  // Compute the world-space region currently visible on screen
+  const zoomScale = 1 + (ZOOM_MAGNIFICATION - 1) * zoomT;
+  let midX = canvas.width / 2;
+  let midY = canvas.height / 2;
+  if (particles.length === 2) {
+    midX = (particles[0].x + particles[1].x) / 2;
+    midY = (particles[0].y + particles[1].y) / 2;
+  }
+
+  // Visible world region: canvas dimensions / zoomScale, centered on midpoint
+  const visW = canvas.width / zoomScale;
+  const visH = canvas.height / zoomScale;
+  const worldLeft = midX - visW / 2;
+  const worldTop = midY - visH / 2;
+
+  // Heatmap resolution: half of canvas pixels for performance
+  const scale = 0.5;
+  const w = Math.ceil(canvas.width * scale);
+  const h = Math.ceil(canvas.height * scale);
+
+  hmCanvas.width = w;
+  hmCanvas.height = h;
+
+  const imageData = hmCtx.createImageData(w, h);
+  const data = imageData.data;
+
+  // Build particle lists
+  const protonList = [];
+  const allList = [];
+  for (let i = 0; i < particles.length; i++) {
+    allList.push(particles[i]);
+    if (particles[i].type === 'proton') protonList.push(particles[i]);
+  }
+  const np = protonList.length;
+  const na = allList.length;
+  if (na < 2) return;
+
+  const minR = PARTICLE_RADIUS;
+  const minRSq = minR * minR;
+  const exArr = new Float32Array(np);
+  const eyArr = new Float32Array(np);
+  const sxArr = new Float32Array(na);
+  const syArr = new Float32Array(na);
+
+  const cutoff = strongCutoff();
+  const lambda = cutoff / 3;
+  const needStrong = (strongMode !== 'none');
+
+  // Log-scale normalization
+  const cSens = 5000.0, cRef = 0.02;
+  const cLogNorm = Math.log(1.0 + cSens * cRef);
+  const cInvLog = 1.0 / cLogNorm;
+  const sSens = 5000.0, sRef = 0.02;
+  const sLogNorm = Math.log(1.0 + sSens * sRef);
+  const sInvLog = 1.0 / sLogNorm;
+
+  // Ambient glow for "hole" mode
+  const ambientR = 40, ambientG = 25, ambientB = 15, ambientA = 50;
+
+  for (let py = 0; py < h; py++) {
+    // Map heatmap pixel → world coordinate (accounting for zoom viewport)
+    const worldY = worldTop + (py / h) * visH;
+    for (let px = 0; px < w; px++) {
+      const worldX = worldLeft + (px / w) * visW;
+      const di = (py * w + px) * 4;
+
+      // --- Coulomb cross-term (proton-proton only) ---
+      let coulombCross = 0;
+      if (np >= 2) {
+        for (let i = 0; i < np; i++) {
+          const dx = worldX - protonList[i].x;
+          const dy = worldY - protonList[i].y;
+          let rSq = dx * dx + dy * dy;
+          if (rSq < minRSq) rSq = minRSq;
+          const r = Math.sqrt(rSq);
+          const fieldMag = coulombStrength / (rSq * r);
+          exArr[i] = dx * fieldMag;
+          eyArr[i] = dy * fieldMag;
+        }
+        for (let i = 0; i < np; i++) {
+          for (let j = i + 1; j < np; j++) {
+            coulombCross += 2 * (exArr[i] * exArr[j] + eyArr[i] * eyArr[j]);
+          }
+        }
+      }
+
+      // --- Strong force cross-term (all nucleon pairs) ---
+      let strongCross = 0;
+      if (needStrong && na >= 2) {
+        for (let i = 0; i < na; i++) {
+          const dx = worldX - allList[i].x;
+          const dy = worldY - allList[i].y;
+          let rSq = dx * dx + dy * dy;
+          if (rSq < minRSq) rSq = minRSq;
+          const r = Math.sqrt(rSq);
+          const fieldMag = strongForceStrength * Math.exp(-r / lambda) / (rSq * r);
+          sxArr[i] = dx * fieldMag;
+          syArr[i] = dy * fieldMag;
+        }
+        for (let i = 0; i < na; i++) {
+          for (let j = i + 1; j < na; j++) {
+            strongCross += 2 * (sxArr[i] * sxArr[j] + syArr[i] * syArr[j]);
+          }
+        }
+      }
+
+      // --- Compose pixel based on strongMode ---
+      let r = 0, g = 0, b = 0, a = 0;
+
+      // Coulomb: negative cross-term → blue glow
+      if (coulombCross < 0) {
+        const absVal = -coulombCross;
+        let mag = Math.log(1.0 + cSens * absVal) * cInvLog;
+        if (mag > 1.0) mag = 1.0;
+        const ci = (mag * 255) | 0;
+        const ci4 = ci * 4;
+        r = COULOMB_COLORMAP[ci4];
+        g = COULOMB_COLORMAP[ci4 + 1];
+        b = COULOMB_COLORMAP[ci4 + 2];
+        a = COULOMB_COLORMAP[ci4 + 3];
+      }
+
+      if (strongMode === 'hole') {
+        let subtraction = 0;
+        if (strongCross < 0) {
+          subtraction = Math.log(1.0 + sSens * (-strongCross)) * sInvLog;
+          if (subtraction > 1.0) subtraction = 1.0;
+        }
+        const hA = ambientA * (1.0 - subtraction);
+        const fgA = a / 255;
+        const bgA = hA / 255;
+        const outA = fgA + bgA * (1 - fgA);
+        if (outA > 0) {
+          data[di]     = (r * fgA + ambientR * bgA * (1 - fgA)) / outA;
+          data[di + 1] = (g * fgA + ambientG * bgA * (1 - fgA)) / outA;
+          data[di + 2] = (b * fgA + ambientB * bgA * (1 - fgA)) / outA;
+          data[di + 3] = outA * 255;
+        }
+      } else if (strongMode === 'pink') {
+        data[di] = r; data[di+1] = g; data[di+2] = b; data[di+3] = a;
+        if (strongCross < 0) {
+          const absVal = -strongCross;
+          let mag = Math.log(1.0 + sSens * absVal) * sInvLog;
+          if (mag > 1.0) mag = 1.0;
+          const ci = (mag * 255) | 0;
+          const ci4 = ci * 4;
+          const pR = PINK_COLORMAP[ci4], pG = PINK_COLORMAP[ci4+1];
+          const pB = PINK_COLORMAP[ci4+2], pA = PINK_COLORMAP[ci4+3];
+          const fgA2 = pA / 255;
+          const bgA2 = data[di+3] / 255;
+          const outA2 = fgA2 + bgA2 * (1 - fgA2);
+          if (outA2 > 0) {
+            data[di]   = (pR * fgA2 + data[di]   * bgA2 * (1 - fgA2)) / outA2;
+            data[di+1] = (pG * fgA2 + data[di+1] * bgA2 * (1 - fgA2)) / outA2;
+            data[di+2] = (pB * fgA2 + data[di+2] * bgA2 * (1 - fgA2)) / outA2;
+            data[di+3] = outA2 * 255;
+          }
+        }
+      } else {
+        data[di] = r; data[di+1] = g; data[di+2] = b; data[di+3] = a;
+      }
+    }
+  }
+
+  hmCtx.putImageData(imageData, 0, 0);
+
+  // Draw the heatmap in world space — the canvas transform handles zoom.
+  // Map the heatmap image onto the visible world region.
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(hmCanvas, worldLeft, worldTop, visW, visH);
+}
+
+// ============================================================
+//  PAIR ENERGY COMPUTATION
+//  Computes the mutual energy of the two-particle system:
+//  - KE relative to center of mass (removes bulk translation)
+//  - PE from both Coulomb and strong force
+//  - Total = KE + PE
+// ============================================================
+function computePairEnergy() {
+  if (particles.length < 2) return null;
+  const a = particles[0];
+  const b = particles[1];
+
+  // Center-of-mass velocity (equal masses)
+  const cmvx = (a.vx + b.vx) / 2;
+  const cmvy = (a.vy + b.vy) / 2;
+
+  // Relative velocities (subtract CM motion)
+  const arvx = a.vx - cmvx;
+  const arvy = a.vy - cmvy;
+  const brvx = b.vx - cmvx;
+  const brvy = b.vy - cmvy;
+
+  // Mutual KE: kinetic energy in the CM frame
+  const ke = 0.5 * (arvx * arvx + arvy * arvy + brvx * brvx + brvy * brvy);
+
+  // Pair separation
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  let pe = 0;
+  if (dist > 0) {
+    // Coulomb potential (proton-proton only, but included for completeness)
+    if (a.type === 'proton' && b.type === 'proton') {
+      const softDist = Math.max(dist, PARTICLE_RADIUS);
+      pe += coulombStrength / softDist;
+    }
+
+    // Strong force potential: V = S/(2*span) * [(r-eq)² - span²]
+    const cutoff = strongCutoff();
+    if (dist < cutoff) {
+      const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
+      const span = cutoff - eqDist;
+      const dr = dist - eqDist;
+      pe += strongForceStrength / (2 * span) * (dr * dr - span * span);
+    }
+  }
+
+  return { ke, pe, total: ke + pe };
+}
+
+// ============================================================
+//  OVERLAY ENERGY GRAPH
+//  Drawn in screen space (not affected by zoom transform).
+//  Positioned in the bottom-right corner of the canvas.
+//  Same visual style as v3: amber KE, blue PE, green total.
+//  Fades in/out with zoomT.
+// ============================================================
+const GRAPH_W = 280;
+const GRAPH_H = 140;
+const GRAPH_PAD = 16;
+
+function drawOverlayGraph() {
+  if (zoomEnergyHistory.length < 2) return;
+
+  const alpha = zoomT;  // Fade with zoom level
+  if (alpha < 0.01) return;
+
+  // Position: bottom-right corner with padding
+  const gx = canvas.width - GRAPH_W - GRAPH_PAD;
+  const gy = canvas.height - GRAPH_H - GRAPH_PAD;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  // Background panel
+  ctx.fillStyle = 'rgba(10, 10, 26, 0.85)';
+  ctx.strokeStyle = 'rgba(42, 42, 74, 0.8)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(gx, gy, GRAPH_W, GRAPH_H, 6);
+  ctx.fill();
+  ctx.stroke();
+
+  // Compute Y-axis scale from visible data (auto-fit)
+  const len = zoomEnergyHistory.length;
+  const visStart = Math.max(0, len - 400);  // Show last 400 samples
+  let maxVal = 1;
+  for (let i = visStart; i < len; i++) {
+    const e = zoomEnergyHistory[i];
+    maxVal = Math.max(maxVal, Math.abs(e.ke), Math.abs(e.pe), Math.abs(e.total));
+  }
+  maxVal *= 1.15;  // A bit of headroom
+
+  const visCount = len - visStart;
+  const xStep = (GRAPH_W - 8) / Math.max(visCount - 1, 1);
+  const plotL = gx + 4;
+  const plotT = gy + 4;
+  const plotH = GRAPH_H - 8;
+
+  // Zero line
+  const zeroY = plotT + plotH - (-0 / maxVal) * (plotH - 4) - 2;
+  // Actually compute properly: val=0 → y position
+  const baseY = plotT + plotH - (0 / maxVal) * (plotH - 4) - 2;
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(plotL, baseY);
+  ctx.lineTo(plotL + GRAPH_W - 8, baseY);
+  ctx.stroke();
+
+  // Draw a trace line
+  function drawTrace(key, color) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let i = 0; i < visCount; i++) {
+      const e = zoomEnergyHistory[visStart + i];
+      const x = plotL + i * xStep;
+      const y = plotT + plotH - (e[key] / maxVal) * (plotH - 4) - 2;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  drawTrace('pe', '#3b82f6');    // Blue: potential energy
+  drawTrace('ke', '#f59e0b');    // Amber: kinetic energy
+  drawTrace('total', '#22c55e'); // Green: total
+
+  // Legend (top-left inside the graph)
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'left';
+  const legendX = gx + 10;
+  const legendY = gy + 14;
+  const labels = [
+    { text: 'KE (mutual)', color: '#f59e0b' },
+    { text: 'PE (field)',   color: '#3b82f6' },
+    { text: 'Total',        color: '#22c55e' },
+  ];
+  for (let i = 0; i < labels.length; i++) {
+    ctx.fillStyle = labels[i].color;
+    ctx.fillRect(legendX, legendY + i * 13 - 6, 8, 8);
+    ctx.fillStyle = '#9ca3af';
+    ctx.fillText(labels[i].text, legendX + 12, legendY + i * 13);
+  }
+
+  ctx.restore();
+}
+
+// ============================================================
+//  ZOOM HELPERS
+// ============================================================
+
+// Smooth ease-in-out curve (cubic hermite)
+function easeInOut(t) {
+  return t * t * (3 - 2 * t);
+}
+
+// Start a zoom transition in the given direction (+1 = in, -1 = out)
+function startZoomTransition(direction) {
+  zoomDirection = direction;
+  zoomStartTime = performance.now();
+  zoomStartT = zoomT;
+  if (direction > 0) {
+    zoomOutBtn.style.display = 'inline-block';
+  }
+}
+
+// Update zoomT based on elapsed time since transition started.
+// Returns true if the transition is still in progress.
+function updateZoom() {
+  if (zoomDirection === 0) return false;
+
+  const elapsed = performance.now() - zoomStartTime;
+  const progress = Math.min(elapsed / ZOOM_DURATION_MS, 1);
+  const eased = easeInOut(progress);
+
+  if (zoomDirection > 0) {
+    // Zooming in: zoomStartT → 1
+    zoomT = zoomStartT + (1 - zoomStartT) * eased;
+  } else {
+    // Zooming out: zoomStartT → 0
+    zoomT = zoomStartT * (1 - eased);
+  }
+
+  // Transition complete
+  if (progress >= 1) {
+    zoomT = zoomDirection > 0 ? 1 : 0;
+    if (zoomDirection < 0) {
+      zoomOutBtn.style.display = 'none';
+    }
+    zoomDirection = 0;
+  }
+
+  return true;
+}
+
+// ============================================================
+//  DRAWING — particles with zoom transform
+//  When zoomT > 0, the canvas is transformed to center on the
+//  midpoint between the two particles and magnify. Everything
+//  is drawn in world coordinates; the transform handles the
+//  viewport shift.
+// ============================================================
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Compute pair midpoint (zoom target)
+  let midX = canvas.width / 2;
+  let midY = canvas.height / 2;
+  if (particles.length === 2) {
+    midX = (particles[0].x + particles[1].x) / 2;
+    midY = (particles[0].y + particles[1].y) / 2;
+  }
+
+  // Apply zoom transform: translate so midpoint is at canvas center, then scale
+  const zoomScale = 1 + (ZOOM_MAGNIFICATION - 1) * zoomT;
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+
+  ctx.save();
+  // Translate canvas center to origin, scale, then translate back
+  // offset by the difference between canvas center and midpoint
+  ctx.translate(cx, cy);
+  ctx.scale(zoomScale, zoomScale);
+  ctx.translate(-midX, -midY);
+
+  // --- Heatmap (drawn in world space, zooms with the transform) ---
+  if (showHeatmap && particles.length > 0) {
+    drawHeatmap();
+  }
+
+  // --- Draw particles in world space ---
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    const isProton = p.type === 'proton';
+
+    // Glow halo
+    const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, PARTICLE_RADIUS * 2.5);
+    if (isProton) {
+      gradient.addColorStop(0, 'rgba(255, 80, 80, 0.4)');
+      gradient.addColorStop(1, 'rgba(255, 80, 80, 0)');
+    } else {
+      gradient.addColorStop(0, 'rgba(160, 160, 200, 0.3)');
+      gradient.addColorStop(1, 'rgba(160, 160, 200, 0)');
+    }
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, PARTICLE_RADIUS * 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body with 3D highlight
+    const bodyGrad = ctx.createRadialGradient(p.x - 3, p.y - 3, 1, p.x, p.y, PARTICLE_RADIUS);
+    if (isProton) {
+      bodyGrad.addColorStop(0, '#ff9999');
+      bodyGrad.addColorStop(0.7, '#ff4444');
+      bodyGrad.addColorStop(1, '#cc2222');
+    } else {
+      bodyGrad.addColorStop(0, '#ccccdd');
+      bodyGrad.addColorStop(0.7, '#8888aa');
+      bodyGrad.addColorStop(1, '#666688');
+    }
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, PARTICLE_RADIUS, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Label
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(isProton ? '+' : 'n', p.x, p.y + 1);
+  }
+
+  ctx.restore();
+
+  // Debug readout (drawn in screen space, unaffected by zoom)
+  if (particles.length === 2) {
+    const dx = particles[1].x - particles[0].x;
+    const dy = particles[1].y - particles[0].y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const cutoff = strongCutoff();
+    const inRange = dist < cutoff;
+    ctx.fillStyle = inRange ? '#22c55e' : '#6b7280';
+    ctx.font = '13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(
+      `dist: ${dist.toFixed(1)}px  cutoff: ${cutoff.toFixed(0)}px  zoom: ${(zoomT * 100).toFixed(0)}%  ${inRange ? 'STRONG FORCE ACTIVE' : ''}`,
+      canvas.width / 2, 30
+    );
+  }
+
+  // Overlay energy graph (drawn in screen space, fades with zoom)
+  drawOverlayGraph();
+}
+
+// ============================================================
+//  LAYOUT / RESIZE
+// ============================================================
+function resize() {
+  const toolbarH = document.getElementById('toolbar').offsetHeight;
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight - toolbarH;
+  if (!running) draw();
+}
+window.addEventListener('resize', resize);
+setTimeout(resize, 0);
+
+// ============================================================
+//  GO / STOP
+// ============================================================
+goBtn.addEventListener('click', () => {
+  running = !running;
+  goBtn.textContent = running ? 'Stop' : 'Go';
+  goBtn.classList.toggle('running', running);
+  if (running) {
+    if (particles.length === 0) setupScenario();
+    takeSnapshot();
+    loop();
+  } else {
+    cancelAnimationFrame(animId);
+  }
+});
+
+// ============================================================
+//  REPLAY — restore snapshot, reset zoom, and auto-start
+// ============================================================
+replayBtn.addEventListener('click', () => {
+  if (!snapshot) return;
+  running = false;
+  cancelAnimationFrame(animId);
+  goBtn.textContent = 'Go';
+  goBtn.classList.remove('running');
+  // Reset zoom and energy graph state
+  zoomT = 0;
+  zoomDirection = 0;
+  hasTriggeredZoom = false;
+  zoomEnergyHistory = [];
+  zoomOutBtn.style.display = 'none';
+  // Restore and go
+  restoreSnapshot();
+  draw();
+  running = true;
+  goBtn.textContent = 'Stop';
+  goBtn.classList.add('running');
+  loop();
+});
+
+// ============================================================
+//  ZOOM OUT BUTTON — smoothly reverse the zoom
+// ============================================================
+zoomOutBtn.addEventListener('click', () => {
+  if (zoomT > 0) {
+    startZoomTransition(-1);  // Zoom out
+  }
+});
+
+// ============================================================
+//  HEATMAP TOGGLE + STRONG FORCE MODE
+// ============================================================
+heatmapToggle.addEventListener('change', () => {
+  showHeatmap = heatmapToggle.checked;
+  strongModeGroup.classList.toggle('hidden', !showHeatmap);
+  if (!running) draw();
+});
+
+document.querySelectorAll('input[name="strongMode"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    strongMode = radio.value;
+    if (!running) draw();
+  });
+});
+
+// ============================================================
+//  ANIMATION LOOP — with zoom detection and speed modulation
+// ============================================================
+function loop() {
+  if (!running) return;
+
+  // --- Detect first entry into strong force range ---
+  if (!hasTriggeredZoom && particles.length === 2) {
+    const dx = particles[1].x - particles[0].x;
+    const dy = particles[1].y - particles[0].y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < strongCutoff()) {
+      hasTriggeredZoom = true;
+      zoomEnergyHistory = [];  // Start fresh energy history
+      startZoomTransition(1);  // Begin zoom-in
+    }
+  }
+
+  // --- Update zoom transition ---
+  updateZoom();
+
+  // --- Modulate simulation speed based on zoom ---
+  // At zoomT=0: full speed. At zoomT=1: 10% speed.
+  const speedMul = 1 - zoomT * (1 - ZOOM_SPEED_RATIO);
+  step(speed * speedMul);
+
+  // --- Accumulate energy samples once zoom has triggered ---
+  if (hasTriggeredZoom) {
+    const e = computePairEnergy();
+    if (e) {
+      zoomEnergyHistory.push(e);
+      if (zoomEnergyHistory.length > GRAPH_MAX_SAMPLES) {
+        zoomEnergyHistory.shift();
+      }
+    }
+  }
+
+  draw();
+  animId = requestAnimationFrame(loop);
+}
+
+// ============================================================
+//  INITIAL SETUP — place the two neutrons and draw
+// ============================================================
+setupScenario();
+draw();
+</script>
+</body>
+</html>
