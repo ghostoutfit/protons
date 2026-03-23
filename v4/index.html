@@ -401,11 +401,19 @@ function step(dt) {
     }
   }
 
-  // Damping once per frame
-  if (damping < 1.0) {
-    for (let i = 0; i < n; i++) {
-      particles[i].vx *= damping;
-      particles[i].vy *= damping;
+  // Damping once per frame — only when particles are within the
+  // strong force well. During free approach there's no reason to
+  // damp; without this guard, 0.98^200 kills 98% of KE before
+  // the neutrons even reach each other.
+  if (damping < 1.0 && n === 2) {
+    const a = particles[0], b = particles[1];
+    const ddx = b.x - a.x, ddy = b.y - a.y;
+    const ddist = Math.sqrt(ddx * ddx + ddy * ddy);
+    if (ddist < strongCutoff()) {
+      for (let i = 0; i < n; i++) {
+        particles[i].vx *= damping;
+        particles[i].vy *= damping;
+      }
     }
   }
 
