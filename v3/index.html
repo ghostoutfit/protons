@@ -489,8 +489,7 @@
     <input type="range" id="speedSlider" min="0" max="20" step="1" value="13">
   </div>
   <!-- Heatmap master toggle + three-position strong force rendering mode -->
-  <label class="toggle-label"><input type="checkbox" id="heatmapToggle" checked> Energy map</label>
-  <!-- Strong force render mode: only visible when heatmap is on -->
+  <label class="toggle-label"><input type="checkbox" id="heatmapToggle" checked> Electric interaction energy</label>
   <span id="strongModeGroup">
     Strong:
     <input type="radio" name="strongMode" id="strongNone" value="none"><label for="strongNone">None</label>
@@ -618,7 +617,7 @@ let particles = [];
 let running = false;
 let animId = null;
 let speed = 1.5;
-let showHeatmap = true;            // Master toggle for the energy density overlay
+let showCoulomb = true;            // Toggle for electric interaction energy overlay
 let strongMode = 'hole';          // 'none' | 'hole' | 'pink' — how strong force renders
 const PARTICLE_RADIUS = 10;
 const MIN_DIST = 20;  // Clamp distance so force doesn't blow up at overlap
@@ -1041,9 +1040,7 @@ dampSlider.addEventListener('input', () => {
 //  the Coulomb cross-term. It only appears when the heatmap is on.
 // ============================================================
 heatmapToggle.addEventListener('change', () => {
-  showHeatmap = heatmapToggle.checked;
-  // Show/hide the strong mode selector based on master toggle
-  strongModeGroup.classList.toggle('hidden', !showHeatmap);
+  showCoulomb = heatmapToggle.checked;
   if (!running) draw();
 });
 
@@ -1593,9 +1590,8 @@ function drawHeatmap() {
   const sLogNorm = Math.log(1.0 + sSens * sRef);
   const sInvLog = 1.0 / sLogNorm;
 
-  // Ambient glow level for "hole" mode (subtle warm tint, RGBA)
-  // This is the baseline that gets darkened where binding occurs
-  const ambientR = 40, ambientG = 25, ambientB = 15, ambientA = 50;
+  // Ambient glow level for "hole" mode — bright enough to see the hole clearly
+  const ambientR = 100, ambientG = 65, ambientB = 35, ambientA = 140;
 
   for (let py = 0; py < h; py++) {
     const worldY = py * invScale;
@@ -1607,7 +1603,7 @@ function drawHeatmap() {
       // Compute E-field from each proton at this pixel, then sum
       // cross-terms 2(Ei·Ej) to get interaction energy density.
       let coulombCross = 0;
-      if (np >= 2) {
+      if (showCoulomb && np >= 2) {
         for (let i = 0; i < np; i++) {
           const dx = worldX - protonList[i].x;
           const dy = worldY - protonList[i].y;
@@ -1748,7 +1744,7 @@ function draw() {
 
   // Render the unified energy density heatmap if the master toggle is on.
   // The strong force rendering mode (none/hole/pink) is handled inside drawHeatmap().
-  if (showHeatmap && particles.length > 0) {
+  if ((showCoulomb || strongMode !== 'none') && particles.length > 0) {
     drawHeatmap();
   }
 

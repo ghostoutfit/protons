@@ -178,7 +178,7 @@
   <button class="btn" id="replayBtn" disabled>Replay</button>
   <button class="btn" id="zoomOutBtn">Zoom Out</button>
   <!-- Energy map toggle + strong force render mode -->
-  <label class="toggle-label"><input type="checkbox" id="heatmapToggle" checked> Energy map</label>
+  <label class="toggle-label"><input type="checkbox" id="heatmapToggle" checked> Electric interaction energy</label>
   <span id="strongModeGroup">
     Strong:
     <input type="radio" name="strongMode" id="strongNone" value="none"><label for="strongNone">None</label>
@@ -250,7 +250,7 @@ const GRAPH_MAX_SAMPLES = 1200;   // Max samples to keep
 // ============================================================
 //  HEATMAP STATE
 // ============================================================
-let showHeatmap = true;           // Master toggle for energy density overlay
+let showCoulomb = true;           // Toggle for electric interaction energy overlay
 let strongMode = 'hole';          // 'none' | 'hole' | 'pink'
 
 // Offscreen canvas for heatmap rendering (half resolution)
@@ -523,8 +523,8 @@ function drawHeatmap() {
   const sLogNorm = Math.log(1.0 + sSens * sRef);
   const sInvLog = 1.0 / sLogNorm;
 
-  // Ambient glow for "hole" mode
-  const ambientR = 40, ambientG = 25, ambientB = 15, ambientA = 50;
+  // Ambient glow for "hole" mode — bright enough to see the hole clearly
+  const ambientR = 100, ambientG = 65, ambientB = 35, ambientA = 140;
 
   for (let py = 0; py < h; py++) {
     // Map heatmap pixel → world coordinate (accounting for zoom viewport)
@@ -535,7 +535,7 @@ function drawHeatmap() {
 
       // --- Coulomb cross-term (proton-proton only) ---
       let coulombCross = 0;
-      if (np >= 2) {
+      if (showCoulomb && np >= 2) {
         for (let i = 0; i < np; i++) {
           const dx = worldX - protonList[i].x;
           const dy = worldY - protonList[i].y;
@@ -869,7 +869,7 @@ function draw() {
   ctx.translate(-midX, -midY);
 
   // --- Heatmap (drawn in world space, zooms with the transform) ---
-  if (showHeatmap && particles.length > 0) {
+  if ((showCoulomb || strongMode !== 'none') && particles.length > 0) {
     drawHeatmap();
   }
 
@@ -1003,8 +1003,7 @@ zoomOutBtn.addEventListener('click', () => {
 //  HEATMAP TOGGLE + STRONG FORCE MODE
 // ============================================================
 heatmapToggle.addEventListener('change', () => {
-  showHeatmap = heatmapToggle.checked;
-  strongModeGroup.classList.toggle('hidden', !showHeatmap);
+  showCoulomb = heatmapToggle.checked;
   if (!running) draw();
 });
 
