@@ -445,6 +445,10 @@
       <span class="energy-label"><span class="energy-dot" style="background:#22c55e"></span> Total</span>
       <span class="energy-value" id="totalVal">0</span>
     </div>
+    <div class="slider-group" style="margin-top: 10px;">
+      <label>IE offset: <span id="ieOffsetVal">0</span></label>
+      <input type="range" id="ieOffsetSlider" min="0" max="20000" step="1" value="0" style="flex:1">
+    </div>
     <div id="graphWrap">
       <canvas id="graphCanvas"></canvas>
       <div id="graphTooltip"></div>
@@ -531,6 +535,7 @@ let strongForceStrength = 5;    // Scales strong nuclear force (all nucleon pair
 let strongForceRange = 1.5;     // Cutoff as multiplier on 2×radius
 let equilibriumRatio = 0.6;     // Where strong force = 0; below → repulsive, above → attractive
 let damping = 1.00;             // Velocity damping per frame (1.0 = no damping)
+let ieOffset = 0;               // Display-only offset added to IE and Total (not stored in history)
 const SUBSTEPS = 20;            // Subdivisions per frame for integration accuracy
 
 // ============================================================
@@ -928,6 +933,13 @@ rangeSlider.addEventListener('input', () => {
   rangeValEl.textContent = strongForceRange.toFixed(2);
   if (!running) { computeEnergy(); draw(); drawGraph(); }
 });
+document.getElementById('ieOffsetSlider').addEventListener('input', function() {
+  ieOffset = parseFloat(this.value);
+  document.getElementById('ieOffsetVal').textContent = ieOffset.toFixed(0);
+  if (!running) drawGraph();
+  computeEnergy();
+});
+
 dampSlider.addEventListener('input', () => {
   damping = parseFloat(dampSlider.value);
   dampValEl.textContent = damping.toFixed(2);
@@ -1025,8 +1037,8 @@ function computeEnergy() {
   }
 
   kineticVal.textContent = kinetic.toFixed(1);
-  potentialVal.textContent = potential.toFixed(1);
-  totalVal.textContent = (kinetic + potential).toFixed(1);
+  potentialVal.textContent = (potential + ieOffset).toFixed(1);
+  totalVal.textContent = (kinetic + potential + ieOffset).toFixed(1);
 
   energyHistory.push({ kinetic, potential, total: kinetic + potential });
   if (energyHistory.length > MAX_HISTORY) energyHistory.shift();
@@ -1067,7 +1079,7 @@ function drawGraph() {
   let maxVal = 1;
   for (let i = start; i <= end; i++) {
     const e = energyHistory[i];
-    maxVal = Math.max(maxVal, Math.abs(e.kinetic), Math.abs(e.potential), Math.abs(e.total));
+    maxVal = Math.max(maxVal, Math.abs(e.kinetic), Math.abs(e.potential + ieOffset), Math.abs(e.total + ieOffset));
   }
   maxVal *= 1.1;
   if (!graphYAutoFit) {
@@ -1078,13 +1090,13 @@ function drawGraph() {
   // Align so the visible samples fill from left to right
   const xOff = (GRAPH_WINDOW - visCount) * xStep;
 
-  function drawLine(key, color) {
+  function drawLine(key, color, offset = 0) {
     gctx.strokeStyle = color;
     gctx.lineWidth = 1.5;
     gctx.beginPath();
     for (let i = 0; i < visCount; i++) {
       const x = xOff + i * xStep;
-      const val = energyHistory[start + i][key];
+      const val = energyHistory[start + i][key] + offset;
       const y = h - (val / maxVal) * (h - 8) - 4;
       if (i === 0) gctx.moveTo(x, y);
       else gctx.lineTo(x, y);
@@ -1092,9 +1104,9 @@ function drawGraph() {
     gctx.stroke();
   }
 
-  drawLine('potential', '#3b82f6');
+  drawLine('potential', '#3b82f6', ieOffset);
   drawLine('kinetic', '#f59e0b');
-  drawLine('total', '#22c55e');
+  drawLine('total', '#22c55e', ieOffset);
 
   // Draw crosshair and tooltip at hover position
   if (graphHoverX >= 0 && graphHoverX <= w) {
@@ -1115,12 +1127,12 @@ function drawGraph() {
 
       // Dots on each line
       const lines = [
-        { key: 'kinetic', color: '#f59e0b' },
-        { key: 'potential', color: '#3b82f6' },
-        { key: 'total', color: '#22c55e' },
+        { key: 'kinetic',   color: '#f59e0b', offset: 0 },
+        { key: 'potential', color: '#3b82f6', offset: ieOffset },
+        { key: 'total',     color: '#22c55e', offset: ieOffset },
       ];
       for (const l of lines) {
-        const y = h - (e[l.key] / maxVal) * (h - 8) - 4;
+        const y = h - ((e[l.key] + l.offset) / maxVal) * (h - 8) - 4;
         gctx.fillStyle = l.color;
         gctx.beginPath();
         gctx.arc(crossX, y, 3, 0, Math.PI * 2);
@@ -1131,8 +1143,8 @@ function drawGraph() {
       graphTooltip.style.display = 'block';
       graphTooltip.innerHTML =
         `<span style="color:#f59e0b">KE</span> ${e.kinetic.toFixed(1)}<br>` +
-        `<span style="color:#3b82f6">PE</span> ${e.potential.toFixed(1)}<br>` +
-        `<span style="color:#22c55e">Tot</span> ${e.total.toFixed(1)}<br>` +
+        `<span style="color:#3b82f6">IE</span> ${(e.potential + ieOffset).toFixed(1)}<br>` +
+        `<span style="color:#22c55e">Tot</span> ${(e.total + ieOffset).toFixed(1)}<br>` +
         `<span style="color:#6b7280">t=${start + sampleI}</span>`;
       // Place tooltip: prefer right of cursor, flip if near edge
       const tipW = graphTooltip.offsetWidth;

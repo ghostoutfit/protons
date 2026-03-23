@@ -114,6 +114,35 @@
   }
 
   /* ========================================
+     VIZ MODE RADIO GROUP
+     ======================================== */
+  #vizGroup {
+    display: inline-flex;
+    gap: 2px;
+    background: #1e1e3a;
+    border: 1px solid #2a2a4a;
+    border-radius: 6px;
+    padding: 2px;
+  }
+
+  #vizGroup input[type="radio"] { display: none; }
+
+  #vizGroup label {
+    font-size: 12px;
+    color: #9ca3af;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+  }
+
+  #vizGroup input[type="radio"]:checked + label {
+    background: #2a2a4a;
+    color: #e0e0e0;
+  }
+
+  /* ========================================
      STATS DISPLAY
      ======================================== */
   #stats {
@@ -272,7 +301,12 @@
     <label>Speed: <span id="speedVal">1.0</span>x</label>
     <input type="range" id="speedSlider" min="0.01" max="1" step="0.01" value="1">
   </div>
-  <label class="toggle-label"><input type="checkbox" id="heatmapToggle"> Show energy between particles</label>
+  <span style="font-size:12px;color:#9ca3af;white-space:nowrap">Field:</span>
+  <span id="vizGroup">
+    <input type="radio" name="viz" id="viz1" value="1" checked><label for="viz1">Heatmap</label>
+    <input type="radio" name="viz" id="viz2" value="2"><label for="viz2">Connecting lines</label>
+    <input type="radio" name="viz" id="viz3" value="3"><label for="viz3">Blob</label>
+  </span>
   <span id="stats">Protons: 0</span>
 </div>
 
@@ -326,7 +360,6 @@ const kineticVal = document.getElementById('kineticVal');
 const potentialVal = document.getElementById('potentialVal');
 const totalVal = document.getElementById('totalVal');
 const bucket = document.getElementById('bucket');
-const heatmapToggle = document.getElementById('heatmapToggle');
 
 // ============================================================
 //  STATE & CONSTANTS
@@ -335,7 +368,7 @@ let protons = [];
 let running = false;
 let animId = null;
 let speed = 1.0;
-let showHeatmap = false;
+let vizMode = 1;  // 1 = heatmap, 2 = field lines, 3 = equipotential ticks
 const PROTON_RADIUS = 10;
 const COULOMB_K = 800;  // Scales Coulomb repulsive force; F = K / r²
 const MIN_DIST = 20;    // Clamp distance so force doesn't blow up at overlap
@@ -570,11 +603,13 @@ speedSlider.addEventListener('input', () => {
 });
 
 // ============================================================
-//  HEATMAP TOGGLE
+//  VIZ MODE RADIO
 // ============================================================
-heatmapToggle.addEventListener('change', () => {
-  showHeatmap = heatmapToggle.checked;
-  if (!running) draw();
+document.querySelectorAll('input[name="viz"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    vizMode = parseInt(radio.value);
+    if (!running) draw();
+  });
 });
 
 // ============================================================
@@ -837,13 +872,15 @@ function drawHeatmap() {
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Heat map as bottom layer
-  if (showHeatmap && protons.length > 0) {
+  // Option 1: heatmap as bottom layer
+  if (vizMode === 1 && protons.length > 0) {
     drawHeatmap();
   }
 
-  // Force lines between nearby protons (while running)
-  if (running) {
+  // Option 2 & 3: energy-scaled lines between pairs
+  if ((vizMode === 2 || vizMode === 3) && protons.length >= 2) {
+    // Reference energy: PE at touching distance (K / diameter)
+    const refEnergy = COULOMB_K / (PROTON_RADIUS * 2);
     for (let i = 0; i < protons.length; i++) {
       for (let j = i + 1; j < protons.length; j++) {
         const a = protons[i];
@@ -851,14 +888,53 @@ function draw() {
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 150) {  // Only draw lines for nearby pairs
-          const alpha = Math.max(0, 0.3 * (1 - dist / 150));  // Fade with distance
-          ctx.strokeStyle = `rgba(255, 100, 100, ${alpha})`;
-          ctx.lineWidth = 1;
+        if (dist === 0) continue;
+        const energy = COULOMB_K / dist;
+        const mag = Math.min(1, energy / refEnergy);  // 0 at infinity → 1 at touching
+        if (mag < 0.005) continue;  // Skip imperceptibly dim pairs
+
+        const magFast = mag * mag;
+        // Thickness: full particle diameter up to 30px separation, then tapers
+        // — still ~5px at 150px separation
+        const lineW = dist <= 30
+          ? PROTON_RADIUS * 2
+          : Math.max(0.5, PROTON_RADIUS * 2 - (dist - 30) * (15 / 270));
+        const alpha = Math.min(1, mag * 3.0);
+
+        ctx.lineWidth = lineW;
+        ctx.strokeStyle = `rgba(120, 190, 255, ${alpha})`;
+
+        if (vizMode === 2) {
+          // Draw connecting line between the two protons
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);
           ctx.lineTo(b.x, b.y);
           ctx.stroke();
+        } else {
+          // Option 3: radial gradient blob at midpoint — radius and brightness scale with energy
+          const mx = (a.x + b.x) / 2;
+          const my = (a.y + b.y) / 2;
+          // Blob grows with separation (energy spreads over more space),
+          // but gets dimmer as energy density drops
+          // Blob grows with distance (energy spreads out), core tightens when close
+          const blobRadius = dist * 0.8 + 40;
+          // 20px bright zone expressed as fraction of blob radius
+          const coreEdge = Math.min(0.92, 20 / blobRadius);
+          // Core brightness drops steeply with distance (cubic) — gone by ~100px
+          const coreAlpha = Math.min(1, mag * mag * mag * 20);
+          // Ambient cloud stays visible much further (linear)
+          const cloudAlpha = Math.min(0.45, mag * 1.8);
+          // Center must always be >= cloud level to avoid dark-center artifact
+          const centerAlpha = Math.max(coreAlpha, cloudAlpha);
+          const grad = ctx.createRadialGradient(mx, my, 0, mx, my, blobRadius);
+          grad.addColorStop(0,        `rgba(220, 240, 255, ${centerAlpha})`);
+          grad.addColorStop(coreEdge, `rgba(140, 200, 255, ${cloudAlpha})`);
+          grad.addColorStop(0.55,     `rgba(70, 140, 240, ${cloudAlpha * 0.2})`);
+          grad.addColorStop(0.75,     `rgba(30, 80, 200, 0)`);
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(mx, my, blobRadius, 0, Math.PI * 2);
+          ctx.fill();
         }
       }
     }
