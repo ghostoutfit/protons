@@ -120,11 +120,30 @@
 
   #strongModeGroup input[type="radio"] { display: none; }
 
-  #strongModeGroup input[type="radio"]:checked + label {
+  #strongModeGroup input[type="radio"]:checked + label,
+  #coulombVizGroup input[type="radio"]:checked + label {
     background: #2a2a4a;
     color: #e0e0e0;
     border-color: #6366f1;
   }
+
+  #coulombVizGroup {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 4px;
+  }
+  #coulombVizGroup label {
+    font-size: 11px;
+    color: #6b7280;
+    padding: 2px 8px;
+    border: 1px solid #3a3a5a;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  #coulombVizGroup input[type="radio"] { display: none; }
 
   /* ========================================
      CANVAS — fills remaining space
@@ -214,18 +233,37 @@
   <button class="btn" id="goBtn">Go</button>
   <button class="btn" id="replayBtn" disabled>Replay</button>
   <button class="btn" id="zoomOutBtn">Zoom Out</button>
-  <!-- Energy map toggle + strong force render mode -->
-  <label class="toggle-label"><input type="checkbox" id="heatmapToggle" checked> Electric interaction energy</label>
-  <span id="strongModeGroup">
-    Strong:
-    <input type="radio" name="strongMode" id="strongNone" value="none"><label for="strongNone">None</label>
-    <input type="radio" name="strongMode" id="strongHole" value="hole" checked><label for="strongHole">Hole</label>
-    <input type="radio" name="strongMode" id="strongPink" value="pink"><label for="strongPink">Pink glow</label>
-  </span>
-  <label class="toggle-label" style="gap:6px;">
-    Range: <span id="v4RangeVal">2.0</span>x
-    <input type="range" id="v4RangeSlider" min="1.0" max="3.0" step="0.05" value="2.0" style="width:72px;accent-color:#6366f1;">
-  </label>
+  <!-- Coulomb viz mode + strong force render mode (stacked) -->
+  <div style="display:flex;flex-direction:column;gap:5px;">
+    <div style="display:flex;align-items:center;gap:6px;">
+      <span style="font-size:12px;color:#9ca3af;white-space:nowrap">Energy Between Particles:</span>
+      <span id="coulombVizGroup">
+        <input type="radio" name="coulombViz" id="cvNone" value="none"><label for="cvNone">None</label>
+        <input type="radio" name="coulombViz" id="cvHeatmap" value="heatmap" checked><label for="cvHeatmap">Heatmap</label>
+        <input type="radio" name="coulombViz" id="cvRibbon" value="ribbon"><label for="cvRibbon">Ribbon</label>
+        <input type="radio" name="coulombViz" id="cvCloud" value="cloud"><label for="cvCloud">Cloud</label>
+      </span>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;">
+      <span id="strongModeGroup">
+        Strong:
+        <input type="radio" name="strongMode" id="strongNone" value="none"><label for="strongNone">None</label>
+        <input type="radio" name="strongMode" id="strongHole" value="hole" checked><label for="strongHole">Hole</label>
+        <input type="radio" name="strongMode" id="strongPink" value="pink"><label for="strongPink">Pink glow</label>
+      </span>
+    </div>
+  </div>
+  <!-- Range + Speed sliders stacked -->
+  <div style="display:flex;flex-direction:column;gap:4px;">
+    <label class="toggle-label" style="gap:6px;">
+      Strong range: <span id="v4RangeVal">2.0</span>x
+      <input type="range" id="v4RangeSlider" min="1.0" max="3.0" step="0.05" value="2.0" style="width:72px;accent-color:#6366f1;">
+    </label>
+    <label class="toggle-label" style="gap:6px;">
+      Speed: <span id="v4SpeedVal">0.50</span>
+      <input type="range" id="v4SpeedSlider" min="0.1" max="2.0" step="0.05" value="0.5" style="width:72px;accent-color:#6366f1;">
+    </label>
+  </div>
   <label class="toggle-label" style="gap:6px;">
     Collision:
     <select id="collisionType" style="background:#1a1a3a;color:#e0e0e0;border:1px solid #3a3a5a;border-radius:4px;padding:2px 8px;font-size:12px;cursor:pointer;">
@@ -233,10 +271,6 @@
       <option value="pn">p + n</option>
       <option value="pp">p + p</option>
     </select>
-  </label>
-  <label class="toggle-label" style="gap:6px;">
-    Speed: <span id="v4SpeedVal">0.50</span>
-    <input type="range" id="v4SpeedSlider" min="0.1" max="2.0" step="0.05" value="0.5" style="width:72px;accent-color:#6366f1;">
   </label>
 </div>
 
@@ -259,7 +293,6 @@ const ctx = canvas.getContext('2d');
 const goBtn = document.getElementById('goBtn');
 const replayBtn = document.getElementById('replayBtn');
 const zoomOutBtn = document.getElementById('zoomOutBtn');
-const heatmapToggle = document.getElementById('heatmapToggle');
 const strongModeGroup = document.getElementById('strongModeGroup');
 const timeSlider = document.getElementById('timeSlider');
 const timeLabelEl = document.getElementById('timeLabel');
@@ -330,7 +363,7 @@ const GRAPH_MAX_SAMPLES = 1200;   // Max samples to keep
 // ============================================================
 //  HEATMAP STATE
 // ============================================================
-let showCoulomb = true;           // Toggle for electric interaction energy overlay
+let coulombVizMode = 'heatmap';   // 'heatmap' | 'ribbon' | 'cloud' | 'none'
 let strongMode = 'hole';          // 'none' | 'hole' | 'pink'
 
 // Offscreen canvas for heatmap rendering (half resolution)
@@ -625,7 +658,7 @@ function drawHeatmap() {
 
       // --- Coulomb cross-term (proton-proton only) ---
       let coulombCross = 0;
-      if (showCoulomb && np >= 2) {
+      if (coulombVizMode === 'heatmap' && np >= 2) {
         for (let i = 0; i < np; i++) {
           const dx = worldX - protonList[i].x;
           const dy = worldY - protonList[i].y;
@@ -990,6 +1023,55 @@ function updateZoom() {
 }
 
 // ============================================================
+//  COULOMB VIZ — Ribbon and Cloud modes
+// ============================================================
+function drawCoulombViz() {
+  const protonList = particles.filter(p => p.type === 'proton');
+  if (protonList.length < 2) return;
+  const refEnergy = coulombStrength / (PARTICLE_RADIUS * 2);
+  for (let i = 0; i < protonList.length; i++) {
+    for (let j = i + 1; j < protonList.length; j++) {
+      const a = protonList[i];
+      const b = protonList[j];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist === 0) continue;
+      const mag = Math.min(1, (coulombStrength / dist) / refEnergy);
+      if (mag < 0.005) continue;
+      if (coulombVizMode === 'ribbon') {
+        const lineW = dist <= 30
+          ? PARTICLE_RADIUS * 2
+          : Math.max(0.5, PARTICLE_RADIUS * 2 - (dist - 30) * (15 / 270));
+        ctx.lineWidth = lineW;
+        ctx.strokeStyle = `rgba(120, 190, 255, ${Math.min(1, mag * 3.0)})`;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      } else {
+        const mx = (a.x + b.x) / 2;
+        const my = (a.y + b.y) / 2;
+        const blobRadius = dist * 0.8 + 40;
+        const coreEdge = Math.min(0.92, 20 / blobRadius);
+        const coreAlpha = Math.min(1, mag * mag * mag * 20);
+        const cloudAlpha = Math.min(0.45, mag * 1.8);
+        const centerAlpha = Math.max(coreAlpha, cloudAlpha);
+        const grad = ctx.createRadialGradient(mx, my, 0, mx, my, blobRadius);
+        grad.addColorStop(0,        `rgba(220, 240, 255, ${centerAlpha})`);
+        grad.addColorStop(coreEdge, `rgba(140, 200, 255, ${cloudAlpha})`);
+        grad.addColorStop(0.55,     `rgba(70, 140, 240, ${cloudAlpha * 0.2})`);
+        grad.addColorStop(0.75,     `rgba(30, 80, 200, 0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(mx, my, blobRadius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+}
+
+// ============================================================
 //  DRAWING — particles with zoom transform
 //  When zoomT > 0, the canvas is transformed to center on the
 //  midpoint between the two particles and magnify. Everything
@@ -1019,8 +1101,17 @@ function draw() {
   ctx.scale(zoomScale, zoomScale);
   ctx.translate(-midX, -midY);
 
-  // --- Heatmap (drawn in world space, zooms with the transform) ---
-  if ((showCoulomb || strongMode !== 'none') && particles.length > 0) {
+  // --- Energy Between Particles visualization (pre-collision only; post-collision layered below) ---
+  const showRibbonCloud = coulombVizMode === 'ribbon' || coulombVizMode === 'cloud';
+  if (showRibbonCloud) {
+    if (particles.length >= 2 && !hasCollided) drawCoulombViz();
+    // Hole cuts through ribbon/cloud using multiply blend — dark hole regions darken the ribbon
+    if (strongMode === 'hole' && particles.length > 0) {
+      ctx.globalCompositeOperation = 'multiply';
+      drawHeatmap();
+      ctx.globalCompositeOperation = 'source-over';
+    }
+  } else if ((coulombVizMode === 'heatmap' || strongMode !== 'none') && particles.length > 0) {
     drawHeatmap();
   }
 
@@ -1056,23 +1147,37 @@ function draw() {
   }
 
   // --- Draw particles in world space ---
-  for (let i = 0; i < particles.length; i++) {
-    const p = particles[i];
-    const isProton = p.type === 'proton';
-
-    if (bound) {
-      // Quantum blur: ghost copies spread by Gaussian, radius breathing with KE
-      const NUM_GHOSTS = 10;
+  if (bound) {
+    // Post-collision layering: ghosts → ribbon/cloud → hard cores
+    const NUM_GHOSTS = 10;
+    // Phase 1: ghost blur for all particles
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      const isProton = p.type === 'proton';
       for (let g = 0; g < NUM_GHOSTS; g++) {
-        // Uniform disk — no Gaussian tails sending ghosts off-screen
         const r = quantumSpread * Math.sqrt(Math.random());
         const theta = Math.random() * Math.PI * 2;
         drawBody(p.x + r * Math.cos(theta), p.y + r * Math.sin(theta), isProton, 0.10 + Math.random() * 0.08);
       }
-      // Brighter core to anchor the eye
-      drawBody(p.x, p.y, isProton, 0.55);
-
-    } else {
+    }
+    // Phase 2: ribbon/cloud sits above the ghost blur; hole cuts through it
+    if (showRibbonCloud && particles.length >= 2) {
+      drawCoulombViz();
+      if (strongMode === 'hole' && particles.length > 0) {
+        ctx.globalCompositeOperation = 'multiply';
+        drawHeatmap();
+        ctx.globalCompositeOperation = 'source-over';
+      }
+    }
+    // Phase 3: hard cores on top of everything — fully opaque so ribbon doesn't bleed through
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      drawBody(p.x, p.y, p.type === 'proton', 1.0);
+    }
+  } else {
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      const isProton = p.type === 'proton';
       // Normal rendering
       if (strongMode !== 'hole') {
         const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, PARTICLE_RADIUS * 2.5);
@@ -1255,11 +1360,13 @@ timeSlider.addEventListener('input', () => {
 });
 
 // ============================================================
-//  HEATMAP TOGGLE + STRONG FORCE MODE
+//  COULOMB VIZ MODE + STRONG FORCE MODE
 // ============================================================
-heatmapToggle.addEventListener('change', () => {
-  showCoulomb = heatmapToggle.checked;
-  if (!running) draw();
+document.querySelectorAll('input[name="coulombViz"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    coulombVizMode = radio.value;
+    if (!running) draw();
+  });
 });
 
 document.querySelectorAll('input[name="strongMode"]').forEach(radio => {
