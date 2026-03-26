@@ -1,0 +1,1341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>D+T Fusion — v7</title>
+<style>
+  /* ========================================
+     RESET & BASE STYLES
+     ======================================== */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a1a;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ========================================
+     TOOLBAR — minimal: title + Go + Replay
+     ======================================== */
+  #toolbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 20px;
+    background: #12122a;
+    border-bottom: 1px solid #2a2a4a;
+    z-index: 10;
+  }
+
+  #toolbar h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #ff6b6b;
+    margin-right: 8px;
+    white-space: nowrap;
+  }
+
+  .btn {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  #goBtn {
+    background: #22c55e;
+    color: #fff;
+  }
+  #goBtn:hover { background: #16a34a; }
+  #goBtn.running {
+    background: #ef4444;
+  }
+  #goBtn.running:hover { background: #dc2626; }
+
+  #replayBtn {
+    background: #0e7490;
+    color: #fff;
+  }
+  #replayBtn:hover { background: #0891b2; }
+  #replayBtn:disabled {
+    background: #1e293b;
+    color: #4b5563;
+    cursor: not-allowed;
+  }
+
+  /* ========================================
+     STRONG FORCE VISUALIZATION TOGGLE
+     Three-position radio pill: Hole / Pink glow / None
+     ======================================== */
+  .toggle-label {
+    font-size: 13px;
+    color: #9ca3af;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .toggle-label input[type="checkbox"] {
+    accent-color: #f59e0b;
+  }
+
+  #strongModeGroup {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 4px;
+    transition: opacity 0.15s;
+  }
+
+  #strongModeGroup.hidden { display: none; }
+
+  #strongModeGroup label {
+    font-size: 11px;
+    color: #6b7280;
+    padding: 2px 8px;
+    border: 1px solid #3a3a5a;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+
+  #strongModeGroup input[type="radio"] { display: none; }
+
+  #strongModeGroup input[type="radio"]:checked + label,
+  #coulombVizGroup input[type="radio"]:checked + label {
+    background: #2a2a4a;
+    color: #e0e0e0;
+    border-color: #6366f1;
+  }
+
+  #coulombVizGroup {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 4px;
+  }
+  #coulombVizGroup label {
+    font-size: 11px;
+    color: #6b7280;
+    padding: 2px 8px;
+    border: 1px solid #3a3a5a;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  #coulombVizGroup input[type="radio"] { display: none; }
+
+  /* ========================================
+     MAIN AREA — canvas + graph panel side by side
+     ======================================== */
+  #main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  #canvas {
+    flex: 1;
+    display: block;
+    cursor: default;
+  }
+
+  #graphPanel {
+    width: 160px;
+    flex-shrink: 0;
+    background: #0a0a1a;
+    border-left: 1px solid #2a2a4a;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #graphCanvas {
+    width: 100%;
+    flex: 1;
+    display: block;
+  }
+
+  /* ========================================
+     TIME SCRUBBER BAR
+     ======================================== */
+  #scrubBar {
+    height: 56px;
+    background: #0e0e22;
+    border-top: 1px solid #2a2a4a;
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    gap: 14px;
+    flex-shrink: 0;
+  }
+  #scrubBar .scrub-label {
+    font-size: 12px;
+    color: #6b7280;
+    white-space: nowrap;
+  }
+  #scrubBar .scrub-time {
+    font-size: 12px;
+    color: #6b7280;
+    white-space: nowrap;
+    min-width: 7em;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  #timeSlider {
+    flex: 1;
+    height: 10px;
+    accent-color: #6366f1;
+    cursor: pointer;
+  }
+  #timeSlider:disabled {
+    opacity: 0.25;
+    cursor: not-allowed;
+  }
+
+  /* ========================================
+     PORTRAIT ORIENTATION OVERLAY (mobile)
+     ======================================== */
+  #portrait-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #0a0a1a;
+    color: #e0e0e0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 2rem;
+  }
+
+  #portrait-overlay .rotate-icon { font-size: 64px; margin-bottom: 1.5rem; }
+  #portrait-overlay h2 { font-size: 22px; font-weight: 600; color: #ff6b6b; margin-bottom: 0.75rem; }
+  #portrait-overlay p { font-size: 16px; color: #9ca3af; max-width: 280px; }
+
+  @media (max-width: 860px) and (orientation: portrait) {
+    #portrait-overlay { display: flex; }
+    body > *:not(#portrait-overlay) { display: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Portrait overlay (mobile) -->
+<div id="portrait-overlay">
+  <div class="rotate-icon">&#x1F4F1;&#x21BB;</div>
+  <h2>Rotate Your Device</h2>
+  <p>Go horizontal to use this app</p>
+</div>
+
+<!-- Toolbar: just title + Go + Replay -->
+<div id="toolbar">
+  <h1>D+T Fusion</h1>
+  <button class="btn" id="goBtn">Go</button>
+  <button class="btn" id="replayBtn" disabled>Replay</button>
+  <!-- Coulomb viz mode + strong force render mode (stacked) -->
+  <div style="display:flex;flex-direction:column;gap:5px;">
+    <div style="display:flex;align-items:center;gap:6px;">
+      <span style="font-size:12px;color:#9ca3af;white-space:nowrap">Energy Between Particles:</span>
+      <span id="coulombVizGroup">
+        <input type="radio" name="coulombViz" id="cvNone" value="none"><label for="cvNone">None</label>
+        <input type="radio" name="coulombViz" id="cvHeatmap" value="heatmap"><label for="cvHeatmap">Heatmap</label>
+        <input type="radio" name="coulombViz" id="cvRibbon" value="ribbon" checked><label for="cvRibbon">Ribbon</label>
+        <input type="radio" name="coulombViz" id="cvCloud" value="cloud"><label for="cvCloud">Cloud</label>
+      </span>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;">
+      <span id="strongModeGroup">
+        Strong:
+        <input type="radio" name="strongMode" id="strongNone" value="none" checked><label for="strongNone">None</label>
+        <input type="radio" name="strongMode" id="strongHole" value="hole"><label for="strongHole">Hole</label>
+        <input type="radio" name="strongMode" id="strongPink" value="pink"><label for="strongPink">Pink glow</label>
+      </span>
+    </div>
+  </div>
+  <!-- Range + Speed sliders stacked -->
+  <div style="display:flex;flex-direction:column;gap:4px;">
+    <label class="toggle-label" style="gap:6px;">
+      Strong range: <span id="v4RangeVal">2.0</span>x
+      <input type="range" id="v4RangeSlider" min="1.0" max="3.0" step="0.05" value="2.0" style="width:72px;accent-color:#6366f1;">
+    </label>
+    <label class="toggle-label" style="gap:6px;">
+      Speed: <span id="v4SpeedVal">0.50</span>
+      <input type="range" id="v4SpeedSlider" min="0.1" max="2.0" step="0.05" value="0.5" style="width:72px;accent-color:#6366f1;">
+    </label>
+  </div>
+</div>
+
+<div id="main">
+  <!-- Simulation canvas -->
+  <canvas id="canvas"></canvas>
+
+  <!-- Energy bar chart panel -->
+  <div id="graphPanel">
+    <canvas id="graphCanvas"></canvas>
+  </div>
+</div>
+
+<!-- Time scrubber — drag to move forward/backward through the interaction -->
+<div id="scrubBar">
+  <span class="scrub-label">Time</span>
+  <input type="range" id="timeSlider" min="0" max="0" value="0" disabled>
+  <span class="scrub-time" id="timeLabel">–</span>
+</div>
+
+<script>
+// ============================================================
+//  DOM REFERENCES
+// ============================================================
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const graphCanvas = document.getElementById('graphCanvas');
+const gctx = graphCanvas.getContext('2d');
+const goBtn = document.getElementById('goBtn');
+const replayBtn = document.getElementById('replayBtn');
+const strongModeGroup = document.getElementById('strongModeGroup');
+const timeSlider = document.getElementById('timeSlider');
+const timeLabelEl = document.getElementById('timeLabel');
+
+// ============================================================
+//  PHYSICS CONSTANTS (same model as dev/v3)
+// ============================================================
+const PARTICLE_RADIUS = 10;
+const SUBSTEPS = 20;
+
+// Fixed physics parameters
+const coulombStrength = 150;
+const strongForceStrength = 1.5;    // gentle pull — slow visible acceleration across the well
+let strongForceRange = 2.0;        // cutoff = PARTICLE_RADIUS * 2 * strongForceRange (40px at 2x)
+let approachSpeed = 0.5;           // px per internal dt unit — initial inward velocity of each particle
+const equilibriumRatio = 0.35;    // equilibrium ≈ 35% of cutoff, clamped to touching distance
+const damping = 1.00;              // velocity damping per frame — lets bound pair settle
+
+// ============================================================
+//  STATE
+// ============================================================
+let particles = [];       // Array of { x, y, vx, vy, type }
+let running = false;
+let animId = null;
+const speed = 1.5;        // dt per frame
+
+// ============================================================
+//  HISTORY & SCRUBBER
+// ============================================================
+const MAX_HISTORY = 4000;
+let particleHistory = [];  // Each entry: { p: [{x,y,vx,vy,type},...], t: now }
+let scrubFrame = -1;       // -1 = live, >=0 = paused at a historical frame
+
+let hasCollided = false;           // True once D and T clusters first make cross-cluster contact
+let collisionFrame = -1;          // particleHistory index when collision first occurred
+let collisionTime = -1;           // performance.now() when collision occurred
+let fusionFired = false;          // True once fireFusion() has been called
+
+
+// ============================================================
+//  HEATMAP STATE
+// ============================================================
+let coulombVizMode = 'ribbon';    // 'heatmap' | 'ribbon' | 'cloud' | 'none'
+let strongMode = 'none';          // 'none' | 'hole' | 'pink'
+
+// Offscreen canvas for heatmap rendering (half resolution)
+const hmCanvas = document.createElement('canvas');
+const hmCtx = hmCanvas.getContext('2d');
+
+// ============================================================
+//  INITIAL CONDITIONS
+//  Two neutrons placed 300px apart horizontally, centered on
+//  the canvas, with inward velocities aimed at each other.
+//
+//  Strong force cutoff = 30px, equilibrium ~20px.
+//  Approach speed of 0.5 px/dt gives a visually pleasant pace:
+//  fast enough that the approach doesn't crawl, slow enough
+//  that during the 10% slowdown students can watch the energy
+//  graph traces evolve as the particles enter the well.
+//
+//  With damping = 0.98 the particles shed KE in the well and
+//  settle to the equilibrium distance over ~50-100 frames.
+// ============================================================
+function setupScenario() {
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+
+  // Deuterium (left cluster, moving right): proton + neutron 20px apart (touching)
+  // Tritium (right cluster, moving left): proton + 2 neutrons in ~20px triangle
+  particles = [
+    // Deuterium
+    { x: cx - 165, y: cy,      vx:  approachSpeed, vy: 0, type: 'proton'  },
+    { x: cx - 145, y: cy,      vx:  approachSpeed, vy: 0, type: 'neutron' },
+    // Tritium
+    { x: cx + 145, y: cy,      vx: -approachSpeed, vy: 0, type: 'proton'  },
+    { x: cx + 165, y: cy,      vx: -approachSpeed, vy: 0, type: 'neutron' },
+    { x: cx + 155, y: cy - 17, vx: -approachSpeed, vy: 0, type: 'neutron' },
+  ];
+}
+
+// Snapshot for replay
+let snapshot = null;
+
+function takeSnapshot() {
+  snapshot = particles.map(p => ({ ...p }));
+  replayBtn.disabled = false;
+}
+
+function restoreSnapshot() {
+  if (!snapshot) return;
+  particles = snapshot.map(p => ({ ...p }));
+}
+
+// ============================================================
+//  FORCE MODEL (identical to dev/v3)
+//  Coulomb: K/r² repulsion, proton-proton only
+//  Strong: spring-like linear ramp with equilibrium point
+// ============================================================
+function strongCutoff() {
+  return PARTICLE_RADIUS * 2 * strongForceRange;
+}
+
+function pairForce(dist, distSq, aType, bType) {
+  let force = 0;
+
+  // Coulomb: proton-proton only (irrelevant for neutron-neutron, but kept for completeness)
+  if (aType === 'proton' && bType === 'proton') {
+    const softDistSq = Math.max(distSq, PARTICLE_RADIUS * PARTICLE_RADIUS);
+    force += coulombStrength / softDistSq;
+  }
+
+  // Strong nuclear force: linear ramp giving quadratic potential well
+  // Below equilibrium → repulsive (positive), above → attractive (negative)
+  const cutoff = strongCutoff();
+  if (dist < cutoff) {
+    const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
+    const span = cutoff - eqDist;
+    const t = (dist - eqDist) / span;
+    force -= t * strongForceStrength;
+  }
+
+  return force;
+}
+
+// ============================================================
+//  PHYSICS STEP (forces + substep integration + hard-sphere)
+//  Same substep loop as dev/v3 for energy conservation.
+// ============================================================
+function step(dt) {
+  const n = particles.length;
+  const subDt = dt / SUBSTEPS;
+
+  for (let sub = 0; sub < SUBSTEPS; sub++) {
+    // Pairwise forces
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const a = particles[i];
+        const b = particles[j];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const distSq = dx * dx + dy * dy;
+        const dist = Math.sqrt(distSq);
+        if (dist < 0.01) continue;
+
+        const force = pairForce(dist, distSq, a.type, b.type);
+        const fx = force * (dx / dist);
+        const fy = force * (dy / dist);
+        a.vx -= fx * subDt;
+        a.vy -= fy * subDt;
+        b.vx += fx * subDt;
+        b.vy += fy * subDt;
+      }
+    }
+
+    // Integrate positions (symplectic Euler)
+    for (let i = 0; i < n; i++) {
+      particles[i].x += particles[i].vx * subDt;
+      particles[i].y += particles[i].vy * subDt;
+    }
+
+    // Hard-sphere collision constraint
+    const minSep = PARTICLE_RADIUS * 2;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const a = particles[i];
+        const b = particles[j];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        const dSq = dx * dx + dy * dy;
+        if (dSq >= minSep * minSep) continue;
+        let d = Math.sqrt(dSq);
+        if (d < 0.001) { dx = 1; dy = 0; d = 0.001; }
+        const nx = dx / d;
+        const ny = dy / d;
+        const overlap = minSep - d;
+
+        // Push apart equally
+        a.x -= nx * overlap * 0.5;
+        a.y -= ny * overlap * 0.5;
+        b.x += nx * overlap * 0.5;
+        b.y += ny * overlap * 0.5;
+
+        // Zero out approaching normal velocity (inelastic safety net)
+        const dvx = b.vx - a.vx;
+        const dvy = b.vy - a.vy;
+        const dvDotN = dvx * nx + dvy * ny;
+        if (dvDotN < 0) {
+          const half = dvDotN * 0.5;
+          a.vx += half * nx;
+          a.vy += half * ny;
+          b.vx -= half * nx;
+          b.vy -= half * ny;
+        }
+      }
+    }
+  }
+
+  // Apply damping only after first collision — free approach is undamped
+  if (hasCollided) {
+    for (let i = 0; i < n; i++) {
+      particles[i].vx *= damping;
+      particles[i].vy *= damping;
+    }
+  }
+}
+
+// ============================================================
+//  COLORMAPS
+// ============================================================
+
+// Coulomb energy: blue sequential (transparent → deep blue → near-white)
+const COULOMB_COLORMAP = new Uint8Array(256 * 4);
+(function() {
+  const stops = [
+    { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0 },
+    { t: 0.2,  r: 5,   g: 20,  b: 140, a: 77 },
+    { t: 0.5,  r: 20,  g: 70,  b: 220, a: 153 },
+    { t: 0.8,  r: 60,  g: 160, b: 255, a: 217 },
+    { t: 1.0,  r: 200, g: 235, b: 255, a: 255 },
+  ];
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    let s0 = stops[0], s1 = stops[1];
+    for (let s = 0; s < stops.length - 1; s++) {
+      if (t >= stops[s].t && t <= stops[s + 1].t) { s0 = stops[s]; s1 = stops[s + 1]; break; }
+    }
+    const f = (t - s0.t) / (s1.t - s0.t);
+    const idx = i * 4;
+    COULOMB_COLORMAP[idx]     = s0.r + (s1.r - s0.r) * f;
+    COULOMB_COLORMAP[idx + 1] = s0.g + (s1.g - s0.g) * f;
+    COULOMB_COLORMAP[idx + 2] = s0.b + (s1.b - s0.b) * f;
+    COULOMB_COLORMAP[idx + 3] = s0.a + (s1.a - s0.a) * f;
+  }
+})();
+
+// Strong force "Pink glow" mode: transparent → pink → magenta → white
+const PINK_COLORMAP = new Uint8Array(256 * 4);
+(function() {
+  const stops = [
+    { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0 },
+    { t: 0.25, r: 160, g: 30,  b: 90,  a: 80 },
+    { t: 0.5,  r: 220, g: 50,  b: 140, a: 160 },
+    { t: 0.75, r: 200, g: 60,  b: 200, a: 220 },
+    { t: 1.0,  r: 255, g: 200, b: 255, a: 255 },
+  ];
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    let s0 = stops[0], s1 = stops[1];
+    for (let s = 0; s < stops.length - 1; s++) {
+      if (t >= stops[s].t && t <= stops[s + 1].t) { s0 = stops[s]; s1 = stops[s + 1]; break; }
+    }
+    const f = (t - s0.t) / (s1.t - s0.t);
+    const idx = i * 4;
+    PINK_COLORMAP[idx]     = s0.r + (s1.r - s0.r) * f;
+    PINK_COLORMAP[idx + 1] = s0.g + (s1.g - s0.g) * f;
+    PINK_COLORMAP[idx + 2] = s0.b + (s1.b - s0.b) * f;
+    PINK_COLORMAP[idx + 3] = s0.a + (s1.a - s0.a) * f;
+  }
+})();
+
+// ============================================================
+//  UNIFIED HEATMAP RENDERING
+//  Computes Coulomb and strong force cross-terms per pixel,
+//  renders based on strongMode. Drawn in world space so it
+//  zooms correctly with the canvas transform.
+//
+//  The heatmap covers the visible viewport (accounting for zoom).
+//  At high zoom, we render more pixels in world space for the
+//  smaller visible region, keeping detail sharp.
+// ============================================================
+function drawHeatmap() {
+  // Compute the world-space region currently visible on screen
+  const zoomScale = 1.5;
+  let midX = canvas.width / 2;
+  let midY = canvas.height / 2;
+  if (particles.length > 0) {
+    midX = particles.reduce((s, p) => s + p.x, 0) / particles.length;
+    midY = particles.reduce((s, p) => s + p.y, 0) / particles.length;
+  }
+
+  // Visible world region: canvas dimensions / zoomScale, centered on midpoint
+  const visW = canvas.width / zoomScale;
+  const visH = canvas.height / zoomScale;
+  const worldLeft = midX - visW / 2;
+  const worldTop = midY - visH / 2;
+
+  // Heatmap resolution: half of canvas pixels for performance
+  const scale = 0.5;
+  const w = Math.ceil(canvas.width * scale);
+  const h = Math.ceil(canvas.height * scale);
+
+  hmCanvas.width = w;
+  hmCanvas.height = h;
+
+  const imageData = hmCtx.createImageData(w, h);
+  const data = imageData.data;
+
+  // Build particle lists
+  const protonList = [];
+  const allList = [];
+  for (let i = 0; i < particles.length; i++) {
+    allList.push(particles[i]);
+    if (particles[i].type === 'proton') protonList.push(particles[i]);
+  }
+  const np = protonList.length;
+  const na = allList.length;
+  if (na < 2 && strongMode !== 'hole') return;
+
+  const minR = PARTICLE_RADIUS;
+  const minRSq = minR * minR;
+  const exArr = new Float32Array(np);
+  const eyArr = new Float32Array(np);
+  const sxArr = new Float32Array(na);
+  const syArr = new Float32Array(na);
+
+  const cutoff = strongCutoff();
+  const lambda = cutoff / 3;
+  const needStrong = (strongMode === 'pink');  // cross-term only needed for pink mode
+
+  // Log-scale normalization
+  const cSens = 5000.0, cRef = 0.02;
+  const cLogNorm = Math.log(1.0 + cSens * cRef);
+  const cInvLog = 1.0 / cLogNorm;
+  const sSens = 5000.0, sRef = 0.001;
+  const sLogNorm = Math.log(1.0 + sSens * sRef);
+  const sInvLog = 1.0 / sLogNorm;
+
+  // Ambient glow for "hole" mode — bright enough to see the hole clearly
+  const ambientR = 50, ambientG = 140, ambientB = 220, ambientA = 185;
+
+  for (let py = 0; py < h; py++) {
+    // Map heatmap pixel → world coordinate (accounting for zoom viewport)
+    const worldY = worldTop + (py / h) * visH;
+    for (let px = 0; px < w; px++) {
+      const worldX = worldLeft + (px / w) * visW;
+      const di = (py * w + px) * 4;
+
+      // --- Coulomb cross-term (proton-proton only) ---
+      let coulombCross = 0;
+      if (coulombVizMode === 'heatmap' && np >= 2) {
+        for (let i = 0; i < np; i++) {
+          const dx = worldX - protonList[i].x;
+          const dy = worldY - protonList[i].y;
+          let rSq = dx * dx + dy * dy;
+          if (rSq < minRSq) rSq = minRSq;
+          const r = Math.sqrt(rSq);
+          const fieldMag = coulombStrength / (rSq * r);
+          exArr[i] = dx * fieldMag;
+          eyArr[i] = dy * fieldMag;
+        }
+        for (let i = 0; i < np; i++) {
+          for (let j = i + 1; j < np; j++) {
+            coulombCross += 2 * (exArr[i] * exArr[j] + eyArr[i] * eyArr[j]);
+          }
+        }
+      }
+
+      // --- Strong force cross-term (all nucleon pairs) ---
+      let strongCross = 0;
+      if (needStrong && na >= 2) {
+        for (let i = 0; i < na; i++) {
+          const dx = worldX - allList[i].x;
+          const dy = worldY - allList[i].y;
+          let rSq = dx * dx + dy * dy;
+          if (rSq < minRSq) rSq = minRSq;
+          const r = Math.sqrt(rSq);
+          const fieldMag = strongForceStrength * Math.exp(-r / lambda) / (rSq * r);
+          sxArr[i] = dx * fieldMag;
+          syArr[i] = dy * fieldMag;
+        }
+        for (let i = 0; i < na; i++) {
+          for (let j = i + 1; j < na; j++) {
+            strongCross += 2 * (sxArr[i] * sxArr[j] + syArr[i] * syArr[j]);
+          }
+        }
+      }
+
+      // --- Strong force hole field (for 'hole' mode only) ---
+      // Darkness = product of each pair's field influence at this pixel.
+      // Requires two particles — a single particle alone produces no darkness.
+      let holeField = 0;
+      if (strongMode === 'hole' && na >= 2) {
+        const holeRadius = 40;
+        // Precompute per-particle influence at this pixel
+        const inf = new Float32Array(na);
+        for (let i = 0; i < na; i++) {
+          const dx = worldX - allList[i].x;
+          const dy = worldY - allList[i].y;
+          const r = Math.sqrt(dx * dx + dy * dy);
+          if (r < holeRadius) {
+            inf[i] = Math.pow(1.0 - r / holeRadius, 1.5);
+          }
+        }
+        // Sum pair products — only nonzero where both particles' fields overlap
+        for (let i = 0; i < na; i++) {
+          for (let j = i + 1; j < na; j++) {
+            holeField += inf[i] * inf[j] * 6;
+          }
+        }
+      }
+
+      // --- Compose pixel based on strongMode ---
+      let r = 0, g = 0, b = 0, a = 0;
+
+      // Coulomb: negative cross-term → blue glow
+      if (coulombCross < 0) {
+        const absVal = -coulombCross;
+        let mag = Math.log(1.0 + cSens * absVal) * cInvLog;
+        if (mag > 1.0) mag = 1.0;
+        const ci = (mag * 255) | 0;
+        const ci4 = ci * 4;
+        r = COULOMB_COLORMAP[ci4];
+        g = COULOMB_COLORMAP[ci4 + 1];
+        b = COULOMB_COLORMAP[ci4 + 2];
+        a = COULOMB_COLORMAP[ci4 + 3];
+      }
+
+      if (strongMode === 'hole') {
+        const holeDepth = Math.min(1.0, holeField);
+        const fgA = a / 255;
+        const bgA = ambientA / 255;
+        // Always composite over ambient — ambient is always present
+        const outA = fgA + bgA * (1 - fgA);
+        let outR = ambientR, outG = ambientG, outB = ambientB;
+        if (outA > 0) {
+          outR = (r * fgA + ambientR * bgA * (1 - fgA)) / outA;
+          outG = (g * fgA + ambientG * bgA * (1 - fgA)) / outA;
+          outB = (b * fgA + ambientB * bgA * (1 - fgA)) / outA;
+        }
+        const visibility = 1.0 - holeDepth;
+        data[di]     = outR * visibility;
+        data[di + 1] = outG * visibility;
+        data[di + 2] = outB * visibility;
+        data[di + 3] = Math.max(ambientA, outA * visibility * 255);
+      } else if (strongMode === 'pink') {
+        data[di] = r; data[di+1] = g; data[di+2] = b; data[di+3] = a;
+        if (strongCross < 0) {
+          const absVal = -strongCross;
+          let mag = Math.log(1.0 + sSens * absVal) * sInvLog;
+          if (mag > 1.0) mag = 1.0;
+          const ci = (mag * 255) | 0;
+          const ci4 = ci * 4;
+          const pR = PINK_COLORMAP[ci4], pG = PINK_COLORMAP[ci4+1];
+          const pB = PINK_COLORMAP[ci4+2], pA = PINK_COLORMAP[ci4+3];
+          const fgA2 = pA / 255;
+          const bgA2 = data[di+3] / 255;
+          const outA2 = fgA2 + bgA2 * (1 - fgA2);
+          if (outA2 > 0) {
+            data[di]   = (pR * fgA2 + data[di]   * bgA2 * (1 - fgA2)) / outA2;
+            data[di+1] = (pG * fgA2 + data[di+1] * bgA2 * (1 - fgA2)) / outA2;
+            data[di+2] = (pB * fgA2 + data[di+2] * bgA2 * (1 - fgA2)) / outA2;
+            data[di+3] = outA2 * 255;
+          }
+        }
+      } else {
+        data[di] = r; data[di+1] = g; data[di+2] = b; data[di+3] = a;
+      }
+    }
+  }
+
+  hmCtx.putImageData(imageData, 0, 0);
+
+  // Draw the heatmap in world space — the canvas transform handles zoom.
+  // Map the heatmap image onto the visible world region.
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(hmCanvas, worldLeft, worldTop, visW, visH);
+}
+
+// ============================================================
+//  ENERGY COMPUTATION — all particles
+//  KE in CM frame, EIE (Coulomb p-p only), SIE (strong all pairs)
+//  Total = KE + EIE + SIE (SIE not displayed but counted in total)
+// ============================================================
+function computeEnergy() {
+  const n = particles.length;
+  if (n === 0) return { ke: 0, eie: 0, sie: 0, total: 0 };
+
+  // CM velocity (equal masses)
+  let cmvx = 0, cmvy = 0;
+  for (const p of particles) { cmvx += p.vx; cmvy += p.vy; }
+  cmvx /= n; cmvy /= n;
+
+  // KE in CM frame
+  let ke = 0;
+  for (const p of particles) {
+    const rvx = p.vx - cmvx, rvy = p.vy - cmvy;
+    ke += 0.5 * (rvx * rvx + rvy * rvy);
+  }
+
+  // Pairwise potential energies
+  let eie = 0, sie = 0;
+  const cutoff = strongCutoff();
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const a = particles[i], b = particles[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist === 0) continue;
+
+      if (a.type === 'proton' && b.type === 'proton') {
+        eie += coulombStrength / Math.max(dist, PARTICLE_RADIUS);
+      }
+
+      if (dist < cutoff) {
+        const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
+        const span = cutoff - eqDist;
+        const dr = dist - eqDist;
+        sie += strongForceStrength / (2 * span) * (dr * dr - span * span);
+      }
+    }
+  }
+
+  return { ke, eie, sie, total: ke + eie };
+}
+
+// ============================================================
+//  OVERLAY ENERGY GRAPH
+//  Drawn in screen space (not affected by zoom transform).
+//  Positioned in the bottom-right corner of the canvas.
+//  Same visual style as v3: amber KE, blue PE, green total.
+//  Always visible (alpha = 1.0).
+// ============================================================
+// ============================================================
+//  BAR CHART — vertical bars, v5 style.
+//  KE and EIE shown as bars. Total includes SIE in the number
+//  but SIE does not get its own bar.
+// ============================================================
+function drawBarChart() {
+  const w = graphCanvas.offsetWidth;
+  const h = graphCanvas.offsetHeight;
+  graphCanvas.width  = w * devicePixelRatio;
+  graphCanvas.height = h * devicePixelRatio;
+  gctx.scale(devicePixelRatio, devicePixelRatio);
+  gctx.clearRect(0, 0, w, h);
+
+  if (particles.length === 0) return;
+  const e = computeEnergy();
+
+  const bars = [
+    { label: 'KE',  value: Math.max(0, e.ke), color: '#f87171' },
+    { label: 'EIE', value: e.eie,              color: '#818cf8' },
+    { label: 'Tot', value: e.total,            color: '#22c55e' },
+  ];
+
+  const pad = 12;
+  const labelH = 18;
+  const barW = (w - pad * 2) / bars.length;
+  const chartH = h - labelH - pad;
+  const baseline = h - labelH;
+  const maxVal = 50;
+
+  gctx.font = '11px sans-serif';
+  gctx.textAlign = 'center';
+
+  bars.forEach((bar, i) => {
+    const barPx = Math.max(0, (bar.value / maxVal) * chartH);
+    const x = pad + i * barW + barW * 0.1;
+    const bw = barW * 0.8;
+
+    gctx.fillStyle = bar.color;
+    gctx.globalAlpha = 0.85;
+    if (bar.value >= 0) {
+      gctx.fillRect(x, baseline - barPx, bw, barPx);
+    } else {
+      gctx.fillRect(x, baseline, bw, -barPx);
+    }
+    gctx.globalAlpha = 1.0;
+
+    // Value label above bar
+    gctx.fillStyle = bar.color;
+    const labelY = Math.max(12, baseline - barPx - 4);
+    gctx.fillText(bar.value.toFixed(1), x + bw / 2, labelY);
+
+    // Name label at bottom
+    gctx.fillStyle = '#9ca3af';
+    gctx.fillText(bar.label, x + bw / 2, h - 3);
+  });
+
+  // Zero line
+  gctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  gctx.lineWidth = 1;
+  gctx.beginPath();
+  gctx.moveTo(0, baseline);
+  gctx.lineTo(w, baseline);
+  gctx.stroke();
+}
+
+// ============================================================
+//  COULOMB VIZ — Ribbon and Cloud modes
+// ============================================================
+function drawCoulombViz() {
+  const protonList = particles.filter(p => p.type === 'proton');
+  if (protonList.length < 2) return;
+  const refEnergy = coulombStrength / (PARTICLE_RADIUS * 2);
+  for (let i = 0; i < protonList.length; i++) {
+    for (let j = i + 1; j < protonList.length; j++) {
+      const a = protonList[i];
+      const b = protonList[j];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist === 0) continue;
+      const mag = Math.min(1, (coulombStrength / dist) / refEnergy);
+      if (mag < 0.005) continue;
+      if (coulombVizMode === 'ribbon') {
+        const lineW = dist <= 30
+          ? PARTICLE_RADIUS * 2
+          : Math.max(0.5, PARTICLE_RADIUS * 2 - (dist - 30) * (15 / 270));
+        ctx.lineWidth = lineW;
+        ctx.strokeStyle = `rgba(120, 190, 255, ${Math.min(1, mag * 3.0)})`;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      } else {
+        const mx = (a.x + b.x) / 2;
+        const my = (a.y + b.y) / 2;
+        const blobRadius = dist * 0.8 + 40;
+        const coreEdge = Math.min(0.92, 20 / blobRadius);
+        const coreAlpha = Math.min(1, mag * mag * mag * 20);
+        const cloudAlpha = Math.min(0.45, mag * 1.8);
+        const centerAlpha = Math.max(coreAlpha, cloudAlpha);
+        const grad = ctx.createRadialGradient(mx, my, 0, mx, my, blobRadius);
+        grad.addColorStop(0,        `rgba(220, 240, 255, ${centerAlpha})`);
+        grad.addColorStop(coreEdge, `rgba(140, 200, 255, ${cloudAlpha})`);
+        grad.addColorStop(0.55,     `rgba(70, 140, 240, ${cloudAlpha * 0.2})`);
+        grad.addColorStop(0.75,     `rgba(30, 80, 200, 0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(mx, my, blobRadius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+}
+
+// ============================================================
+//  DRAWING — particles with zoom transform
+//  Fixed 1.5x zoom centered on the centroid of all particles.
+//  Everything is drawn in world coordinates; the transform
+//  handles the viewport shift.
+// ============================================================
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Compute centroid of all particles (zoom target)
+  let midX = canvas.width / 2;
+  let midY = canvas.height / 2;
+  if (particles.length > 0) {
+    midX = particles.reduce((s, p) => s + p.x, 0) / particles.length;
+    midY = particles.reduce((s, p) => s + p.y, 0) / particles.length;
+  }
+
+  // Apply zoom transform: translate so midpoint is at canvas center, then scale
+  const zoomScale = 1.5;
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+
+  ctx.save();
+  // Translate canvas center to origin, scale, then translate back
+  // offset by the difference between canvas center and midpoint
+  ctx.translate(cx, cy);
+  ctx.scale(zoomScale, zoomScale);
+  ctx.translate(-midX, -midY);
+
+  // --- Energy Between Particles visualization (pre-collision only; post-collision layered below) ---
+  const showRibbonCloud = coulombVizMode === 'ribbon' || coulombVizMode === 'cloud';
+  if (showRibbonCloud) {
+    if (particles.length >= 2 && !hasCollided) drawCoulombViz();
+    // Hole cuts through ribbon/cloud using multiply blend — dark hole regions darken the ribbon
+    if (strongMode === 'hole' && particles.length > 0) {
+      ctx.globalCompositeOperation = 'multiply';
+      drawHeatmap();
+      ctx.globalCompositeOperation = 'source-over';
+    }
+  } else if ((coulombVizMode === 'heatmap' || strongMode !== 'none') && particles.length > 0) {
+    drawHeatmap();
+  }
+
+  // Helper: draw one particle body at (px, py) at given opacity
+  function drawBody(px, py, isProton, alpha) {
+    ctx.globalAlpha = alpha;
+    const g = ctx.createRadialGradient(px - 3, py - 3, 1, px, py, PARTICLE_RADIUS);
+    if (isProton) {
+      g.addColorStop(0, '#ff9999');
+      g.addColorStop(0.7, '#ff4444');
+      g.addColorStop(1, '#cc2222');
+    } else {
+      g.addColorStop(0, '#ccccdd');
+      g.addColorStop(0.7, '#8888aa');
+      g.addColorStop(1, '#666688');
+    }
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(px, py, PARTICLE_RADIUS, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+  }
+
+  // --- Draw particles in world space ---
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    const isProton = p.type === 'proton';
+    // Normal rendering
+    if (strongMode !== 'hole') {
+      const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, PARTICLE_RADIUS * 2.5);
+      if (isProton) {
+        gradient.addColorStop(0, 'rgba(255, 80, 80, 0.4)');
+        gradient.addColorStop(1, 'rgba(255, 80, 80, 0)');
+      } else {
+        gradient.addColorStop(0, 'rgba(160, 160, 200, 0.3)');
+        gradient.addColorStop(1, 'rgba(160, 160, 200, 0)');
+      }
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, PARTICLE_RADIUS * 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    drawBody(p.x, p.y, isProton, 1.0);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(isProton ? '+' : 'n', p.x, p.y + 1);
+  }
+
+  ctx.restore();
+
+}
+
+// ============================================================
+//  RENDER A HISTORICAL FRAME (used by scrubber)
+// ============================================================
+function renderFrame(idx) {
+  const frame = particleHistory[idx];
+  if (!frame) return;
+  const liveParticles = particles;
+  const liveCollided = hasCollided;
+  particles = frame.p;
+  hasCollided = (collisionFrame >= 0 && idx >= collisionFrame);
+  draw();
+  drawBarChart();
+  particles = liveParticles;
+  hasCollided = liveCollided;
+}
+
+// ============================================================
+//  LAYOUT / RESIZE
+// ============================================================
+function resize() {
+  const toolbarH = document.getElementById('toolbar').offsetHeight;
+  const scrubH = document.getElementById('scrubBar').offsetHeight;
+  canvas.width = canvas.offsetWidth;
+  canvas.height = window.innerHeight - toolbarH - scrubH;
+  if (!running) { draw(); drawBarChart(); }
+}
+window.addEventListener('resize', resize);
+setTimeout(resize, 0);
+
+// ============================================================
+//  GO / STOP
+// ============================================================
+let hasRunOnce = false;
+
+goBtn.addEventListener('click', () => {
+  if (running) {
+    // Stop → show "New" for next click
+    running = false;
+    goBtn.textContent = 'New';
+    goBtn.classList.remove('running');
+    cancelAnimationFrame(animId);
+  } else {
+    // "Go" (first time) or "New" (after stopping) → fresh start
+    if (hasRunOnce) resetAndSetup();
+    else if (particles.length === 0) setupScenario();
+    hasRunOnce = true;
+    running = true;
+    goBtn.textContent = 'Stop';
+    goBtn.classList.add('running');
+    takeSnapshot();
+    loop();
+  }
+});
+
+// ============================================================
+//  REPLAY — restore snapshot, reset zoom, and auto-start
+// ============================================================
+replayBtn.addEventListener('click', () => {
+  if (!snapshot) return;
+  running = false;
+  cancelAnimationFrame(animId);
+  goBtn.textContent = 'Go';
+  goBtn.classList.remove('running');
+  // Reset state
+  hasCollided = false;
+  collisionFrame = -1;
+  collisionTime = -1;
+  fusionFired = false;
+  particleHistory = [];
+  scrubFrame = -1;
+  timeSlider.value = 0;
+  timeSlider.max = 0;
+  timeSlider.disabled = true;
+  timeLabelEl.textContent = '–';
+  // Restore and go
+  restoreSnapshot();
+  draw();
+  running = true;
+  goBtn.textContent = 'Stop';
+  goBtn.classList.add('running');
+  loop();
+});
+
+// ============================================================
+//  TIME SCRUBBER
+// ============================================================
+timeSlider.addEventListener('input', () => {
+  const val = parseInt(timeSlider.value);
+  if (val >= particleHistory.length - 1) {
+    // Dragged back to live end — resume
+    scrubFrame = -1;
+    timeLabelEl.textContent = `${particleHistory.length}`;
+  } else {
+    scrubFrame = val;
+    timeLabelEl.textContent = `${val + 1} / ${particleHistory.length}`;
+    if (!running) renderFrame(val);
+  }
+});
+
+// ============================================================
+//  COULOMB VIZ MODE + STRONG FORCE MODE
+// ============================================================
+document.querySelectorAll('input[name="coulombViz"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    coulombVizMode = radio.value;
+    if (!running) draw();
+  });
+});
+
+document.querySelectorAll('input[name="strongMode"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    strongMode = radio.value;
+    if (!running) draw();
+  });
+});
+
+// ============================================================
+//  RANGE SLIDER + COLLISION TYPE
+// ============================================================
+document.getElementById('v4RangeSlider').addEventListener('input', function() {
+  strongForceRange = parseFloat(this.value);
+  document.getElementById('v4RangeVal').textContent = strongForceRange.toFixed(2);
+  if (!running) draw();
+});
+
+function resetAndSetup() {
+  running = false;
+  cancelAnimationFrame(animId);
+  goBtn.textContent = 'Go';
+  goBtn.classList.remove('running');
+  hasCollided = false;
+  collisionFrame = -1;
+  collisionTime = -1;
+  fusionFired = false;
+  particleHistory = [];
+  scrubFrame = -1;
+  timeSlider.value = 0;
+  timeSlider.max = 0;
+  timeSlider.disabled = true;
+  timeLabelEl.textContent = '–';
+  snapshot = null;
+  replayBtn.disabled = true;
+  setupScenario();
+  draw();
+}
+
+document.getElementById('v4SpeedSlider').addEventListener('input', function() {
+  approachSpeed = parseFloat(this.value);
+  document.getElementById('v4SpeedVal').textContent = approachSpeed.toFixed(2);
+});
+
+// ============================================================
+//  FUSION PRODUCTS
+//  Called 800ms after first inter-cluster contact.
+//  D + T → He-4 (particles 0-3) + n (particle 4)
+//  Momentum conserved; products get extra KE from binding energy.
+// ============================================================
+function fireFusion() {
+  fusionFired = true;
+
+  const n = particles.length; // 5
+
+  // Total system momentum and current CM-frame KE
+  let sumVx = 0, sumVy = 0;
+  for (const p of particles) { sumVx += p.vx; sumVy += p.vy; }
+  const cmvx = sumVx / n, cmvy = sumVy / n;
+
+  let keCM = 0;
+  for (const p of particles) {
+    const rvx = p.vx - cmvx, rvy = p.vy - cmvy;
+    keCM += 0.5 * (rvx * rvx + rvy * rvy);
+  }
+
+  // Products: He-4 has mass 4, neutron has mass 1 (in equal-mass units)
+  // Add Q-value: large fixed release so products shoot out dramatically
+  const keCMProduct = Math.max(keCM * 15, 40);
+
+  // In CM frame: |p_n| = |p_He4| (momentum conservation)
+  // 4*v_He4_cm = v_n_cm  →  KE_cm = 0.5*1*v_n² + 0.5*4*(v_n/4)² = 0.625*v_n²
+  const v_n_cm  = Math.sqrt(keCMProduct / 0.625);
+  const v_He4_cm = v_n_cm / 4;
+
+  // Random direction for neutron in CM frame
+  const theta = Math.random() * 2 * Math.PI;
+  const nx = Math.cos(theta), ny = Math.sin(theta);
+
+  // Lab-frame velocities
+  const v_He4_x = cmvx - nx * v_He4_cm;
+  const v_He4_y = cmvy - ny * v_He4_cm;
+  const v_n_x   = cmvx + nx * v_n_cm;
+  const v_n_y   = cmvy + ny * v_n_cm;
+
+  // Place He-4 particles (0-3) in a compact 2×2 cluster at their centroid
+  const he4cx = (particles[0].x + particles[1].x + particles[2].x + particles[3].x) / 4;
+  const he4cy = (particles[0].y + particles[1].y + particles[2].y + particles[3].y) / 4;
+  const r = PARTICLE_RADIUS * 1.1; // just inside touching distance so strong force binds them
+  const offsets = [[-r, -r], [r, -r], [-r, r], [r, r]];
+  for (let i = 0; i < 4; i++) {
+    particles[i].x  = he4cx + offsets[i][0];
+    particles[i].y  = he4cy + offsets[i][1];
+    particles[i].vx = v_He4_x;
+    particles[i].vy = v_He4_y;
+  }
+
+  // Solo neutron (particle 4): teleport to just outside strong force range of He-4,
+  // then give it velocity. This prevents the strong force from immediately pulling it back.
+  const cutoff = strongCutoff();
+  particles[4].x  = he4cx + nx * (cutoff + PARTICLE_RADIUS * 2);
+  particles[4].y  = he4cy + ny * (cutoff + PARTICLE_RADIUS * 2);
+  particles[4].vx = v_n_x;
+  particles[4].vy = v_n_y;
+}
+
+// ============================================================
+//  ANIMATION LOOP — history recording and scrubber support
+// ============================================================
+function loop() {
+  if (!running) return;
+
+  if (scrubFrame >= 0) {
+    // --- Scrub mode: physics paused, display historical frame ---
+    timeLabelEl.textContent = `${scrubFrame + 1} / ${particleHistory.length}`;
+    renderFrame(scrubFrame);
+  } else {
+    // --- Live mode: advance physics ---
+
+    // Advance physics
+    step(speed);
+
+    const now = performance.now();
+
+    // Detect first CROSS-CLUSTER contact: D (particles 0-1) vs T (particles 2-4)
+    if (!hasCollided) {
+      outer: for (let i = 0; i <= 1; i++) {
+        for (let j = 2; j <= 4; j++) {
+          const cdx = particles[j].x - particles[i].x;
+          const cdy = particles[j].y - particles[i].y;
+          if (cdx * cdx + cdy * cdy < (PARTICLE_RADIUS * 2 + 1) * (PARTICLE_RADIUS * 2 + 1)) {
+            hasCollided = true;
+            collisionFrame = particleHistory.length;
+            collisionTime = now;
+            break outer;
+          }
+        }
+      }
+    }
+
+    // Fire fusion products 200ms after first contact
+    if (hasCollided && !fusionFired && now - collisionTime > 200) {
+      fireFusion();
+    }
+
+    // Auto-stop once fusion has fired and all particles have left the visible viewport
+    if (fusionFired) {
+      const zoomScale = 1.5;
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
+      const midX = particles.reduce((s, p) => s + p.x, 0) / particles.length;
+      const midY = particles.reduce((s, p) => s + p.y, 0) / particles.length;
+      const margin = PARTICLE_RADIUS * zoomScale;
+      const allGone = particles.every(p => {
+        const sx = cx + (p.x - midX) * zoomScale;
+        const sy = cy + (p.y - midY) * zoomScale;
+        return sx < -margin || sx > canvas.width + margin ||
+               sy < -margin || sy > canvas.height + margin;
+      });
+      if (allGone) {
+        running = false;
+        goBtn.textContent = 'New';
+        goBtn.classList.remove('running');
+        draw();
+        drawBarChart();
+        return;
+      }
+    }
+
+    // Record history snapshot
+    particleHistory.push({ p: particles.map(p => ({ ...p })), t: now });
+    if (particleHistory.length > MAX_HISTORY) particleHistory.shift();
+
+    // Update slider to live (rightmost) position
+    timeSlider.disabled = false;
+    timeSlider.max = particleHistory.length - 1;
+    timeSlider.value = timeSlider.max;
+    timeLabelEl.textContent = `${particleHistory.length}`;
+
+    draw();
+    drawBarChart();
+  }
+
+  animId = requestAnimationFrame(loop);
+}
+
+// ============================================================
+//  INITIAL SETUP — place the two neutrons and draw
+// ============================================================
+setupScenario();
+draw();
+drawBarChart();
+</script>
+</body>
+</html>
