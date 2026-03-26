@@ -401,6 +401,8 @@
       <input type="range" id="zoomSlider" min="5" max="40" step="1" value="20">
     </div>
     <label class="toggle-label"><input type="checkbox" id="fieldEnergyToggle" checked> <span style="color:#7dd3fc">Field energy</span></label>
+    <label class="toggle-label"><input type="checkbox" id="eieHeatmapToggle"> <span style="color:#7dd3fc">EIE heatmap</span></label>
+    <label class="toggle-label"><input type="checkbox" id="sieHeatmapToggle"> <span style="color:#fb923c">SIE heatmap</span></label>
     <label class="toggle-label"><input type="checkbox" id="antispinToggle"> <span>Antispin</span></label>
     <label class="toggle-label"><input type="checkbox" id="conserveToggle"> <span style="color:#a78bfa">Conserve!</span></label>
   </div>
@@ -416,7 +418,7 @@
   <div id="energyPanel">
     <h2>Energy</h2>
     <div class="energy-row">
-      <span class="energy-label"><span class="energy-dot" style="background:#f59e0b"></span> Energy in motion</span>
+      <span class="energy-label"><span class="energy-dot" style="background:#f87171"></span> Energy in motion</span>
       <span class="energy-value" id="kineticVal">0</span>
     </div>
     <div class="energy-row">
@@ -441,7 +443,7 @@
       <button id="graphModeBtn">Line</button>
       <span id="graphHint">Scroll: zoom Y &middot; Drag: pan time</span>
     </div>
-    <label class="toggle-label" style="margin-top:6px"><input type="checkbox" id="splitIEToggle"> <span style="color:#9ca3af;font-size:12px">Split IE → <span style="color:#fb923c">EIE</span> + <span style="color:#818cf8">SIE</span></span></label>
+    <label class="toggle-label" style="margin-top:6px"><input type="checkbox" id="splitIEToggle"> <span style="color:#9ca3af;font-size:12px">Split IE → <span style="color:#818cf8">EIE</span> + <span style="color:#fb923c">SIE</span></span></label>
   </div>
 
   <div class="particle-bucket" id="protonBucket">
@@ -497,8 +499,9 @@ let animId = null;
 let speed = 1.5;  // Internal dt per frame (display speed = speed * 2)
 
 // ---- Visualization toggles ----
-const coulombVizMode = 'ribbon';  // Hardcoded to ribbon; 'cloud' mode also exists in drawCoulombViz
-let showFieldEnergy = true;       // Show Coulomb field ribbon between proton pairs
+let showFieldEnergy = true;   // Master toggle for all field visualizations
+let eieVizMode = 'ribbon';    // Electric: 'ribbon' | 'heatmap'
+let sieVizMode = 'ribbon';    // Strong:   'ribbon' | 'heatmap'
 let antispin = false;             // Clamp cluster spin to ≤1 rev/sim-s
 
 // ---- Selection ----
@@ -965,10 +968,21 @@ document.getElementById('zoomSlider').addEventListener('input', function() {
   if (!running) draw();
 });
 
-// Field energy ribbon: blue ribbon between proton pairs,
-// width proportional to Coulomb interaction strength at that distance.
+// Field energy: toggles both electric and strong visualizations.
 document.getElementById('fieldEnergyToggle').addEventListener('change', function() {
   showFieldEnergy = this.checked;
+  if (!running) draw();
+});
+
+// EIE heatmap: switches electric viz between ribbon and pixel heatmap.
+document.getElementById('eieHeatmapToggle').addEventListener('change', function() {
+  eieVizMode = this.checked ? 'heatmap' : 'ribbon';
+  if (!running) draw();
+});
+
+// SIE heatmap: switches strong viz between ribbon and pixel heatmap.
+document.getElementById('sieHeatmapToggle').addEventListener('change', function() {
+  sieVizMode = this.checked ? 'heatmap' : 'ribbon';
   if (!running) draw();
 });
 
@@ -1170,12 +1184,12 @@ function drawBarChart() {
 
   const latest = energyHistory[energyHistory.length - 1];
   const bars = splitIE ? [
-    { label: 'KE',  value: latest.kinetic,   color: '#f59e0b' },
-    { label: 'EIE', value: latest.eie,        color: '#fb923c' },
-    { label: 'SIE', value: latest.sie,        color: '#818cf8' },
+    { label: 'KE',  value: latest.kinetic,   color: '#f87171' },
+    { label: 'EIE', value: latest.eie,        color: '#818cf8' },
+    { label: 'SIE', value: latest.sie,        color: '#fb923c' },
     { label: 'Tot', value: latest.total,      color: '#22c55e' },
   ] : [
-    { label: 'KE',  value: latest.kinetic,   color: '#f59e0b' },
+    { label: 'KE',  value: latest.kinetic,   color: '#f87171' },
     { label: 'IE',  value: latest.potential,  color: '#3b82f6' },
     { label: 'Tot', value: latest.total,      color: '#22c55e' },
   ];
@@ -1270,7 +1284,7 @@ function drawGraph() {
   }
 
   drawLine('potential', '#3b82f6');
-  drawLine('kinetic', '#f59e0b');
+  drawLine('kinetic', '#f87171');
   drawLine('total', '#22c55e');
 
   // Draw crosshair and tooltip at hover position
@@ -1292,7 +1306,7 @@ function drawGraph() {
 
       // Dots on each line
       const lines = [
-        { key: 'kinetic',   color: '#f59e0b', offset: 0 },
+        { key: 'kinetic',   color: '#f87171', offset: 0 },
         { key: 'potential', color: '#3b82f6', offset: 0 },
         { key: 'total',     color: '#22c55e', offset: 0 },
       ];
@@ -1307,7 +1321,7 @@ function drawGraph() {
       // Position tooltip
       graphTooltip.style.display = 'block';
       graphTooltip.innerHTML =
-        `<span style="color:#f59e0b">KE</span> ${Math.round(e.kinetic)}<br>` +
+        `<span style="color:#f87171">KE</span> ${Math.round(e.kinetic)}<br>` +
         `<span style="color:#3b82f6">IE</span> ${Math.round(e.potential)}<br>` +
         `<span style="color:#22c55e">Tot</span> ${Math.round(e.total)}<br>` +
         `<span style="color:#6b7280">t=${start + sampleI}</span>`;
@@ -1658,12 +1672,13 @@ const COLORMAP = new Uint8Array(256 * 4);
 })();
 
 // ============================================================
-//  HEATMAP RENDERING  (currently unused — v5 uses ribbon mode)
-//  Renders Coulomb interaction energy density at half resolution
-//  for performance. Computes E-field vectors from each proton at
-//  every pixel, then sums 2(Ei·Ej) cross-terms across all pairs.
-//  Negative cross-term regions (fields oppose) represent stored
-//  interaction energy and are highlighted via the colormap.
+//  COULOMB HEATMAP
+//  Renders Coulomb interaction energy density at half resolution.
+//  Called BEFORE the zoom transform — pixel coords are mapped to
+//  world space accounting for zoom.
+//  Computes E-field vectors from each proton at every pixel, then
+//  sums 2(Ei·Ej) cross-terms. Negative cross-term regions (fields
+//  oppose) represent stored interaction energy → blue colormap.
 //  Log-scale normalization keeps dim regions visible.
 // ============================================================
 function drawHeatmap() {
@@ -1673,6 +1688,7 @@ function drawHeatmap() {
   const w = Math.ceil(fullW * scale);
   const h = Math.ceil(fullH * scale);
   const invScale = 1 / scale;
+  const cxH = fullW / 2, cyH = fullH / 2;  // canvas center for zoom correction
 
   hmCanvas.width = w;
   hmCanvas.height = h;
@@ -1701,9 +1717,9 @@ function drawHeatmap() {
   const invLogNorm = 1.0 / logNorm;
 
   for (let py = 0; py < h; py++) {
-    const worldY = py * invScale;
+    const worldY = (py * invScale - cyH) / zoom + cyH;
     for (let px = 0; px < w; px++) {
-      const worldX = px * invScale;
+      const worldX = (px * invScale - cxH) / zoom + cxH;
 
       // Coulomb field from each proton
       for (let i = 0; i < np; i++) {
@@ -1749,16 +1765,88 @@ function drawHeatmap() {
 }
 
 // ============================================================
-//  COULOMB VIZ
-//  Draws the electrostatic interaction between each proton pair.
-//  Two visual modes (coulombVizMode, currently hardcoded to 'ribbon'):
-//
-//  ribbon — A line connecting the two protons, width proportional
-//           to Coulomb energy at that distance. Becomes very thick
-//           when protons are close. Semi-transparent blue.
-//
-//  cloud  — A soft radial gradient blob centered between the pair,
-//           representing the field energy stored in that region.
+//  STRONG HEATMAP
+//  Pixel-based strong interaction energy density. Called BEFORE
+//  the zoom transform — same zoom-corrected coord mapping as the
+//  Coulomb heatmap.
+//  Each particle has a linear field f_i(P) = (cutoff - dist) / cutoff
+//  within its cutoff sphere (0 outside). Interaction density at
+//  pixel P = Σ f_i(P) * f_j(P) for all bonded pairs (i,j).
+//  This creates a lens-shaped bright zone between bonded particles,
+//  fading to zero at the cutoff boundary. Orange colormap.
+// ============================================================
+function drawStrongHeatmap() {
+  const n = particles.length;
+  if (n < 2) return;
+  const fullW = canvas.width;
+  const fullH = canvas.height;
+  const scale = 0.5;
+  const w = Math.ceil(fullW * scale);
+  const h = Math.ceil(fullH * scale);
+  const invScale = 1 / scale;
+  const cxH = fullW / 2, cyH = fullH / 2;
+
+  hmCanvas.width = w;
+  hmCanvas.height = h;
+  const imageData = hmCtx.createImageData(w, h);
+  const data = imageData.data;
+
+  const cutoff = strongCutoff();
+  const fieldArr = new Float32Array(n);
+
+  // Sensitivity: normalize so the midpoint of a touching pair maps to ~1
+  const touchMidField = (cutoff - PARTICLE_RADIUS) / cutoff;
+  const sensitivity = 5 / (touchMidField * touchMidField);
+
+  for (let py = 0; py < h; py++) {
+    const worldY = (py * invScale - cyH) / zoom + cyH;
+    for (let px = 0; px < w; px++) {
+      const worldX = (px * invScale - cxH) / zoom + cxH;
+
+      // Linear falloff field from each particle
+      for (let i = 0; i < n; i++) {
+        const dx = worldX - particles[i].x;
+        const dy = worldY - particles[i].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        fieldArr[i] = dist < cutoff ? (cutoff - dist) / cutoff : 0;
+      }
+
+      // Sum cross-terms for bonded pairs only
+      let interaction = 0;
+      for (let i = 0; i < n; i++) {
+        if (fieldArr[i] === 0) continue;
+        for (let j = i + 1; j < n; j++) {
+          if (fieldArr[j] === 0) continue;
+          const dx = particles[j].x - particles[i].x;
+          const dy = particles[j].y - particles[i].y;
+          if (dx * dx + dy * dy < cutoff * cutoff) {
+            interaction += fieldArr[i] * fieldArr[j];
+          }
+        }
+      }
+
+      if (interaction > 0) {
+        const t = Math.min(1, interaction * sensitivity);
+        const t2 = t * t;  // quadratic brightening toward center
+        const di = (py * w + px) * 4;
+        data[di]     = 255;                                   // R always max
+        data[di + 1] = (140 + 115 * t2) | 0;                // G: orange (140) → white (255)
+        data[di + 2] = (200 * t2) | 0;                      // B: 0 → near-white
+        data[di + 3] = Math.min(190, (210 * t)) | 0;        // A: slightly transparent at peak
+      }
+    }
+  }
+
+  hmCtx.putImageData(imageData, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(hmCanvas, 0, 0, fullW, fullH);
+}
+
+// ============================================================
+//  COULOMB RIBBON VIZ
+//  Connects each proton pair with a line; width proportional to
+//  Coulomb energy at that distance. Thick when close, thin when far.
 // ============================================================
 function drawCoulombViz() {
   const protonList = particles.filter(p => p.type === 'proton');
@@ -1774,34 +1862,56 @@ function drawCoulombViz() {
       if (dist === 0) continue;
       const mag = Math.min(1, (coulombStrength / dist) / refEnergy);
       if (mag < 0.005) continue;
-      if (coulombVizMode === 'ribbon') {
-        const lineW = dist <= 30
-          ? PARTICLE_RADIUS * 2
-          : Math.max(0.5, PARTICLE_RADIUS * 2 - (dist - 30) * (15 / 270));
-        ctx.lineWidth = lineW;
-        ctx.strokeStyle = `rgba(120, 190, 255, ${Math.min(1, mag * 3.0)})`;
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
-        ctx.stroke();
-      } else {
-        const mx = (a.x + b.x) / 2;
-        const my = (a.y + b.y) / 2;
-        const blobRadius = dist * 0.8 + 40;
-        const coreEdge = Math.min(0.92, 20 / blobRadius);
-        const coreAlpha = Math.min(1, mag * mag * mag * 20);
-        const cloudAlpha = Math.min(0.45, mag * 1.8);
-        const centerAlpha = Math.max(coreAlpha, cloudAlpha);
-        const grad = ctx.createRadialGradient(mx, my, 0, mx, my, blobRadius);
-        grad.addColorStop(0,        `rgba(220, 240, 255, ${centerAlpha})`);
-        grad.addColorStop(coreEdge, `rgba(140, 200, 255, ${cloudAlpha})`);
-        grad.addColorStop(0.55,     `rgba(70, 140, 240, ${cloudAlpha * 0.2})`);
-        grad.addColorStop(0.75,     `rgba(30, 80, 200, 0)`);
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(mx, my, blobRadius, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      const lineW = dist <= 30
+        ? PARTICLE_RADIUS * 2
+        : Math.max(0.5, PARTICLE_RADIUS * 2 - (dist - 30) * (15 / 270));
+      ctx.lineWidth = lineW;
+      ctx.strokeStyle = `rgba(120, 190, 255, ${Math.min(1, mag * 3.0)})`;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+  }
+}
+
+// ============================================================
+//  STRONG FIELD RIBBON
+//  Analogous to the Coulomb ribbon but for strong interactions.
+//  All pairs within the strong cutoff get a ribbon; width and
+//  alpha are proportional to the strong potential energy at that
+//  distance: |V| = strongForceStrength * (cutoff - dist).
+//  Max energy (touching) maps to full width; zero at cutoff edge.
+// ============================================================
+function drawStrongViz() {
+  const cutoff = strongCutoff();
+  const maxEnergy = strongForceStrength * (cutoff - PARTICLE_RADIUS * 2);  // energy at touching
+  if (maxEnergy <= 0) return;
+  for (let i = 0; i < particles.length; i++) {
+    for (let j = i + 1; j < particles.length; j++) {
+      const a = particles[i];
+      const b = particles[j];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist === 0 || dist >= cutoff) continue;
+      const mag = Math.min(1, (strongForceStrength * (cutoff - dist)) / maxEnergy);
+      const alpha = Math.min(0.75, mag * 3.0);  // slightly transparent even at full strength
+      const lineW = Math.max(0.5, PARTICLE_RADIUS * 2 * mag);
+      // Orange outer ribbon
+      ctx.lineWidth = lineW;
+      ctx.strokeStyle = `rgba(255, 140, 30, ${alpha})`;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      // Bright white-orange core
+      ctx.lineWidth = lineW * 0.35;
+      ctx.strokeStyle = `rgba(255, 240, 200, ${alpha * 0.9})`;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
     }
   }
 }
@@ -1818,6 +1928,13 @@ function drawCoulombViz() {
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  // Heatmaps render in screen space before the zoom transform.
+  // They account for zoom internally via coordinate mapping.
+  if (showFieldEnergy && particles.length >= 2) {
+    if (eieVizMode === 'heatmap') drawHeatmap();
+    if (sieVizMode === 'heatmap') drawStrongHeatmap();  // strong in front of electric
+  }
+
   // Centered zoom: scale around canvas center so existing particles stay visible
   const _cx = canvas.width / 2, _cy = canvas.height / 2;
   ctx.save();
@@ -1826,7 +1943,8 @@ function draw() {
   ctx.translate(-_cx, -_cy);
 
   if (showFieldEnergy && particles.length >= 2) {
-    drawCoulombViz();
+    if (eieVizMode === 'ribbon') drawCoulombViz();
+    if (sieVizMode === 'ribbon') drawStrongViz();  // strong in front of electric
   }
 
   for (let i = 0; i < particles.length; i++) {
