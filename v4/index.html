@@ -272,18 +272,6 @@
       <option value="pp">p + p</option>
     </select>
   </label>
-  <!-- Force arrows controls -->
-  <div style="display:flex;flex-direction:column;gap:4px;">
-    <label class="toggle-label" style="gap:6px;">
-      Strong arrow: <span id="strongArrowVal">12</span>px
-      <input type="range" id="strongArrowSlider" min="5" max="80" step="1" value="12" style="width:72px;accent-color:#6366f1;">
-    </label>
-    <div style="display:flex;gap:10px;">
-      <label class="toggle-label"><input type="checkbox" id="electricArrowToggle" checked> <span style="color:#fb923c">Electric force</span></label>
-      <label class="toggle-label"><input type="checkbox" id="strongArrowToggle" checked> <span style="color:#22d3ee">Strong force</span></label>
-      <label class="toggle-label"><input type="checkbox" id="singleParticleToggle" checked> <span>Forces on one particle</span></label>
-    </div>
-  </div>
 </div>
 
 <!-- Full-bleed simulation canvas -->
@@ -1214,22 +1202,6 @@ function draw() {
     }
   }
 
-  // Arrows on top of particles
-  if (showElectricArrows || showStrongArrows) {
-    if (singleParticleMode) {
-      // Only draw arrows for the clicked particle (if one is selected)
-      if (selectedParticle !== null && selectedParticle < particles.length) {
-        drawForceArrows(selectedParticle);
-      }
-    } else {
-      drawForceArrows();
-      // Redraw selected particle's arrows last so they appear over neighbors
-      if (selectedParticle !== null && selectedParticle < particles.length) {
-        drawForceArrows(selectedParticle);
-      }
-    }
-  }
-
   ctx.restore();
 
   // Debug readout (drawn in screen space, unaffected by zoom)
@@ -1449,167 +1421,6 @@ document.getElementById('v4SpeedSlider').addEventListener('input', function() {
   approachSpeed = parseFloat(this.value);
   document.getElementById('v4SpeedVal').textContent = approachSpeed.toFixed(2);
 });
-
-// ============================================================
-//  CANVAS MOUSEDOWN — select a particle (sets selectedParticle)
-//  Clicking a particle selects it so its force arrows render on top.
-//  Clicking empty space deselects.
-// ============================================================
-canvas.addEventListener('mousedown', (e) => {
-  // v4 uses a zoom transform centered on the pair midpoint.
-  // Invert the transform to get world-space coordinates.
-  const rect = canvas.getBoundingClientRect();
-  const sx = e.clientX - rect.left;
-  const sy = e.clientY - rect.top;
-  const zoomScale = 1 + (ZOOM_MAGNIFICATION - 1) * zoomT;
-  let midX = canvas.width / 2;
-  let midY = canvas.height / 2;
-  if (particles.length === 2) {
-    midX = (particles[0].x + particles[1].x) / 2;
-    midY = (particles[0].y + particles[1].y) / 2;
-  }
-  const cx = canvas.width / 2;
-  const cy = canvas.height / 2;
-  // Invert: screen → world
-  const wx = (sx - cx) / zoomScale + midX;
-  const wy = (sy - cy) / zoomScale + midY;
-
-  // Find particle under cursor
-  let hit = -1;
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const p = particles[i];
-    const dx = p.x - wx;
-    const dy = p.y - wy;
-    if (dx * dx + dy * dy <= (PARTICLE_RADIUS + 4) * (PARTICLE_RADIUS + 4)) {
-      hit = i;
-      break;
-    }
-  }
-  selectedParticle = hit >= 0 ? hit : null;
-  if (!running) draw();
-});
-
-// ============================================================
-//  FORCE ARROW CONTROL EVENT LISTENERS
-// ============================================================
-document.getElementById('strongArrowSlider').addEventListener('input', function() {
-  strongArrowMax = parseInt(this.value);
-  document.getElementById('strongArrowVal').textContent = strongArrowMax;
-  if (!running) draw();
-});
-
-document.getElementById('electricArrowToggle').addEventListener('change', function() {
-  showElectricArrows = this.checked;
-  if (!running) draw();
-});
-
-document.getElementById('strongArrowToggle').addEventListener('change', function() {
-  showStrongArrows = this.checked;
-  if (!running) draw();
-});
-
-document.getElementById('singleParticleToggle').addEventListener('change', function() {
-  singleParticleMode = this.checked;
-  if (!running) draw();
-});
-
-// ============================================================
-//  FORCE ARROWS
-//  drawArrow(fromX, fromY, nx, ny, len, color, w)
-//    Draws a single arrow: shaft + filled triangle arrowhead.
-//    (nx, ny) = unit direction. w = half-shaft-width.
-//    Arrowhead width = 2.8w (wider than typical for readability).
-//
-//  drawForceArrows(forIndex)
-//    Iterates particle pairs and draws:
-//
-//    Electric (orange): proton-proton only. Base at particle edge
-//      facing away from source. Length falls off as 1/r.
-//
-//    Strong (cyan): all pairs within cutoff. Arrow centered on
-//      the surface between the two particles. Length ramps up
-//      steeply (power 0.3 exponent) from zero at cutoff to max
-//      at touching distance. Pair arrows are offset perpendicular
-//      to the axis (opposite sides) so they don't overlap.
-//
-//    forIndex = null → draw all particles
-//    forIndex = N   → draw only arrows for particle N (selected mode)
-// ============================================================
-function drawArrow(fromX, fromY, nx, ny, len, color, w = PARTICLE_RADIUS * 0.5) {
-  if (len < 1) return;
-  const W    = w;
-  const HEAD = W * 2.5;                 // arrowhead length proportional to shaft
-  const px = -ny, py = nx;             // perpendicular unit vector
-  const tipX = fromX + nx * len;
-  const tipY = fromY + ny * len;
-  const baseX = tipX - nx * HEAD;
-  const baseY = tipY - ny * HEAD;
-
-  ctx.fillStyle = color;
-  ctx.strokeStyle = color;
-  ctx.lineWidth = W * 2;
-  ctx.globalAlpha = 0.9;
-  ctx.lineCap = 'round';
-
-  // Shaft from particle center to arrowhead base
-  ctx.beginPath();
-  ctx.moveTo(fromX, fromY);
-  ctx.lineTo(baseX, baseY);
-  ctx.stroke();
-
-  // Filled arrowhead triangle
-  ctx.beginPath();
-  ctx.moveTo(tipX, tipY);
-  ctx.lineTo(baseX + px * W * 2.8, baseY + py * W * 2.8);
-  ctx.lineTo(baseX - px * W * 2.8, baseY - py * W * 2.8);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.globalAlpha = 1.0;
-  ctx.lineCap = 'butt';
-}
-
-function drawForceArrows(forIndex = null) {
-  const MAX_LEN = 55;
-  const cutoff = strongCutoff();
-  const indices = forIndex !== null
-    ? [forIndex]
-    : particles.map((_, k) => k);
-
-  for (const i of indices) {
-    const pi = particles[i];
-    for (let j = 0; j < particles.length; j++) {
-      if (i === j) continue;
-      const pj = particles[j];
-      const dx = pi.x - pj.x;
-      const dy = pi.y - pj.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist === 0) continue;
-      const nx = dx / dist;
-      const ny = dy / dist;
-
-      // Coulomb: repulsive, away from j. Base at i's surface facing away from j.
-      if (showElectricArrows && pi.type === 'proton' && pj.type === 'proton') {
-        const refDist = PARTICLE_RADIUS * 2;
-        const len = MAX_LEN * 2.4 * Math.min(1, refDist / Math.max(dist, refDist));
-        drawArrow(pi.x + nx * PARTICLE_RADIUS, pi.y + ny * PARTICLE_RADIUS, nx, ny, len, '#fb923c', PARTICLE_RADIUS * 0.15);
-      }
-
-      // Strong: attractive, toward j. Arrow centered at surface of i facing j.
-      // Capped at strongArrowMax (reached exactly when touching, can't exceed it).
-      if (showStrongArrows && dist < cutoff) {
-        const touchingFactor = Math.pow(1 - (PARTICLE_RADIUS * 2) / cutoff, 0.3);
-        const len = Math.min(strongArrowMax, strongArrowMax * Math.pow(1 - dist / cutoff, 0.3) / touchingFactor);
-        const ox = -ny * PARTICLE_RADIUS * 0.5;
-        const oy =  nx * PARTICLE_RADIUS * 0.5;
-        // fromX chosen so the midpoint of the arrow sits on i's surface toward j
-        const fromX = pi.x + nx * (len / 2 - PARTICLE_RADIUS) + ox;
-        const fromY = pi.y + ny * (len / 2 - PARTICLE_RADIUS) + oy;
-        drawArrow(fromX, fromY, -nx, -ny, len, '#22d3ee', PARTICLE_RADIUS * 0.15);
-      }
-    }
-  }
-}
 
 // ============================================================
 //  ANIMATION LOOP — with zoom detection, speed modulation,
