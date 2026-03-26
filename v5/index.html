@@ -407,7 +407,7 @@
     <label class="toggle-label"><input type="checkbox" id="fieldEnergyToggle" checked> <span style="color:#7dd3fc">Field energy</span></label>
     <label class="toggle-label"><input type="checkbox" id="electricArrowToggle" checked> <span style="color:#fb923c">Electric force</span></label>
     <label class="toggle-label"><input type="checkbox" id="strongArrowToggle" checked> <span style="color:#22d3ee">Strong force</span></label>
-    <label class="toggle-label"><input type="checkbox" id="singleParticleToggle"> <span>Forces on one particle</span></label>
+    <label class="toggle-label"><input type="checkbox" id="singleParticleToggle" checked> <span>Forces on one particle</span></label>
     <label class="toggle-label"><input type="checkbox" id="antispinToggle"> <span>Antispin</span></label>
     <label class="toggle-label"><input type="checkbox" id="conserveToggle"> <span style="color:#a78bfa">Conserve!</span></label>
   </div>
@@ -448,6 +448,7 @@
       <button id="graphModeBtn">Line</button>
       <span id="graphHint">Scroll: zoom Y &middot; Drag: pan time</span>
     </div>
+    <label class="toggle-label" style="margin-top:6px"><input type="checkbox" id="splitIEToggle"> <span style="color:#9ca3af;font-size:12px">Split IE → <span style="color:#fb923c">EIE</span> + <span style="color:#818cf8">SIE</span></span></label>
   </div>
 
   <div class="particle-bucket" id="protonBucket">
@@ -507,7 +508,7 @@ const coulombVizMode = 'ribbon';  // Hardcoded to ribbon; 'cloud' mode also exis
 let showFieldEnergy = true;       // Show Coulomb field ribbon between proton pairs
 let showElectricArrows = true;    // Show orange Coulomb force arrows
 let showStrongArrows = true;      // Show cyan strong force arrows
-let singleParticleMode = false;   // When on, only show arrows for the selected particle
+let singleParticleMode = true;    // When on, only show arrows for the selected particle
 let antispin = false;             // Clamp cluster spin to ≤1 rev/sim-s
 
 // ---- Arrow display ----
@@ -536,6 +537,7 @@ const SUBSTEPS = 20;              // Physics substeps per animation frame for in
 // ---- Energy display offsets (display only, no physics effect) ----
 let ieOffset = 0;            // Added to displayed IE and Total (slider value squared for fine control)
 let conserveEnergy = false;  // See CONSERVE! DISPLAY MODE section below
+let splitIE = false;         // When on, bar chart shows EIE and SIE separately
 let referenceTotal = null;   // null = recapture reference on next computeEnergy() call
 
 // ============================================================
@@ -923,6 +925,7 @@ clearBtn.addEventListener('click', () => {
   graphViewEnd = -1;
   graphYAutoFit = true;
   graphYZoom = 1.0;
+  referenceTotal = null;
   updateStats();
   computeEnergy();
   draw();
@@ -1017,6 +1020,10 @@ document.getElementById('conserveToggle').addEventListener('change', function() 
   conserveEnergy = this.checked;
   referenceTotal = null;  // Recapture reference on next frame when enabling
 });
+document.getElementById('splitIEToggle').addEventListener('change', function() {
+  splitIE = this.checked;
+  if (!running) drawGraph();
+});
 
 // ============================================================
 //  IE OFFSET SLIDER
@@ -1099,7 +1106,8 @@ function pairForce(dist, distSq, aType, bType) {
 // ============================================================
 function computeEnergy() {
   let kinetic = 0;
-  let potential = 0;
+  let eiePotential = 0;  // Coulomb (electric) potential energy
+  let siePotential = 0;  // Strong nuclear potential energy
   const n = particles.length;
 
   for (let i = 0; i < n; i++) {
@@ -1117,56 +1125,46 @@ function computeEnergy() {
         // Coulomb potential: between protons only (with softening)
         if (particles[i].type === 'proton' && particles[j].type === 'proton') {
           const softDist = Math.max(dist, PARTICLE_RADIUS);
-          potential += coulombStrength / softDist;
+          eiePotential += coulombStrength / softDist;
         }
         // Strong force potential: V = -S * (cutoff - r), zero at cutoff, deepens linearly inward
         if (dist < cutoff) {
-          potential -= strongForceStrength * (cutoff - dist);
+          siePotential -= strongForceStrength * (cutoff - dist);
         }
       }
     }
   }
+  const potential = eiePotential + siePotential;
 
   // ============================================================
   //  CONSERVE! DISPLAY MODE
-  //  This is a purely cosmetic lie. When enabled, the displayed
-  //  numbers are adjusted so Total always equals referenceTotal
-  //  (captured at the moment the simulation starts or is disturbed).
-  //
-  //  Two extra funny constraints:
-  //    a) KE can never go negative in the display
-  //    b) When particles are moving, KE is rescaled to 0.1–10
-  //       (proportional to how much of the reference total it represents)
-  //
-  //  To make KE + IE = Total still hold despite the rescaling,
-  //  we fudge the displayed IE to absorb whatever slack is left.
-  //  IE = Total - KE_display. This makes IE drift from its real
-  //  value and potentially go negative. On a scale of 0–10 where
-  //  10 is really bad, this is about a 3. The physics is untouched.
+  //  When enabled, Total is pinned to a reference value captured
+  //  at simulation start or the last particle interaction.
+  //  IE shows the real physics value (configuration is what it is).
+  //  KE absorbs any drift: dispKE = referenceTotal - IE.
+  //  KE is clamped to 0 — if IE exceeds referenceTotal (deep
+  //  binding), KE shows 0 and Total is slightly off rather than
+  //  showing a nonsensical negative kinetic energy.
   // ============================================================
+  // ieOffset is attributed to SIE only; combined IE and Total pick it up through dispSIE
+  const dispEIE = eiePotential;
+  const dispSIE = siePotential + ieOffset;
   let dispKE = kinetic;
-  let dispIE = potential + ieOffset;
-  let dispTotal = kinetic + potential + ieOffset;
+  let dispIE = dispEIE + dispSIE;
+  let dispTotal = kinetic + dispIE;
   if (conserveEnergy) {
     if (referenceTotal === null) referenceTotal = dispTotal;  // Capture reference on first call
-    dispKE = referenceTotal - (potential + ieOffset);
-    dispTotal = referenceTotal;
-    // a) never negative
-    dispKE = Math.max(0, dispKE);
-    // b) if particles are actually moving, rescale display to 0.1–10
-    if (kinetic > 0) {
-      dispKE = 0.1 + (dispKE / Math.max(referenceTotal, 0.001)) * 2.8;
-    }
-    // Fudge IE so KE + IE = Total always — IE absorbs the rescaling error
-    dispIE = dispTotal - dispKE;
+    dispIE    = dispEIE + dispSIE;                           // Real IE — honest
+    dispKE    = Math.max(0, referenceTotal - dispIE);        // Fill the rest; clamp at 0
+    dispTotal = referenceTotal;                              // Pinned
   }
 
-  kineticVal.textContent = dispKE.toFixed(1);
-  potentialVal.textContent = dispIE.toFixed(1);
-  totalVal.textContent = dispTotal.toFixed(1);
+  kineticVal.textContent = Math.round(dispKE);
+  potentialVal.textContent = Math.round(dispIE);
+  totalVal.textContent = Math.round(dispTotal);
 
   // Store display values in history (graph shows whatever the user sees)
-  energyHistory.push({ kinetic: dispKE, potential, total: dispKE + potential });
+  energyHistory.push({ kinetic: dispKE, potential: dispIE, total: dispTotal, eie: dispEIE, sie: dispSIE });
   if (energyHistory.length > MAX_HISTORY) energyHistory.shift();
 
   return { kinetic, potential };  // Return true values for callers that need them
@@ -1209,10 +1207,15 @@ function drawBarChart() {
   if (energyHistory.length === 0) return;
 
   const latest = energyHistory[energyHistory.length - 1];
-  const bars = [
-    { label: 'KE',  value: latest.kinetic,             color: '#f59e0b' },
-    { label: 'IE',  value: latest.potential + ieOffset, color: '#3b82f6' },
-    { label: 'Tot', value: latest.total    + ieOffset,  color: '#22c55e' },
+  const bars = splitIE ? [
+    { label: 'KE',  value: latest.kinetic,   color: '#f59e0b' },
+    { label: 'EIE', value: latest.eie,        color: '#fb923c' },
+    { label: 'SIE', value: latest.sie,        color: '#818cf8' },
+    { label: 'Tot', value: latest.total,      color: '#22c55e' },
+  ] : [
+    { label: 'KE',  value: latest.kinetic,   color: '#f59e0b' },
+    { label: 'IE',  value: latest.potential,  color: '#3b82f6' },
+    { label: 'Tot', value: latest.total,      color: '#22c55e' },
   ];
 
   const maxVal = Math.max(1, ...bars.map(b => Math.abs(b.value))) * 1.15;
@@ -1243,7 +1246,7 @@ function drawBarChart() {
     const labelY = bar.value >= 0
       ? Math.max(10, baseline - barPx - 3)
       : baseline - barPx + 12;
-    gctx.fillText(bar.value.toFixed(1), x + bw / 2, labelY);
+    gctx.fillText(Math.round(bar.value), x + bw / 2, labelY);
 
     // Name label at bottom
     gctx.fillStyle = '#9ca3af';
@@ -1277,7 +1280,7 @@ function drawGraph() {
   let maxVal = 1;
   for (let i = start; i <= end; i++) {
     const e = energyHistory[i];
-    maxVal = Math.max(maxVal, Math.abs(e.kinetic), Math.abs(e.potential + ieOffset), Math.abs(e.total + ieOffset));
+    maxVal = Math.max(maxVal, Math.abs(e.kinetic), Math.abs(e.potential), Math.abs(e.total));
   }
   maxVal *= 1.1;
   if (!graphYAutoFit) {
@@ -1304,9 +1307,9 @@ function drawGraph() {
     gctx.stroke();
   }
 
-  drawLine('potential', '#3b82f6', ieOffset);
+  drawLine('potential', '#3b82f6');
   drawLine('kinetic', '#f59e0b');
-  drawLine('total', '#22c55e', ieOffset);
+  drawLine('total', '#22c55e');
 
   // Draw crosshair and tooltip at hover position
   if (graphHoverX >= 0 && graphHoverX <= w) {
@@ -1328,8 +1331,8 @@ function drawGraph() {
       // Dots on each line
       const lines = [
         { key: 'kinetic',   color: '#f59e0b', offset: 0 },
-        { key: 'potential', color: '#3b82f6', offset: ieOffset },
-        { key: 'total',     color: '#22c55e', offset: ieOffset },
+        { key: 'potential', color: '#3b82f6', offset: 0 },
+        { key: 'total',     color: '#22c55e', offset: 0 },
       ];
       for (const l of lines) {
         const y = h - ((e[l.key] + l.offset) / maxVal) * (h - 8) - 4;
@@ -1342,9 +1345,9 @@ function drawGraph() {
       // Position tooltip
       graphTooltip.style.display = 'block';
       graphTooltip.innerHTML =
-        `<span style="color:#f59e0b">KE</span> ${e.kinetic.toFixed(1)}<br>` +
-        `<span style="color:#3b82f6">IE</span> ${(e.potential + ieOffset).toFixed(1)}<br>` +
-        `<span style="color:#22c55e">Tot</span> ${(e.total + ieOffset).toFixed(1)}<br>` +
+        `<span style="color:#f59e0b">KE</span> ${Math.round(e.kinetic)}<br>` +
+        `<span style="color:#3b82f6">IE</span> ${Math.round(e.potential)}<br>` +
+        `<span style="color:#22c55e">Tot</span> ${Math.round(e.total)}<br>` +
         `<span style="color:#6b7280">t=${start + sampleI}</span>`;
       // Place tooltip: prefer right of cursor, flip if near edge
       const tipW = graphTooltip.offsetWidth;
