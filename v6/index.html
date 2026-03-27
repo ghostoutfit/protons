@@ -401,8 +401,8 @@
       <input type="range" id="zoomSlider" min="5" max="40" step="1" value="20">
     </div>
     <label class="toggle-label"><input type="checkbox" id="fieldEnergyToggle" checked> <span style="color:#7dd3fc">Field energy</span></label>
-    <label class="toggle-label"><input type="checkbox" id="eieHeatmapToggle"> <span style="color:#7dd3fc">EIE heatmap</span></label>
-    <label class="toggle-label"><input type="checkbox" id="sieHeatmapToggle"> <span style="color:#fb923c">SIE heatmap</span></label>
+    <label class="toggle-label"><input type="checkbox" id="eieHeatmapToggle" checked> <span style="color:#7dd3fc">EIE heatmap</span></label>
+    <label class="toggle-label"><input type="checkbox" id="sieHeatmapToggle" checked> <span style="color:#fb923c">SIE heatmap</span></label>
     <label class="toggle-label"><input type="checkbox" id="antispinToggle"> <span>Antispin</span></label>
     <label class="toggle-label"><input type="checkbox" id="conserveToggle"> <span style="color:#a78bfa">Conserve!</span></label>
   </div>
@@ -500,8 +500,8 @@ let speed = 1.5;  // Internal dt per frame (display speed = speed * 2)
 
 // ---- Visualization toggles ----
 let showFieldEnergy = true;   // Master toggle for all field visualizations
-let eieVizMode = 'ribbon';    // Electric: 'ribbon' | 'heatmap'
-let sieVizMode = 'ribbon';    // Strong:   'ribbon' | 'heatmap'
+let eieVizMode = 'heatmap';   // Electric: 'ribbon' | 'heatmap'
+let sieVizMode = 'heatmap';   // Strong:   'ribbon' | 'heatmap'
 let antispin = false;             // Clamp cluster spin to ≤1 rev/sim-s
 
 // ---- Selection ----
@@ -1645,108 +1645,105 @@ function step(dt) {
 //  [0, 1] to a blue-white gradient (transparent at zero, opaque
 //  near-white at max). Used by the Coulomb heatmap renderer.
 // ============================================================
-const COLORMAP = new Uint8Array(256 * 4);
-(function buildColormap() {
-  const stops = [
-    { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0 },    // Transparent at zero energy
-    { t: 0.2,  r: 5,   g: 20,  b: 140, a: 77 },   // Bluish?
-    { t: 0.5,  r: 20,  g: 70,  b: 220, a: 153 },  // Bluish?
-    { t: 0.8,  r: 60,  g: 160, b: 255, a: 217 },  // Bluish?
-    { t: 1.0,  r: 200, g: 235, b: 255, a: 255 },  // Near-white at max energy
-  ];
+function buildColorstops(stops, out) {
   for (let i = 0; i < 256; i++) {
     const t = i / 255;
     let s0 = stops[0], s1 = stops[1];
     for (let s = 0; s < stops.length - 1; s++) {
-      if (t >= stops[s].t && t <= stops[s + 1].t) {
-        s0 = stops[s]; s1 = stops[s + 1]; break;
-      }
+      if (t >= stops[s].t && t <= stops[s + 1].t) { s0 = stops[s]; s1 = stops[s + 1]; break; }
     }
     const f = (t - s0.t) / (s1.t - s0.t);
     const idx = i * 4;
-    COLORMAP[idx]     = s0.r + (s1.r - s0.r) * f;
-    COLORMAP[idx + 1] = s0.g + (s1.g - s0.g) * f;
-    COLORMAP[idx + 2] = s0.b + (s1.b - s0.b) * f;
-    COLORMAP[idx + 3] = s0.a + (s1.a - s0.a) * f;
+    out[idx]     = s0.r + (s1.r - s0.r) * f;
+    out[idx + 1] = s0.g + (s1.g - s0.g) * f;
+    out[idx + 2] = s0.b + (s1.b - s0.b) * f;
+    out[idx + 3] = s0.a + (s1.a - s0.a) * f;
   }
-})();
+}
+
+const COLORMAP = new Uint8Array(256 * 4);
+buildColorstops([
+  { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0   },
+  { t: 0.12, r: 10,  g: 35,  b: 170, a: 140 },
+  { t: 0.4,  r: 25,  g: 85,  b: 235, a: 210 },
+  { t: 0.7,  r: 70,  g: 165, b: 255, a: 245 },
+  { t: 1.0,  r: 210, g: 238, b: 255, a: 255 },
+], COLORMAP);
+
+const STRONG_COLORMAP = new Uint8Array(256 * 4);
+buildColorstops([
+  { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0   },
+  { t: 0.12, r: 160, g: 45,  b: 0,   a: 140 },
+  { t: 0.4,  r: 240, g: 110, b: 10,  a: 210 },
+  { t: 0.7,  r: 255, g: 185, b: 70,  a: 245 },
+  { t: 1.0,  r: 255, g: 238, b: 210, a: 255 },
+], STRONG_COLORMAP);
 
 // ============================================================
-//  COULOMB HEATMAP
-//  Renders Coulomb interaction energy density at half resolution.
-//  Called BEFORE the zoom transform — pixel coords are mapped to
-//  world space accounting for zoom.
-//  Computes E-field vectors from each proton at every pixel, then
-//  sums 2(Ei·Ej) cross-terms. Negative cross-term regions (fields
-//  oppose) represent stored interaction energy → blue colormap.
-//  Log-scale normalization keeps dim regions visible.
+//  COULOMB HEATMAP — normalized ribbon approach
+//  Each proton pair contributes a glowing ribbon along its axis.
+//  Brightness = log-scaled pair potential energy (same for all
+//  pixels along the ribbon). Falloff is Gaussian perpendicular
+//  to the axis; sigma = 18% of separation. Smooth ramp at
+//  endpoints over 15% of separation.
 // ============================================================
 function drawHeatmap() {
-  const fullW = canvas.width;
-  const fullH = canvas.height;
+  const protonList = particles.filter(p => p.type === 'proton');
+  if (protonList.length < 2) return;
+
+  // Precompute per-pair ribbon descriptors
+  const refEnergy = coulombStrength / (PARTICLE_RADIUS * 2);  // energy at touching
+  const logRef = Math.log(2);  // log(1+1): value when pairEnergy = refEnergy → mag 1.0
+  const pairs = [];
+  for (let i = 0; i < protonList.length; i++) {
+    for (let j = i + 1; j < protonList.length; j++) {
+      const a = protonList[i], b = protonList[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 0.01) continue;
+      const energy = coulombStrength / dist;
+      // sigma: wide bloom when close (inversely proportional), floors at medium distance
+      const sigma = Math.max(3.5, 28 / Math.sqrt(dist));
+      // mag fades with distance → more transparent far away, same width
+      const distFade = Math.exp(-dist / 350);
+      const mag = Math.min(1, Math.log(1 + energy / refEnergy) / logRef) * distFade;
+      pairs.push({ ax: a.x, ay: a.y, ux: dx / dist, uy: dy / dist, dist, sigma, mag });
+    }
+  }
+
+  const fullW = canvas.width, fullH = canvas.height;
   const scale = 0.5;
-  const w = Math.ceil(fullW * scale);
-  const h = Math.ceil(fullH * scale);
+  const w = Math.ceil(fullW * scale), h = Math.ceil(fullH * scale);
   const invScale = 1 / scale;
-  const cxH = fullW / 2, cyH = fullH / 2;  // canvas center for zoom correction
+  const cxH = fullW / 2, cyH = fullH / 2;
 
-  hmCanvas.width = w;
-  hmCanvas.height = h;
-
+  hmCanvas.width = w; hmCanvas.height = h;
   const imageData = hmCtx.createImageData(w, h);
   const data = imageData.data;
-
-  // Only protons contribute to Coulomb field
-  const protonList = [];
-  for (let i = 0; i < particles.length; i++) {
-    if (particles[i].type === 'proton') protonList.push(particles[i]);
-  }
-  const np = protonList.length;
-  if (np < 2) return;
-
-  const minR = PARTICLE_RADIUS;
-  const minRSq = minR * minR;
-
-  const exArr = new Float32Array(np);
-  const eyArr = new Float32Array(np);
-
-  // Log-scale normalization: maps energy density to 0–1 for colormap
-  const sensitivity = 5000.0; // How quickly dim values become visible
-  const refMax = 0.02;        // Energy density that maps to colormap=1.0
-  const logNorm = Math.log(1.0 + sensitivity * refMax);
-  const invLogNorm = 1.0 / logNorm;
 
   for (let py = 0; py < h; py++) {
     const worldY = (py * invScale - cyH) / zoom + cyH;
     for (let px = 0; px < w; px++) {
       const worldX = (px * invScale - cxH) / zoom + cxH;
 
-      // Coulomb field from each proton
-      for (let i = 0; i < np; i++) {
-        const dx = worldX - protonList[i].x;
-        const dy = worldY - protonList[i].y;
-        let rSq = dx * dx + dy * dy;
-        if (rSq < minRSq) rSq = minRSq;
-        const r = Math.sqrt(rSq);
-        const fieldMag = coulombStrength / (rSq * r);  // E-field magnitude: K/r²×(1/r) for direction
-        exArr[i] = dx * fieldMag;  // E-field x-component from this proton
-        eyArr[i] = dy * fieldMag;
+      let total = 0;
+      for (const p of pairs) {
+        const rx = worldX - p.ax, ry = worldY - p.ay;
+        const para = rx * p.ux + ry * p.uy;
+        const rampPx = 8;
+        const e1 = Math.max(0, Math.min(1, para / rampPx));
+        const e2 = Math.max(0, Math.min(1, (p.dist - para) / rampPx));
+        const endFade = e1 * e2;
+        if (endFade <= 0) continue;
+        // Elliptical width: 3x wider at center (t=0.5) than at endpoints
+        const t = para / p.dist;
+        const sigmaT = p.sigma * (1 + 2 * Math.sin(Math.PI * t));
+        const perpSq = Math.max(0, rx * rx + ry * ry - para * para);
+        total += p.mag * Math.exp(-perpSq / (2 * sigmaT * sigmaT)) * endFade;
       }
 
-      // Cross-terms 2(Ei·Ej) isolate the interaction energy density,
-      // excluding each proton's self-energy (which is always positive).
-      let interaction = 0;
-      for (let i = 0; i < np; i++) {
-        for (let j = i + 1; j < np; j++) {
-          interaction += 2 * (exArr[i] * exArr[j] + eyArr[i] * eyArr[j]);
-        }
-      }
-
-      // Negative cross-term = fields oppose = energy stored in the overlap region
-      if (interaction < 0) {
-        const absVal = -interaction;
-        let magnitude = Math.log(1.0 + sensitivity * absVal) * invLogNorm;  // Log compression
-        if (magnitude > 1.0) magnitude = 1.0;
+      if (total > 0.002) {
+        const magnitude = Math.min(1, total * 3.0);
         const ci = (magnitude * 255) | 0;
         const di = (py * w + px) * 4;
         const ci4 = ci * 4;
@@ -1765,74 +1762,83 @@ function drawHeatmap() {
 }
 
 // ============================================================
-//  STRONG HEATMAP
-//  Pixel-based strong interaction energy density. Called BEFORE
-//  the zoom transform — same zoom-corrected coord mapping as the
-//  Coulomb heatmap.
-//  Each particle has a linear field f_i(P) = (cutoff - dist) / cutoff
-//  within its cutoff sphere (0 outside). Interaction density at
-//  pixel P = Σ f_i(P) * f_j(P) for all bonded pairs (i,j).
-//  This creates a lens-shaped bright zone between bonded particles,
-//  fading to zero at the cutoff boundary. Orange colormap.
+//  STRONG HEATMAP — normalized ribbon approach
+//  Same structure as Coulomb heatmap. Brightness = normalized
+//  depth in the potential well (0 at cutoff edge, 1 at
+//  equilibrium). Sigma = 35% of separation.
 // ============================================================
 function drawStrongHeatmap() {
   const n = particles.length;
   if (n < 2) return;
-  const fullW = canvas.width;
-  const fullH = canvas.height;
+
+  const cutoff = strongCutoff();
+  const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
+  const span = cutoff - eqDist;
+  if (span <= 0) return;
+  const maxBinding = strongForceStrength * span / 2;  // deepest well magnitude
+
+  // Precompute per-pair ribbon descriptors (only pairs within cutoff)
+  const pairs = [];
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const a = particles[i], b = particles[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist === 0 || dist >= cutoff) continue;
+      const dr = dist - eqDist;
+      const energy = strongForceStrength / (2 * span) * (dr * dr - span * span);
+      const mag = Math.min(1, Math.abs(energy) / maxBinding);
+      const sigma = Math.max(0.375, 0.0875 * dist);
+      const spread = 2; // uniform scale: ellipse 2x bigger in both length and width
+      pairs.push({ ax: a.x, ay: a.y, ux: dx / dist, uy: dy / dist, dist, sigma, mag, spread });
+    }
+  }
+  if (pairs.length === 0) return;
+
+  const fullW = canvas.width, fullH = canvas.height;
   const scale = 0.5;
-  const w = Math.ceil(fullW * scale);
-  const h = Math.ceil(fullH * scale);
+  const w = Math.ceil(fullW * scale), h = Math.ceil(fullH * scale);
   const invScale = 1 / scale;
   const cxH = fullW / 2, cyH = fullH / 2;
 
-  hmCanvas.width = w;
-  hmCanvas.height = h;
+  hmCanvas.width = w; hmCanvas.height = h;
   const imageData = hmCtx.createImageData(w, h);
   const data = imageData.data;
-
-  const cutoff = strongCutoff();
-  const fieldArr = new Float32Array(n);
-
-  // Sensitivity: normalize so the midpoint of a touching pair maps to ~1
-  const touchMidField = (cutoff - PARTICLE_RADIUS) / cutoff;
-  const sensitivity = 5 / (touchMidField * touchMidField);
 
   for (let py = 0; py < h; py++) {
     const worldY = (py * invScale - cyH) / zoom + cyH;
     for (let px = 0; px < w; px++) {
       const worldX = (px * invScale - cxH) / zoom + cxH;
 
-      // Linear falloff field from each particle
-      for (let i = 0; i < n; i++) {
-        const dx = worldX - particles[i].x;
-        const dy = worldY - particles[i].y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        fieldArr[i] = dist < cutoff ? (cutoff - dist) / cutoff : 0;
+      let total = 0;
+      for (const p of pairs) {
+        const rx = worldX - p.ax, ry = worldY - p.ay;
+        const para = rx * p.ux + ry * p.uy;
+        // Extend the ribbon equally beyond both endpoints so the ellipse
+        // scales uniformly in both length and width
+        const margin = (p.spread - 1) / 2 * p.dist;
+        const extDist = p.dist * p.spread;
+        const paraExt = para + margin;
+        const rampPx = 8;
+        const e1 = Math.max(0, Math.min(1, paraExt / rampPx));
+        const e2 = Math.max(0, Math.min(1, (extDist - paraExt) / rampPx));
+        const endFade = e1 * e2;
+        if (endFade <= 0) continue;
+        const t = paraExt / extDist;
+        const sigmaT = p.sigma * p.spread * (1 + 2 * Math.sin(Math.PI * t));
+        const perpSq = Math.max(0, rx * rx + ry * ry - para * para);
+        total += p.mag * Math.exp(-perpSq / (2 * sigmaT * sigmaT)) * endFade;
       }
 
-      // Sum cross-terms for bonded pairs only
-      let interaction = 0;
-      for (let i = 0; i < n; i++) {
-        if (fieldArr[i] === 0) continue;
-        for (let j = i + 1; j < n; j++) {
-          if (fieldArr[j] === 0) continue;
-          const dx = particles[j].x - particles[i].x;
-          const dy = particles[j].y - particles[i].y;
-          if (dx * dx + dy * dy < cutoff * cutoff) {
-            interaction += fieldArr[i] * fieldArr[j];
-          }
-        }
-      }
-
-      if (interaction > 0) {
-        const t = Math.min(1, interaction * sensitivity);
-        const t2 = t * t;  // quadratic brightening toward center
+      if (total > 0.002) {
+        const magnitude = Math.min(1, total * 3.0);
+        const ci = (magnitude * 255) | 0;
         const di = (py * w + px) * 4;
-        data[di]     = 255;                                   // R always max
-        data[di + 1] = (140 + 115 * t2) | 0;                // G: orange (140) → white (255)
-        data[di + 2] = (200 * t2) | 0;                      // B: 0 → near-white
-        data[di + 3] = Math.min(190, (210 * t)) | 0;        // A: slightly transparent at peak
+        const ci4 = ci * 4;
+        data[di]     = STRONG_COLORMAP[ci4];
+        data[di + 1] = STRONG_COLORMAP[ci4 + 1];
+        data[di + 2] = STRONG_COLORMAP[ci4 + 2];
+        data[di + 3] = STRONG_COLORMAP[ci4 + 3];
       }
     }
   }
@@ -1851,7 +1857,8 @@ function drawStrongHeatmap() {
 function drawCoulombViz() {
   const protonList = particles.filter(p => p.type === 'proton');
   if (protonList.length < 2) return;
-  const refEnergy = coulombStrength / (PARTICLE_RADIUS * 2);  // Energy at touching distance
+  const refEnergy = coulombStrength / (PARTICLE_RADIUS * 2);
+
   for (let i = 0; i < protonList.length; i++) {
     for (let j = i + 1; j < protonList.length; j++) {
       const a = protonList[i];
@@ -1862,15 +1869,38 @@ function drawCoulombViz() {
       if (dist === 0) continue;
       const mag = Math.min(1, (coulombStrength / dist) / refEnergy);
       if (mag < 0.005) continue;
-      const lineW = dist <= 30
-        ? PARTICLE_RADIUS * 2
-        : Math.max(0.5, PARTICLE_RADIUS * 2 - (dist - 30) * (15 / 270));
-      ctx.lineWidth = lineW;
-      ctx.strokeStyle = `rgba(120, 190, 255, ${Math.min(1, mag * 3.0)})`;
+      const alpha = Math.min(1, mag * 3.0);
+
+      // halfW: perpendicular cloud extent. Thicker when close, thinner when far.
+      const halfW = dist <= 30
+        ? PARTICLE_RADIUS * 1.8
+        : Math.max(3, PARTICLE_RADIUS * 1.8 - (dist - 30) * (12 / 270));
+
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      ctx.save();
+      ctx.translate(mx, my);
+      ctx.rotate(Math.atan2(dy, dx));
+      ctx.scale(dist / 2, halfW);
+
+      // Linear gradient in the perpendicular (y) direction:
+      // bright at y=0 (center line, running full length between particles),
+      // fading to transparent at y=±1 (perpendicular edges).
+      // The ellipse shape clips the endpoints so it tapers toward each particle.
+      const grad = ctx.createLinearGradient(0, -1, 0, 1);
+      grad.addColorStop(0,    `rgba(100, 170, 255, 0)`);
+      grad.addColorStop(0.30, `rgba(140, 200, 255, ${alpha * 0.20})`);
+      grad.addColorStop(0.46, `rgba(190, 218, 255, ${alpha * 0.60})`);
+      grad.addColorStop(0.50, `rgba(225, 238, 255, ${alpha * 0.95})`);
+      grad.addColorStop(0.54, `rgba(190, 218, 255, ${alpha * 0.60})`);
+      grad.addColorStop(0.70, `rgba(140, 200, 255, ${alpha * 0.20})`);
+      grad.addColorStop(1.0,  `rgba(100, 170, 255, 0)`);
+
+      ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
+      ctx.arc(0, 0, 1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
   }
 }
@@ -1883,10 +1913,13 @@ function drawCoulombViz() {
 //  distance: |V| = strongForceStrength * (cutoff - dist).
 //  Max energy (touching) maps to full width; zero at cutoff edge.
 // ============================================================
-function drawStrongViz() {
+// layer = 'back'  → wide halo drawn behind particles
+// layer = 'front' → thin bright core drawn in front of particles
+function drawStrongViz(layer) {
   const cutoff = strongCutoff();
-  const maxEnergy = strongForceStrength * (cutoff - PARTICLE_RADIUS * 2);  // energy at touching
+  const maxEnergy = strongForceStrength * (cutoff - PARTICLE_RADIUS * 2);
   if (maxEnergy <= 0) return;
+
   for (let i = 0; i < particles.length; i++) {
     for (let j = i + 1; j < particles.length; j++) {
       const a = particles[i];
@@ -1896,22 +1929,51 @@ function drawStrongViz() {
       const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist === 0 || dist >= cutoff) continue;
       const mag = Math.min(1, (strongForceStrength * (cutoff - dist)) / maxEnergy);
-      const alpha = Math.min(0.75, mag * 3.0);  // slightly transparent even at full strength
-      const lineW = Math.max(0.5, PARTICLE_RADIUS * 2 * mag);
-      // Orange outer ribbon
-      ctx.lineWidth = lineW;
-      ctx.strokeStyle = `rgba(255, 140, 30, ${alpha})`;
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
-      // Bright white-orange core
-      ctx.lineWidth = lineW * 0.35;
-      ctx.strokeStyle = `rgba(255, 240, 200, ${alpha * 0.9})`;
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
+      const alpha = Math.min(1.0, mag * 3.0);
+
+      // Center color: orange (weak) → near-white (strong)
+      const cg = Math.round(160 + mag * 75);
+      const cb = Math.round(20  + mag * 215);
+
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      ctx.save();
+      ctx.translate(mx, my);
+      ctx.rotate(Math.atan2(dy, dx));
+
+      if (layer === 'back') {
+        // Wide soft halo — drawn behind particles
+        const halfW = Math.max(5, PARTICLE_RADIUS * 4.0 * mag);
+        ctx.scale(dist / 2, halfW);
+        const grad = ctx.createLinearGradient(0, -1, 0, 1);
+        grad.addColorStop(0,    `rgba(255, 100, 10, 0)`);
+        grad.addColorStop(0.25, `rgba(255, 130, 20, ${alpha * 0.28})`);
+        grad.addColorStop(0.45, `rgba(255, 180, 55, ${alpha * 0.60})`);
+        grad.addColorStop(0.50, `rgba(255, ${cg}, ${cb}, ${alpha * 0.80})`);
+        grad.addColorStop(0.55, `rgba(255, 180, 55, ${alpha * 0.60})`);
+        grad.addColorStop(0.75, `rgba(255, 130, 20, ${alpha * 0.28})`);
+        grad.addColorStop(1.0,  `rgba(255, 100, 10, 0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(0, 0, 1, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // Thin bright core — drawn in front of particles
+        const halfW = Math.max(2, PARTICLE_RADIUS * 0.9 * mag);
+        ctx.scale(dist / 2, halfW);
+        const grad = ctx.createLinearGradient(0, -1, 0, 1);
+        grad.addColorStop(0,    `rgba(255, ${cg}, ${cb}, 0)`);
+        grad.addColorStop(0.38, `rgba(255, ${cg}, ${cb}, ${alpha * 0.55})`);
+        grad.addColorStop(0.50, `rgba(255, ${cg}, ${cb}, ${alpha * 1.00})`);
+        grad.addColorStop(0.62, `rgba(255, ${cg}, ${cb}, ${alpha * 0.55})`);
+        grad.addColorStop(1.0,  `rgba(255, ${cg}, ${cb}, 0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(0, 0, 1, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.restore();
     }
   }
 }
@@ -1944,7 +2006,7 @@ function draw() {
 
   if (showFieldEnergy && particles.length >= 2) {
     if (eieVizMode === 'ribbon') drawCoulombViz();
-    if (sieVizMode === 'ribbon') drawStrongViz();  // strong in front of electric
+    if (sieVizMode === 'ribbon') drawStrongViz('back');  // wide halo behind particles
   }
 
   for (let i = 0; i < particles.length; i++) {
@@ -1973,6 +2035,11 @@ function draw() {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(isProton ? '+' : 'n', p.x, p.y + 1);
+  }
+
+  // Strong force bright core drawn on top of particles
+  if (showFieldEnergy && particles.length >= 2 && sieVizMode === 'ribbon') {
+    drawStrongViz('front');
   }
 
   ctx.restore();
