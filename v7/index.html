@@ -139,33 +139,12 @@
   #coulombVizGroup input[type="radio"] { display: none; }
 
   /* ========================================
-     MAIN AREA — canvas + graph panel side by side
+     CANVAS — fills remaining space
      ======================================== */
-  #main {
-    flex: 1;
-    display: flex;
-    overflow: hidden;
-  }
-
   #canvas {
     flex: 1;
     display: block;
     cursor: default;
-  }
-
-  #graphPanel {
-    width: 160px;
-    flex-shrink: 0;
-    background: #0a0a1a;
-    border-left: 1px solid #2a2a4a;
-    display: flex;
-    flex-direction: column;
-  }
-
-  #graphCanvas {
-    width: 100%;
-    flex: 1;
-    display: block;
   }
 
   /* ========================================
@@ -243,9 +222,30 @@
 
 <!-- Toolbar: just title + Go + Replay -->
 <div id="toolbar">
-  <h1>D+T Fusion</h1>
+  <h1>Fusion</h1>
   <button class="btn" id="goBtn">Go</button>
   <button class="btn" id="replayBtn" disabled>Replay</button>
+  <!-- Left / Right nucleus selectors -->
+  <label class="toggle-label" style="gap:6px;">
+    Left:
+    <select id="leftChoice" style="background:#1a1a3a;color:#e0e0e0;border:1px solid #3a3a5a;border-radius:4px;padding:2px 8px;font-size:12px;cursor:pointer;">
+      <option value="p">Proton</option>
+      <option value="n">Neutron</option>
+      <option value="d" selected>Deuterium (p+n)</option>
+      <option value="t">Tritium (p+2n)</option>
+      <option value="he">Helium-4 (2p+2n)</option>
+    </select>
+  </label>
+  <label class="toggle-label" style="gap:6px;">
+    Right:
+    <select id="rightChoice" style="background:#1a1a3a;color:#e0e0e0;border:1px solid #3a3a5a;border-radius:4px;padding:2px 8px;font-size:12px;cursor:pointer;">
+      <option value="p">Proton</option>
+      <option value="n">Neutron</option>
+      <option value="d">Deuterium (p+n)</option>
+      <option value="t" selected>Tritium (p+2n)</option>
+      <option value="he">Helium-4 (2p+2n)</option>
+    </select>
+  </label>
   <!-- Coulomb viz mode + strong force render mode (stacked) -->
   <div style="display:flex;flex-direction:column;gap:5px;">
     <div style="display:flex;align-items:center;gap:6px;">
@@ -279,15 +279,7 @@
   </div>
 </div>
 
-<div id="main">
-  <!-- Simulation canvas -->
-  <canvas id="canvas"></canvas>
-
-  <!-- Energy bar chart panel -->
-  <div id="graphPanel">
-    <canvas id="graphCanvas"></canvas>
-  </div>
-</div>
+<canvas id="canvas"></canvas>
 
 <!-- Time scrubber — drag to move forward/backward through the interaction -->
 <div id="scrubBar">
@@ -302,8 +294,6 @@
 // ============================================================
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-const graphCanvas = document.getElementById('graphCanvas');
-const gctx = graphCanvas.getContext('2d');
 const goBtn = document.getElementById('goBtn');
 const replayBtn = document.getElementById('replayBtn');
 const strongModeGroup = document.getElementById('strongModeGroup');
@@ -318,7 +308,7 @@ const SUBSTEPS = 20;
 
 // Fixed physics parameters
 const coulombStrength = 150;
-const strongForceStrength = 1.5;    // gentle pull — slow visible acceleration across the well
+const strongForceStrength = 4;    // gentle pull — slow visible acceleration across the well
 let strongForceRange = 2.0;        // cutoff = PARTICLE_RADIUS * 2 * strongForceRange (40px at 2x)
 let approachSpeed = 0.5;           // px per internal dt unit — initial inward velocity of each particle
 const equilibriumRatio = 0.35;    // equilibrium ≈ 35% of cutoff, clamped to touching distance
@@ -343,7 +333,28 @@ let hasCollided = false;           // True once D and T clusters first make cros
 let collisionFrame = -1;          // particleHistory index when collision first occurred
 let collisionTime = -1;           // performance.now() when collision occurred
 let fusionFired = false;          // True once fireFusion() has been called
+let framesSinceCollision = 0;    // Counts up after hasCollided; KE check waits 80 frames
+let fusionAnimating = false;      // True while playing the He-4 rearrangement animation
+let fusionAnimFrame = 0;          // Current frame of the rearrangement animation
+const FUSION_ANIM_FRAMES = 5;    // Frames to lerp into He-4 geometry
+let fusionStartPos = null;        // Particle positions at start of rearrangement animation
+let fusionTargets = null;         // Target positions/velocities for the rearrangement
 
+
+// ============================================================
+//  NUCLEUS SELECTOR — cluster definitions and state
+// ============================================================
+const CLUSTER_DEFS = {
+  'p':  [{ type:'proton',  x:0,   y:0   }],
+  'n':  [{ type:'neutron', x:0,   y:0   }],
+  'd':  [{ type:'proton',  x:-10, y:0   }, { type:'neutron', x:10,  y:0   }],
+  't':  [{ type:'proton',  x:-10, y:0   }, { type:'neutron', x:10,  y:0   }, { type:'neutron', x:0,   y:-17 }],
+  'he': [{ type:'proton',  x:-11, y:0   }, { type:'neutron', x:0,   y:-11 }, { type:'proton',  x:11,  y:0   }, { type:'neutron', x:0,   y:11  }],
+};
+
+let leftChoice = 'd';
+let rightChoice = 't';
+let leftClusterSize = 2;  // set in setupScenario; used for cross-cluster collision detection
 
 // ============================================================
 //  HEATMAP STATE
@@ -372,18 +383,19 @@ const hmCtx = hmCanvas.getContext('2d');
 function setupScenario() {
   const cx = canvas.width / 2;
   const cy = canvas.height / 2;
+  const sep = 155; // horizontal distance from canvas center to each cluster center
 
-  // Deuterium (left cluster, moving right): proton + neutron 20px apart (touching)
-  // Tritium (right cluster, moving left): proton + 2 neutrons in ~20px triangle
-  particles = [
-    // Deuterium
-    { x: cx - 165, y: cy,      vx:  approachSpeed, vy: 0, type: 'proton'  },
-    { x: cx - 145, y: cy,      vx:  approachSpeed, vy: 0, type: 'neutron' },
-    // Tritium
-    { x: cx + 145, y: cy,      vx: -approachSpeed, vy: 0, type: 'proton'  },
-    { x: cx + 165, y: cy,      vx: -approachSpeed, vy: 0, type: 'neutron' },
-    { x: cx + 155, y: cy - 17, vx: -approachSpeed, vy: 0, type: 'neutron' },
-  ];
+  const leftDef  = CLUSTER_DEFS[leftChoice];
+  const rightDef = CLUSTER_DEFS[rightChoice];
+  leftClusterSize = leftDef.length;
+
+  particles = [];
+  for (const d of leftDef) {
+    particles.push({ x: cx - sep + d.x, y: cy + d.y, vx:  approachSpeed, vy: 0, type: d.type });
+  }
+  for (const d of rightDef) {
+    particles.push({ x: cx + sep + d.x, y: cy + d.y, vx: -approachSpeed, vy: 0, type: d.type });
+  }
 }
 
 // Snapshot for replay
@@ -835,15 +847,25 @@ function computeEnergy() {
 //  but SIE does not get its own bar.
 // ============================================================
 function drawBarChart() {
-  const w = graphCanvas.offsetWidth;
-  const h = graphCanvas.offsetHeight;
-  graphCanvas.width  = w * devicePixelRatio;
-  graphCanvas.height = h * devicePixelRatio;
-  gctx.scale(devicePixelRatio, devicePixelRatio);
-  gctx.clearRect(0, 0, w, h);
-
   if (particles.length === 0) return;
   const e = computeEnergy();
+
+  const W = 160;
+  const H = canvas.height;
+  const gx = canvas.width - W;
+  const gy = 0;
+
+  ctx.save();
+
+  // Background
+  ctx.fillStyle = 'rgba(10,10,26,0.92)';
+  ctx.fillRect(gx, gy, W, H);
+  ctx.strokeStyle = '#2a2a4a';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(gx, gy);
+  ctx.lineTo(gx, gy + H);
+  ctx.stroke();
 
   const bars = [
     { label: 'KE',  value: Math.max(0, e.ke), color: '#f87171' },
@@ -853,45 +875,45 @@ function drawBarChart() {
 
   const pad = 12;
   const labelH = 18;
-  const barW = (w - pad * 2) / bars.length;
-  const chartH = h - labelH - pad;
-  const baseline = h - labelH;
+  const barW = (W - pad * 2) / bars.length;
+  const chartH = H - labelH - pad;
+  const baseline = gy + H - labelH;
   const maxVal = 50;
 
-  gctx.font = '11px sans-serif';
-  gctx.textAlign = 'center';
+  ctx.font = '11px sans-serif';
+  ctx.textAlign = 'center';
 
   bars.forEach((bar, i) => {
     const barPx = Math.max(0, (bar.value / maxVal) * chartH);
-    const x = pad + i * barW + barW * 0.1;
+    const x = gx + pad + i * barW + barW * 0.1;
     const bw = barW * 0.8;
 
-    gctx.fillStyle = bar.color;
-    gctx.globalAlpha = 0.85;
+    ctx.fillStyle = bar.color;
+    ctx.globalAlpha = 0.85;
     if (bar.value >= 0) {
-      gctx.fillRect(x, baseline - barPx, bw, barPx);
+      ctx.fillRect(x, baseline - barPx, bw, barPx);
     } else {
-      gctx.fillRect(x, baseline, bw, -barPx);
+      ctx.fillRect(x, baseline, bw, -barPx);
     }
-    gctx.globalAlpha = 1.0;
+    ctx.globalAlpha = 1.0;
 
-    // Value label above bar
-    gctx.fillStyle = bar.color;
-    const labelY = Math.max(12, baseline - barPx - 4);
-    gctx.fillText(bar.value.toFixed(1), x + bw / 2, labelY);
+    ctx.fillStyle = bar.color;
+    const labelY = Math.max(gy + 12, baseline - barPx - 4);
+    ctx.fillText(bar.value.toFixed(1), x + bw / 2, labelY);
 
-    // Name label at bottom
-    gctx.fillStyle = '#9ca3af';
-    gctx.fillText(bar.label, x + bw / 2, h - 3);
+    ctx.fillStyle = '#9ca3af';
+    ctx.fillText(bar.label, x + bw / 2, baseline + labelH - 3);
   });
 
   // Zero line
-  gctx.strokeStyle = 'rgba(255,255,255,0.15)';
-  gctx.lineWidth = 1;
-  gctx.beginPath();
-  gctx.moveTo(0, baseline);
-  gctx.lineTo(w, baseline);
-  gctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(gx, baseline);
+  ctx.lineTo(gx + W, baseline);
+  ctx.stroke();
+
+  ctx.restore();
 }
 
 // ============================================================
@@ -1035,6 +1057,8 @@ function draw() {
 
   ctx.restore();
 
+  // Bar chart — always drawn over the right edge of the canvas
+  drawBarChart();
 }
 
 // ============================================================
@@ -1048,7 +1072,6 @@ function renderFrame(idx) {
   particles = frame.p;
   hasCollided = (collisionFrame >= 0 && idx >= collisionFrame);
   draw();
-  drawBarChart();
   particles = liveParticles;
   hasCollided = liveCollided;
 }
@@ -1059,9 +1082,9 @@ function renderFrame(idx) {
 function resize() {
   const toolbarH = document.getElementById('toolbar').offsetHeight;
   const scrubH = document.getElementById('scrubBar').offsetHeight;
-  canvas.width = canvas.offsetWidth;
+  canvas.width = window.innerWidth;
   canvas.height = window.innerHeight - toolbarH - scrubH;
-  if (!running) { draw(); drawBarChart(); }
+  if (!running) draw();
 }
 window.addEventListener('resize', resize);
 setTimeout(resize, 0);
@@ -1105,6 +1128,11 @@ replayBtn.addEventListener('click', () => {
   collisionFrame = -1;
   collisionTime = -1;
   fusionFired = false;
+  framesSinceCollision = 0;
+  fusionAnimating = false;
+  fusionAnimFrame = 0;
+  fusionStartPos = null;
+  fusionTargets = null;
   particleHistory = [];
   scrubFrame = -1;
   timeSlider.value = 0;
@@ -1171,6 +1199,11 @@ function resetAndSetup() {
   collisionFrame = -1;
   collisionTime = -1;
   fusionFired = false;
+  framesSinceCollision = 0;
+  fusionAnimating = false;
+  fusionAnimFrame = 0;
+  fusionStartPos = null;
+  fusionTargets = null;
   particleHistory = [];
   scrubFrame = -1;
   timeSlider.value = 0;
@@ -1188,18 +1221,37 @@ document.getElementById('v4SpeedSlider').addEventListener('input', function() {
   document.getElementById('v4SpeedVal').textContent = approachSpeed.toFixed(2);
 });
 
+document.getElementById('leftChoice').addEventListener('change', function() {
+  leftChoice = this.value;
+  resetAndSetup();
+});
+
+document.getElementById('rightChoice').addEventListener('change', function() {
+  rightChoice = this.value;
+  resetAndSetup();
+});
+
 // ============================================================
 //  FUSION PRODUCTS
-//  Called 800ms after first inter-cluster contact.
 //  D + T → He-4 (particles 0-3) + n (particle 4)
-//  Momentum conserved; products get extra KE from binding energy.
+//
+//  Triggered when the natural KE from strong-force binding
+//  rises above KE_EJECT_THRESHOLD — so the bar chart shows
+//  KE climbing first, then separation follows causally.
+//
+//  Velocities use the actual system KE at trigger time (no
+//  artificial boost). He-4 is arranged with protons on opposite
+//  sides; neutron is teleported outside the strong force cutoff.
 // ============================================================
+const KE_EJECT_THRESHOLD = 20; // KE level that triggers ejection
+const KE_EJECT_FALLBACK_MS = 2000; // safety fallback if threshold not reached
+
 function fireFusion() {
   fusionFired = true;
 
   const n = particles.length; // 5
 
-  // Total system momentum and current CM-frame KE
+  // Current system momentum and CM-frame KE (naturally accumulated from strong force)
   let sumVx = 0, sumVy = 0;
   for (const p of particles) { sumVx += p.vx; sumVy += p.vy; }
   const cmvx = sumVx / n, cmvy = sumVy / n;
@@ -1210,44 +1262,45 @@ function fireFusion() {
     keCM += 0.5 * (rvx * rvx + rvy * rvy);
   }
 
-  // Products: He-4 has mass 4, neutron has mass 1 (in equal-mass units)
-  // Add Q-value: large fixed release so products shoot out dramatically
-  const keCMProduct = Math.max(keCM * 15, 40);
+  const keCMProduct = Math.max(keCM, 8);
 
-  // In CM frame: |p_n| = |p_He4| (momentum conservation)
-  // 4*v_He4_cm = v_n_cm  →  KE_cm = 0.5*1*v_n² + 0.5*4*(v_n/4)² = 0.625*v_n²
-  const v_n_cm  = Math.sqrt(keCMProduct / 0.625);
+  // He-4 (mass 4) + n (mass 1): 4*v_He4_cm = v_n_cm, KE = 0.625*v_n_cm²
+  const v_n_cm   = Math.sqrt(keCMProduct / 0.625);
   const v_He4_cm = v_n_cm / 4;
 
-  // Random direction for neutron in CM frame
   const theta = Math.random() * 2 * Math.PI;
   const nx = Math.cos(theta), ny = Math.sin(theta);
 
-  // Lab-frame velocities
   const v_He4_x = cmvx - nx * v_He4_cm;
   const v_He4_y = cmvy - ny * v_He4_cm;
   const v_n_x   = cmvx + nx * v_n_cm;
   const v_n_y   = cmvy + ny * v_n_cm;
 
-  // Place He-4 particles (0-3) in a compact 2×2 cluster at their centroid
   const he4cx = (particles[0].x + particles[1].x + particles[2].x + particles[3].x) / 4;
   const he4cy = (particles[0].y + particles[1].y + particles[2].y + particles[3].y) / 4;
-  const r = PARTICLE_RADIUS * 1.1; // just inside touching distance so strong force binds them
-  const offsets = [[-r, -r], [r, -r], [-r, r], [r, r]];
-  for (let i = 0; i < 4; i++) {
-    particles[i].x  = he4cx + offsets[i][0];
-    particles[i].y  = he4cy + offsets[i][1];
-    particles[i].vx = v_He4_x;
-    particles[i].vy = v_He4_y;
-  }
-
-  // Solo neutron (particle 4): teleport to just outside strong force range of He-4,
-  // then give it velocity. This prevents the strong force from immediately pulling it back.
+  const r = PARTICLE_RADIUS * 1.05;
   const cutoff = strongCutoff();
-  particles[4].x  = he4cx + nx * (cutoff + PARTICLE_RADIUS * 2);
-  particles[4].y  = he4cy + ny * (cutoff + PARTICLE_RADIUS * 2);
-  particles[4].vx = v_n_x;
-  particles[4].vy = v_n_y;
+
+  // Store start positions for lerp animation
+  fusionStartPos = particles.map(p => ({ x: p.x, y: p.y }));
+
+  // Store target positions/velocities — He-4 square with protons opposite
+  fusionTargets = {
+    he4: [
+      { x: he4cx - r, y: he4cy,     vx: v_He4_x, vy: v_He4_y }, // D proton — left
+      { x: he4cx,     y: he4cy - r, vx: v_He4_x, vy: v_He4_y }, // D neutron — top
+      { x: he4cx + r, y: he4cy,     vx: v_He4_x, vy: v_He4_y }, // T proton — right
+      { x: he4cx,     y: he4cy + r, vx: v_He4_x, vy: v_He4_y }, // T neutron — bottom
+    ],
+    n: {
+      x: he4cx + nx * (cutoff + PARTICLE_RADIUS * 2),
+      y: he4cy + ny * (cutoff + PARTICLE_RADIUS * 2),
+      vx: v_n_x, vy: v_n_y,
+    },
+  };
+
+  fusionAnimating = true;
+  fusionAnimFrame = 0;
 }
 
 // ============================================================
@@ -1261,55 +1314,93 @@ function loop() {
     timeLabelEl.textContent = `${scrubFrame + 1} / ${particleHistory.length}`;
     renderFrame(scrubFrame);
   } else {
-    // --- Live mode: advance physics ---
-
-    // Advance physics
-    step(speed);
-
+    // --- Live mode ---
     const now = performance.now();
 
-    // Detect first CROSS-CLUSTER contact: D (particles 0-1) vs T (particles 2-4)
-    if (!hasCollided) {
-      outer: for (let i = 0; i <= 1; i++) {
-        for (let j = 2; j <= 4; j++) {
-          const cdx = particles[j].x - particles[i].x;
-          const cdy = particles[j].y - particles[i].y;
-          if (cdx * cdx + cdy * cdy < (PARTICLE_RADIUS * 2 + 1) * (PARTICLE_RADIUS * 2 + 1)) {
-            hasCollided = true;
-            collisionFrame = particleHistory.length;
-            collisionTime = now;
-            break outer;
+    if (fusionAnimating) {
+      // --- He-4 rearrangement animation: lerp positions over FUSION_ANIM_FRAMES ---
+      fusionAnimFrame++;
+      const t = fusionAnimFrame / FUSION_ANIM_FRAMES;
+      const ease = t * t * (3 - 2 * t); // smoothstep
+
+      for (let i = 0; i < 4; i++) {
+        const s = fusionStartPos[i], tgt = fusionTargets.he4[i];
+        particles[i].x  = s.x + (tgt.x - s.x) * ease;
+        particles[i].y  = s.y + (tgt.y - s.y) * ease;
+        particles[i].vx = tgt.vx;
+        particles[i].vy = tgt.vy;
+      }
+      const sn = fusionStartPos[4], tn = fusionTargets.n;
+      particles[4].x  = sn.x + (tn.x - sn.x) * ease;
+      particles[4].y  = sn.y + (tn.y - sn.y) * ease;
+      particles[4].vx = tn.vx;
+      particles[4].vy = tn.vy;
+
+      if (fusionAnimFrame >= FUSION_ANIM_FRAMES) {
+        fusionAnimating = false;
+        for (let i = 0; i < 4; i++) {
+          const tgt = fusionTargets.he4[i];
+          particles[i].x = tgt.x; particles[i].y = tgt.y;
+          particles[i].vx = tgt.vx; particles[i].vy = tgt.vy;
+        }
+        particles[4].x = tn.x; particles[4].y = tn.y;
+        particles[4].vx = tn.vx; particles[4].vy = tn.vy;
+      }
+
+    } else {
+      // --- Normal physics ---
+      step(speed);
+
+      // Detect first CROSS-CLUSTER contact: left (0..leftClusterSize-1) vs right
+      if (!hasCollided) {
+        outer: for (let i = 0; i < leftClusterSize; i++) {
+          for (let j = leftClusterSize; j < particles.length; j++) {
+            const cdx = particles[j].x - particles[i].x;
+            const cdy = particles[j].y - particles[i].y;
+            if (cdx * cdx + cdy * cdy < (PARTICLE_RADIUS * 2 + 1) * (PARTICLE_RADIUS * 2 + 1)) {
+              hasCollided = true;
+              collisionFrame = particleHistory.length;
+              collisionTime = now;
+              break outer;
+            }
           }
         }
       }
-    }
 
-    // Fire fusion products 200ms after first contact
-    if (hasCollided && !fusionFired && now - collisionTime > 200) {
-      fireFusion();
-    }
+      // Fire when strong-force binding has raised KE above threshold (or fallback timeout)
+      // Only for D+T / T+D → He-4 + n; other combos run free physics
+      const isDT = (leftChoice === 'd' && rightChoice === 't') || (leftChoice === 't' && rightChoice === 'd');
+      if (hasCollided && !fusionFired && isDT) {
+        framesSinceCollision++;
+        if (framesSinceCollision > 40) {
+          const e = computeEnergy();
+          if (e.ke >= KE_EJECT_THRESHOLD || now - collisionTime > KE_EJECT_FALLBACK_MS) {
+            fireFusion();
+          }
+        }
+      }
 
-    // Auto-stop once fusion has fired and all particles have left the visible viewport
-    if (fusionFired) {
-      const zoomScale = 1.5;
-      const cx = canvas.width / 2;
-      const cy = canvas.height / 2;
-      const midX = particles.reduce((s, p) => s + p.x, 0) / particles.length;
-      const midY = particles.reduce((s, p) => s + p.y, 0) / particles.length;
-      const margin = PARTICLE_RADIUS * zoomScale;
-      const allGone = particles.every(p => {
-        const sx = cx + (p.x - midX) * zoomScale;
-        const sy = cy + (p.y - midY) * zoomScale;
-        return sx < -margin || sx > canvas.width + margin ||
-               sy < -margin || sy > canvas.height + margin;
-      });
-      if (allGone) {
-        running = false;
-        goBtn.textContent = 'New';
-        goBtn.classList.remove('running');
-        draw();
-        drawBarChart();
-        return;
+      // Auto-stop once animation done and all particles have left the viewport
+      if (fusionFired && !fusionAnimating) {
+        const zoomScale = 1.5;
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+        const midX = particles.reduce((s, p) => s + p.x, 0) / particles.length;
+        const midY = particles.reduce((s, p) => s + p.y, 0) / particles.length;
+        const margin = PARTICLE_RADIUS * zoomScale;
+        const allGone = particles.every(p => {
+          const sx = cx + (p.x - midX) * zoomScale;
+          const sy = cy + (p.y - midY) * zoomScale;
+          return sx < -margin || sx > canvas.width + margin ||
+                 sy < -margin || sy > canvas.height + margin;
+        });
+        if (allGone) {
+          running = false;
+          goBtn.textContent = 'New';
+          goBtn.classList.remove('running');
+          draw();
+          return;
+        }
       }
     }
 
@@ -1317,14 +1408,12 @@ function loop() {
     particleHistory.push({ p: particles.map(p => ({ ...p })), t: now });
     if (particleHistory.length > MAX_HISTORY) particleHistory.shift();
 
-    // Update slider to live (rightmost) position
     timeSlider.disabled = false;
     timeSlider.max = particleHistory.length - 1;
     timeSlider.value = timeSlider.max;
     timeLabelEl.textContent = `${particleHistory.length}`;
 
     draw();
-    drawBarChart();
   }
 
   animId = requestAnimationFrame(loop);
@@ -1335,7 +1424,6 @@ function loop() {
 // ============================================================
 setupScenario();
 draw();
-drawBarChart();
 </script>
 </body>
 </html>
