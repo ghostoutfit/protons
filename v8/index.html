@@ -1,0 +1,1787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nuclear Simulation v8</title>
+<style>
+  /* ========================================
+     RESET & BASE STYLES
+     ======================================== */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a1a;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    overflow-x: auto;
+    overflow-y: hidden;
+    height: 100vh;
+    min-width: 860px;       /* Prevent layout collapse on narrow viewports */
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ========================================
+     TOOLBAR
+     ======================================== */
+  #toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 20px;
+    background: #12122a;
+    border-bottom: 1px solid #2a2a4a;
+    z-index: 10;
+  }
+
+  .toolbar-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  #toolbar h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #ff6b6b;
+    margin-right: 8px;
+    white-space: nowrap;
+  }
+
+  /* ========================================
+     BUTTONS
+     ======================================== */
+  .btn {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  #goBtn {
+    background: #22c55e;
+    color: #fff;
+  }
+  #goBtn:hover { background: #16a34a; }
+  #goBtn.running {
+    background: #ef4444;
+  }
+  #goBtn.running:hover { background: #dc2626; }
+
+  #addClusterBtn {
+    background: #6366f1;
+    color: #fff;
+  }
+  #addClusterBtn:hover { background: #4f46e5; }
+
+  .cluster-inputs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .cluster-label {
+    font-size: 12px;
+    color: #9ca3af;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+  }
+
+  .cluster-label input[type="number"] {
+    background: #1e1e3a;
+    border: 1px solid #3a3a5a;
+    border-radius: 4px;
+    color: #e0e0e0;
+    padding: 4px 6px;
+    font-size: 13px;
+  }
+
+  #replayBtn {
+    background: #0e7490;
+    color: #fff;
+  }
+  #replayBtn:hover { background: #0891b2; }
+  #replayBtn:disabled {
+    background: #1e293b;
+    color: #4b5563;
+    cursor: not-allowed;
+  }
+
+  /* ========================================
+     SLIDER & TOGGLE CONTROLS
+     ======================================== */
+  .slider-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .slider-group label {
+    font-size: 12px;
+    color: #9ca3af;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .slider-group label span {
+    display: inline-block;
+    min-width: 3.2em;
+    text-align: right;
+  }
+
+  .slider-group input[type="range"] {
+    width: 80px;
+    accent-color: #6366f1;
+  }
+
+  .toggle-label {
+    font-size: 13px;
+    color: #9ca3af;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .toggle-label input[type="checkbox"] {
+    accent-color: #f59e0b;
+  }
+
+  /* ========================================
+     STATS DISPLAY
+     ======================================== */
+  #stats {
+    font-size: 13px;
+    color: #9ca3af;
+    margin-left: auto;
+    white-space: nowrap;
+  }
+
+  /* ========================================
+     MAIN LAYOUT
+     ======================================== */
+  #main {
+    flex: 1;
+    display: flex;
+    position: relative;
+  }
+
+  #canvas {
+    flex: 1;
+    display: block;
+    cursor: default;
+  }
+
+  /* ========================================
+     ENERGY PANEL (right sidebar)
+     ======================================== */
+  #energyPanel {
+    width: 260px;
+    min-width: 220px;
+    flex-shrink: 0;
+    background: #12122a;
+    border-left: 1px solid #2a2a4a;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    gap: 12px;
+  }
+
+  #energyPanel h2 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .energy-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+  }
+
+  .energy-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .energy-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+
+  .energy-value {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  #graphWrap {
+    position: relative;
+  }
+
+  #graphCanvas {
+    width: 100%;
+    height: 160px;
+    border-radius: 6px;
+    background: #0a0a1a;
+    border: 1px solid #2a2a4a;
+    cursor: crosshair;
+  }
+
+  #graphTooltip {
+    position: absolute;
+    pointer-events: none;
+    background: rgba(18, 18, 42, 0.92);
+    border: 1px solid #4a4a6a;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 11px;
+    color: #e0e0e0;
+    white-space: nowrap;
+    display: none;
+    z-index: 10;
+    font-variant-numeric: tabular-nums;
+  }
+
+  #graphControls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+  }
+
+  #graphControls button {
+    padding: 2px 8px;
+    font-size: 11px;
+    background: #1e1e3a;
+    color: #9ca3af;
+    border: 1px solid #3a3a5a;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  #graphControls button:hover { background: #2a2a4a; color: #e0e0e0; }
+
+  #graphControls span {
+    font-size: 11px;
+    color: #6b7280;
+  }
+
+
+
+  /* ========================================
+     INSTRUCTIONS OVERLAY
+     ======================================== */
+  #instructions {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(18, 18, 42, 0.85);
+    border: 1px solid #2a2a4a;
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-size: 13px;
+    color: #9ca3af;
+    pointer-events: none;
+    text-align: center;
+    transition: opacity 0.5s;
+  }
+</style>
+</head>
+<body>
+
+<!-- ========================================
+     TOOLBAR HTML
+     ======================================== -->
+<div id="toolbar">
+  <div class="toolbar-row">
+    <h1>Nuclear Simulation</h1>
+    <button class="btn" id="goBtn">Go</button>
+    <div class="cluster-inputs">
+      <label class="cluster-label">P: <input type="number" id="clusterProtons" min="0" max="30" value="6" style="width:44px"></label>
+      <label class="cluster-label">N: <input type="number" id="clusterNeutrons" min="0" max="30" value="6" style="width:44px"></label>
+      <button class="btn" id="addClusterBtn">Add Cluster</button>
+    </div>
+    <button class="btn" id="replayBtn" disabled>Replay</button>
+    <span id="stats">Protons: 0 &nbsp; Neutrons: 0</span>
+  </div>
+  <div class="toolbar-row">
+    <div class="slider-group">
+      <label>Speed: <span id="speedVal">3.0</span>x</label>
+      <input type="range" id="speedSlider" min="0" max="20" step="1" value="13">
+    </div>
+    <div class="slider-group">
+      <label>Zoom: <span id="zoomVal">2.0</span>x</label>
+      <input type="range" id="zoomSlider" min="5" max="40" step="1" value="20">
+    </div>
+    <label class="toggle-label"><input type="checkbox" id="fieldEnergyToggle" checked> <span style="color:#7dd3fc">Field energy</span></label>
+    <div class="slider-group">
+      <label>Strong F: <span id="strongFVal">0.50</span></label>
+      <input type="range" id="strongFSlider" min="1" max="100" step="1" value="50">
+    </div>
+    <div class="slider-group">
+      <label>Strong R: <span id="strongRVal">1.10</span></label>
+      <input type="range" id="strongRSlider" min="10" max="40" step="1" value="11">
+    </div>
+    <label class="toggle-label"><input type="checkbox" id="antispinToggle" checked> <span>Antispin</span></label>
+    <label class="toggle-label"><input type="checkbox" id="conserveToggle"> <span style="color:#a78bfa">Conserve!</span></label>
+  </div>
+</div>
+
+
+<!-- ========================================
+     MAIN CONTENT: Canvas + Energy Panel + Buckets
+     ======================================== -->
+<div id="main">
+  <canvas id="canvas"></canvas>
+
+  <div id="energyPanel">
+    <h2>Energy</h2>
+    <div class="energy-row">
+      <span class="energy-label"><span class="energy-dot" style="background:#f87171"></span> Energy in motion</span>
+      <span class="energy-value" id="kineticVal">0</span>
+    </div>
+    <div class="energy-row">
+      <span class="energy-label"><span class="energy-dot" style="background:#3b82f6"></span> Energy in interactions</span>
+      <span class="energy-value" id="potentialVal">0</span>
+    </div>
+    <div class="energy-row" style="border-top: 1px solid #2a2a4a; padding-top: 8px;">
+      <span class="energy-label"><span class="energy-dot" style="background:#22c55e"></span> Total</span>
+      <span class="energy-value" id="totalVal">0</span>
+    </div>
+    <div class="slider-group" style="margin-top: 10px;">
+      <label>IE offset: <span id="ieOffsetVal">0</span></label>
+      <input type="range" id="ieOffsetSlider" min="0" max="141" step="1" value="0" style="flex:1">
+    </div>
+    <div id="graphWrap">
+      <canvas id="graphCanvas"></canvas>
+      <div id="graphTooltip"></div>
+    </div>
+    <div id="graphControls">
+      <button id="graphAutoFit">Auto-fit</button>
+      <button id="graphGoLive">Go live</button>
+      <button id="graphModeBtn">Line</button>
+      <span id="graphHint">Scroll: zoom Y &middot; Drag: pan time</span>
+    </div>
+    <label class="toggle-label" style="margin-top:6px"><input type="checkbox" id="splitIEToggle"> <span style="color:#9ca3af;font-size:12px">Split IE → <span style="color:#818cf8">EIE</span> + <span style="color:#fb923c">SIE</span></span></label>
+  </div>
+
+  <div id="instructions">Drag particles to reposition. Use "Add Cluster" to place particles.</div>
+</div>
+
+<script>
+// ============================================================
+//  DOM ELEMENT REFERENCES
+// ============================================================
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const graphCanvas = document.getElementById('graphCanvas');
+const gctx = graphCanvas.getContext('2d');
+const goBtn = document.getElementById('goBtn');
+const addClusterBtn = document.getElementById('addClusterBtn');
+const replayBtn = document.getElementById('replayBtn');
+const speedSlider = document.getElementById('speedSlider');
+const speedValEl = document.getElementById('speedVal');
+const statsEl = document.getElementById('stats');
+const instructionsEl = document.getElementById('instructions');
+const kineticVal = document.getElementById('kineticVal');
+const potentialVal = document.getElementById('potentialVal');
+const totalVal = document.getElementById('totalVal');
+
+// ============================================================
+//  SIMULATION STATE
+//  All mutable state lives here. Particles are plain objects:
+//  { x, y, vx, vy, type: 'proton'|'neutron' }
+// ============================================================
+let particles = [];
+let running = false;
+let animId = null;
+let speed = 1.5;  // Internal dt per frame (display speed = speed * 2)
+
+// ---- Visualization toggles ----
+let showFieldEnergy = true;   // Master toggle for all field visualizations
+
+let antispin = true;              // Clamp cluster spin to ≤1 rev/sim-s
+
+// ---- Selection ----
+let selectedParticle = null;  // Index of the clicked particle
+
+// ---- View ----
+let zoom = 2.0;  // Canvas zoom centered on canvas midpoint
+
+// ---- Sizing ----
+const PARTICLE_RADIUS = 10;  // px — display radius and physics hard-sphere radius
+const MIN_DIST = 20;         // Minimum distance for force calc = 2*PARTICLE_RADIUS (softening floor)
+
+// ============================================================
+//  PHYSICS PARAMETERS
+//  These are fixed — changing them changes the whole character
+//  of the simulation (equilibrium distance, fusion threshold, etc.)
+// ============================================================
+const coulombStrength = 139;      // K in F = K/r² (Coulomb repulsion, proton-proton only)
+let strongForceStrength = 0.5;    // Constant attractive force magnitude within cutoff
+let strongForceRange = 1.1;       // Cutoff = PARTICLE_RADIUS * 2 * strongForceRange
+const equilibriumRatio = 0.6;     // Ratio r_eq / r_cutoff (informational, not used directly)
+const damping = 1.00;             // Velocity multiplier per frame; 1.0 = no damping
+const SUBSTEPS = 20;              // Physics substeps per animation frame for integration accuracy
+
+// ---- Energy display offsets (display only, no physics effect) ----
+let ieOffset = 0;            // Added to displayed IE and Total (slider value squared for fine control)
+let conserveEnergy = false;  // See CONSERVE! DISPLAY MODE section below
+let splitIE = false;         // When on, bar chart shows EIE and SIE separately
+let referenceTotal = null;   // null = recapture reference on next computeEnergy() call
+
+// ============================================================
+//  HEATMAP OFFSCREEN CANVAS (half resolution for performance)
+// ============================================================
+const hmCanvas = document.createElement('canvas');
+const hmCtx = hmCanvas.getContext('2d');
+
+// ============================================================
+//  DRAG STATE
+// ============================================================
+let dragging = null;       // Index of particle being dragged, or null
+let dragOffsetX = 0;
+let dragOffsetY = 0;
+
+// ============================================================
+//  ENERGY HISTORY (for graph)
+// ============================================================
+const MAX_HISTORY = 6000;  // Large buffer so we can scroll back in time
+let energyHistory = [];
+
+// ============================================================
+//  GRAPH INTERACTION STATE
+// ============================================================
+let graphViewEnd = -1;      // -1 = "live" (pinned to latest). Otherwise index into energyHistory
+const GRAPH_WINDOW = 600;   // How many samples are visible at once
+let graphYZoom = 1.0;       // Y-axis zoom multiplier (>1 = zoomed in)
+let graphYAutoFit = true;   // Auto-scale Y to fit visible data
+let graphMode = 'bar';      // 'line' | 'bar'
+let graphDragging = false;
+let graphDragStartX = 0;
+let graphDragStartEnd = 0;
+let graphHoverX = -1;       // Mouse X position in CSS coords, -1 = not hovering
+
+// ============================================================
+//  LAYOUT / RESIZE
+// ============================================================
+function resize() {
+  const toolbarH = document.getElementById('toolbar').offsetHeight;
+  const mainH = window.innerHeight - toolbarH;
+  const panelW = document.getElementById('energyPanel').offsetWidth;
+  canvas.width = Math.max(canvas.parentElement.offsetWidth - panelW, 200);
+  canvas.height = mainH;
+  graphCanvas.width = graphCanvas.offsetWidth * devicePixelRatio;   // HiDPI: scale canvas buffer
+  graphCanvas.height = graphCanvas.offsetHeight * devicePixelRatio;
+  gctx.scale(devicePixelRatio, devicePixelRatio);  // Match CSS pixel coords
+  if (!running) { draw(); drawGraph(); }
+}
+window.addEventListener('resize', resize);
+setTimeout(resize, 0);
+
+// ============================================================
+//  PARTICLE HELPERS: create, position, hit-test
+// ============================================================
+function createParticle(x, y, type) {
+  return { x, y, vx: 0, vy: 0, type: type || 'proton' };
+}
+
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const sx = e.clientX - rect.left;
+  const sy = e.clientY - rect.top;
+  // Invert the centered zoom transform applied in draw()
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+  return { x: (sx - cx) / zoom + cx, y: (sy - cy) / zoom + cy };
+}
+
+function findParticleAt(x, y) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    const dx = p.x - x;
+    const dy = p.y - y;
+    if (dx * dx + dy * dy <= (PARTICLE_RADIUS + 4) * (PARTICLE_RADIUS + 4)) {  // +4px hit margin
+      return i;
+    }
+  }
+  return -1;
+}
+
+// ============================================================
+//  OVERLAP RESOLUTION
+//  Iterative position-correction pass: push overlapping pairs
+//  apart by half the overlap distance, up to 10 iterations.
+//  Used after placing or adding particles, not during physics
+//  (the physics step handles collisions with its own constraint).
+// ============================================================
+function separateOverlaps() {
+  const minSep = PARTICLE_RADIUS * 2;
+  for (let iter = 0; iter < 10; iter++) {
+    let moved = false;
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+        const a = particles[i];
+        const b = particles[j];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < minSep && dist > 0) {
+          const overlap = (minSep - dist) / 2;
+          const nx = dx / dist;
+          const ny = dy / dist;
+          a.x -= nx * overlap;
+          a.y -= ny * overlap;
+          b.x += nx * overlap;
+          b.y += ny * overlap;
+          moved = true;
+        } else if (dist === 0) {
+          b.x += (Math.random() - 0.5) * minSep;
+          b.y += (Math.random() - 0.5) * minSep;
+          moved = true;
+        }
+      }
+    }
+    if (!moved) break;
+  }
+}
+
+// ============================================================
+//  CANVAS MOUSE EVENTS
+//  mousedown  — start dragging an existing particle (or deselect)
+//  mousemove  — drag particle / initiate bucket drag once threshold met
+//  mouseup    — drop particle; delete if released over trash can
+//  click      — place a new particle of the selected type on empty space
+//  didDrag flag prevents click from firing after a drag release
+// ============================================================
+let didDrag = false;
+canvas.addEventListener('mousedown', (e) => {
+  const pos = getCanvasPos(e);
+  const idx = findParticleAt(pos.x, pos.y);
+  didDrag = false;
+  if (idx >= 0) {
+    dragging = idx;
+    dragOffsetX = particles[idx].x - pos.x;
+    dragOffsetY = particles[idx].y - pos.y;
+    particles[idx].vx = 0;
+    particles[idx].vy = 0;
+    referenceTotal = null;
+    canvas.style.cursor = 'grabbing';
+    selectedParticle = idx;
+    if (!running) draw();
+  } else {
+    selectedParticle = null;
+    if (!running) draw();
+  }
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (dragging === null) {
+    const pos = getCanvasPos(e);
+    const idx = findParticleAt(pos.x, pos.y);
+    canvas.style.cursor = idx >= 0 ? 'grab' : 'default';
+    return;
+  }
+  const pos = getCanvasPos(e);
+  const p = particles[dragging];
+  didDrag = true;
+  p.x = pos.x + dragOffsetX;
+  p.y = pos.y + dragOffsetY;
+  p.vx = 0;
+  p.vy = 0;
+  if (!running) { computeEnergy(); draw(); drawGraph(); }
+});
+
+window.addEventListener('mouseup', (e) => {
+  if (dragging !== null) {
+    separateOverlaps();
+    if (!running) { computeEnergy(); draw(); drawGraph(); }
+  }
+  dragging = null;
+  canvas.style.cursor = 'default';
+});
+
+// ============================================================
+//  PACKED CLUSTER BUILDER
+//  Returns an array of { x, y, type } in a hex close-packed
+//  arrangement centered on (0, 0).  Particles are placed at
+//  touching distance (2 * PARTICLE_RADIUS) from their neighbors.
+//
+//  Proton assignment — farthest-point greedy:
+//    1. Seed the first proton at the outermost position.
+//    2. Each subsequent proton goes to the open slot whose
+//       minimum distance to any already-placed proton is largest.
+//  This maximises the spread of positive charge across the cluster.
+// ============================================================
+function buildPackedCluster(numProtons, numNeutrons) {
+  const total = numProtons + numNeutrons;
+  if (total === 0) return [];
+
+  const D    = PARTICLE_RADIUS * 2;        // touching distance
+  const rowH = D * Math.sqrt(3) / 2;      // vertical row spacing in hex lattice
+
+  // Generate a hex grid large enough; odd rows are offset by D/2.
+  // Add a small random jitter (up to 15% of D) so each cluster looks
+  // slightly different while remaining well within touching distance.
+  const jitter = () => (Math.random() - 0.5) * D * 0.3;
+  const span = Math.ceil(Math.sqrt(total)) + 3;
+  const candidates = [];
+  for (let row = -span; row <= span; row++) {
+    const xOff = (Math.abs(row) % 2 === 1) ? D / 2 : 0;
+    for (let col = -span; col <= span; col++) {
+      const x = col * D + xOff + jitter();
+      const y = row * rowH + jitter();
+      candidates.push({ x, y, dist2: x * x + y * y });
+    }
+  }
+
+  // Keep the `total` positions closest to centre
+  candidates.sort((a, b) => a.dist2 - b.dist2);
+  const pos = candidates.slice(0, total);
+
+  // Assign proton positions with farthest-point greedy
+  const type = new Array(total).fill('neutron');
+  if (numProtons > 0) {
+    // Seed: outermost slot
+    let seed = 0;
+    for (let i = 1; i < total; i++) {
+      if (pos[i].dist2 > pos[seed].dist2) seed = i;
+    }
+    const protonSlots = [seed];
+    type[seed] = 'proton';
+
+    for (let p = 1; p < numProtons; p++) {
+      let bestIdx = -1, bestMin = -1;
+      for (let i = 0; i < total; i++) {
+        if (type[i] === 'proton') continue;
+        // Min squared distance to any already-placed proton
+        let minD2 = Infinity;
+        for (const pi of protonSlots) {
+          const dx = pos[i].x - pos[pi].x;
+          const dy = pos[i].y - pos[pi].y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < minD2) minD2 = d2;
+        }
+        if (minD2 > bestMin) { bestMin = minD2; bestIdx = i; }
+      }
+      protonSlots.push(bestIdx);
+      type[bestIdx] = 'proton';
+    }
+  }
+
+  return pos.map((p, i) => ({ x: p.x, y: p.y, type: type[i] }));
+}
+
+// ============================================================
+//  ADD CLUSTER BUTTON
+//  Places the user-specified proton + neutron counts as a
+//  hex close-packed cluster at canvas centre.
+// ============================================================
+addClusterBtn.addEventListener('click', () => {
+  const numProtons  = Math.max(0, parseInt(document.getElementById('clusterProtons').value)  || 0);
+  const numNeutrons = Math.max(0, parseInt(document.getElementById('clusterNeutrons').value) || 0);
+  if (numProtons + numNeutrons === 0) return;
+
+  // Stop simulation and replace all particles
+  running = false;
+  cancelAnimationFrame(animId);
+  goBtn.textContent = 'Go';
+  goBtn.classList.remove('running');
+  particles = [];
+  energyHistory = [];
+  snapshot = null;
+  replayBtn.disabled = true;
+  graphViewEnd = -1;
+  graphYAutoFit = true;
+  graphYZoom = 1.0;
+
+  // Set Strong F from N:Z ratio using 2*(N/Z)-1, so N/Z=1.0→1.00, N/Z=0.75→0.50, N/Z=0.5→0.
+  // Doubles the sensitivity: only the upper half of the N/Z range maps to usable force.
+  const nzRatio = numProtons > 0 ? numNeutrons / numProtons : 1.0;
+  strongForceStrength = Math.min(1.0, Math.max(0.01, 2 * nzRatio - 1));
+  document.getElementById('strongFSlider').value = Math.round(strongForceStrength * 100);
+  document.getElementById('strongFVal').textContent = strongForceStrength.toFixed(2);
+
+  const cx = canvas.width  / 2;
+  const cy = canvas.height / 2;
+
+  const cluster = buildPackedCluster(numProtons, numNeutrons);
+  for (const p of cluster) {
+    particles.push(createParticle(cx + p.x, cy + p.y, p.type));
+  }
+  referenceTotal = null;
+  updateStats();
+  computeEnergy();
+  draw();
+  drawGraph();
+  hideInstructions();
+});
+
+// ============================================================
+//  SNAPSHOT STATE (captured when user presses Go)
+// ============================================================
+let snapshot = null;  // Deep copy of particles at simulation start
+
+function takeSnapshot() {
+  snapshot = particles.map(p => ({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, type: p.type }));
+  replayBtn.disabled = false;
+}
+
+function restoreSnapshot() {
+  if (!snapshot) return;
+  particles = snapshot.map(p => ({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, type: p.type }));
+}
+
+// ============================================================
+//  GO / STOP BUTTON
+// ============================================================
+goBtn.addEventListener('click', () => {
+  running = !running;
+  goBtn.textContent = running ? 'Stop' : 'Go';
+  goBtn.classList.toggle('running', running);
+  if (running) {
+    takeSnapshot();  // Snapshot state at simulation start
+    referenceTotal = null;
+    loop();
+  } else {
+    cancelAnimationFrame(animId);
+  }
+});
+
+// ============================================================
+//  REPLAY BUTTON
+// ============================================================
+replayBtn.addEventListener('click', () => {
+  if (!snapshot) return;
+  // Stop current simulation if running
+  running = false;
+  cancelAnimationFrame(animId);
+  goBtn.textContent = 'Go';
+  goBtn.classList.remove('running');
+  // Restore particle state and clear energy data
+  restoreSnapshot();
+  energyHistory = [];
+  graphViewEnd = -1;  // Reset graph to live mode
+  graphYAutoFit = true;
+  graphYZoom = 1.0;
+  updateStats();
+  computeEnergy();
+  draw();
+  drawGraph();
+  // Auto-start the simulation
+  running = true;
+  goBtn.textContent = 'Stop';
+  goBtn.classList.add('running');
+  loop();
+});
+
+// ============================================================
+//  STRONG FORCE SLIDERS
+//  strongFSlider: 1–100 → strength 0.01–1.00 (linear, /100)
+//  strongRSlider: 10–40 → range 1.0–4.0 (linear, /10)
+// ============================================================
+document.getElementById('strongFSlider').addEventListener('input', function() {
+  strongForceStrength = parseInt(this.value) / 100;
+  document.getElementById('strongFVal').textContent = strongForceStrength.toFixed(2);
+  if (!running) { computeEnergy(); draw(); drawGraph(); }
+});
+document.getElementById('strongRSlider').addEventListener('input', function() {
+  strongForceRange = parseInt(this.value) / 10;
+  document.getElementById('strongRVal').textContent = strongForceRange.toFixed(2);
+  if (!running) { computeEnergy(); draw(); drawGraph(); }
+});
+
+// ============================================================
+//  SPEED SLIDER (non-linear stops for fine control at low speeds)
+// ============================================================
+const SPEED_STOPS = [
+  0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5,
+  1.0, 1.5, 2.0, 2.5, 3.0,
+  4, 5, 6, 7, 8, 9, 10
+];
+function applySpeedSlider() {
+  const idx = parseInt(speedSlider.value);
+  const displaySpeed = SPEED_STOPS[idx];
+  speed = displaySpeed / 2;  // Internal dt is half the display value for stability
+  speedValEl.textContent = displaySpeed.toFixed(1);
+}
+speedSlider.addEventListener('input', applySpeedSlider);
+
+// ============================================================
+//  VIZ TOGGLES & SLIDERS
+// ============================================================
+
+// Zoom: scale the canvas transform centered on the midpoint.
+// Physics coordinates are unchanged — only the view scales.
+document.getElementById('zoomSlider').addEventListener('input', function() {
+  zoom = parseInt(this.value) / 10;
+  document.getElementById('zoomVal').textContent = zoom.toFixed(1);
+  if (!running) draw();
+});
+
+// Field energy: toggles both electric and strong visualizations.
+document.getElementById('fieldEnergyToggle').addEventListener('change', function() {
+  showFieldEnergy = this.checked;
+  if (!running) draw();
+});
+
+
+// Antispin: clamps cluster angular velocity to ≤1 rev/sim-s.
+document.getElementById('antispinToggle').addEventListener('change', function() {
+  antispin = this.checked;
+});
+
+// Conserve!: see CONSERVE! DISPLAY MODE section in computeEnergy().
+document.getElementById('conserveToggle').addEventListener('change', function() {
+  conserveEnergy = this.checked;
+  referenceTotal = null;  // Recapture reference on next frame when enabling
+});
+document.getElementById('splitIEToggle').addEventListener('change', function() {
+  splitIE = this.checked;
+  if (!running) drawGraph();
+});
+
+// ============================================================
+//  IE OFFSET SLIDER
+//  Adds a constant to the displayed IE and Total — useful for
+//  shifting a negative potential well into positive territory so
+//  the graph is easier to read. Quadratic scaling (v²) gives
+//  fine control at low values and fast travel at high values.
+//  Slider range 0–141 → offset range 0–≈20000.
+// ============================================================
+document.getElementById('ieOffsetSlider').addEventListener('input', function() {
+  const v = parseInt(this.value);
+  ieOffset = v * v;  // quadratic: finer control at low end
+  document.getElementById('ieOffsetVal').textContent = ieOffset.toFixed(0);
+  if (!running) drawGraph();
+  computeEnergy();
+});
+
+// ============================================================
+//  UI HELPERS
+// ============================================================
+function hideInstructions() {
+  instructionsEl.style.opacity = '0';
+  setTimeout(() => instructionsEl.style.display = 'none', 500);
+}
+
+function updateStats() {
+  const np = particles.filter(p => p.type === 'proton').length;
+  const nn = particles.filter(p => p.type === 'neutron').length;
+  statsEl.textContent = `Protons: ${np}  Neutrons: ${nn}`;
+}
+
+// ============================================================
+//  FORCE MODEL
+//  Two forces act between particles:
+//
+//  Coulomb repulsion (proton-proton only):
+//    F = coulombStrength / r²  (softened: r clamped to PARTICLE_RADIUS)
+//
+//  Strong nuclear force (all pairs within cutoff):
+//    F = -strongForceStrength  (constant attraction, no r-dependence)
+//    Cutoff = PARTICLE_RADIUS * 2 * strongForceRange
+//
+//  The combination creates a potential well: particles repel at long
+//  range (protons), attract strongly once close, and can bind into
+//  nuclei when kinetic energy is low enough to stay in the well.
+// ============================================================
+function strongCutoff() {
+  return PARTICLE_RADIUS * 2 * strongForceRange;
+}
+
+// Returns net force magnitude along the axis between two particles.
+// Positive = repulsive (pushes apart), negative = attractive (pulls together).
+function pairForce(dist, distSq, aType, bType) {
+  let force = 0;
+  // Coulomb: only between protons (1/r² with softening to prevent blow-up)
+  if (aType === 'proton' && bType === 'proton') {
+    const softDistSq = Math.max(distSq, PARTICLE_RADIUS * PARTICLE_RADIUS);
+    force += coulombStrength / softDistSq;
+  }
+  // Strong nuclear force: constant attraction within cutoff, no repulsive core
+  const cutoff = strongCutoff();
+  if (dist < cutoff) {
+    force -= strongForceStrength;
+  }
+  return force;
+}
+
+// ============================================================
+//  ENERGY COMPUTATION
+//  Computes true kinetic and potential energy from particle state,
+//  then applies display transformations before writing to the UI
+//  and energy history.
+//
+//  KE = Σ ½mv²  (unit mass, so just ½v²)
+//  IE = Coulomb potential + Strong potential + ieOffset
+//
+//  Potential integrals match the force model:
+//    Coulomb: V = K/r  (softened)
+//    Strong:  V = -S*(cutoff - r)  (linear well, zero at cutoff)
+// ============================================================
+function computeEnergy() {
+  let kinetic = 0;
+  let eiePotential = 0;  // Coulomb (electric) potential energy
+  let siePotential = 0;  // Strong nuclear potential energy
+  const n = particles.length;
+
+  for (let i = 0; i < n; i++) {
+    const p = particles[i];
+    kinetic += 0.5 * (p.vx * p.vx + p.vy * p.vy);  // KE = ½mv² (unit mass)
+  }
+
+  const cutoff = strongCutoff();
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const dx = particles[j].x - particles[i].x;
+      const dy = particles[j].y - particles[i].y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 0) {
+        // Coulomb potential: between protons only (with softening)
+        if (particles[i].type === 'proton' && particles[j].type === 'proton') {
+          const softDist = Math.max(dist, PARTICLE_RADIUS);
+          eiePotential += coulombStrength / softDist;
+        }
+        // Strong force potential: V = -S * (cutoff - r), zero at cutoff, deepens linearly inward
+        if (dist < cutoff) {
+          siePotential -= strongForceStrength * (cutoff - dist);
+        }
+      }
+    }
+  }
+  const potential = eiePotential + siePotential;
+
+  // ============================================================
+  //  CONSERVE! DISPLAY MODE
+  //  When enabled, Total is pinned to a reference value captured
+  //  at simulation start or the last particle interaction.
+  //  IE shows the real physics value (configuration is what it is).
+  //  KE absorbs any drift: dispKE = referenceTotal - IE.
+  //  KE is clamped to 0 — if IE exceeds referenceTotal (deep
+  //  binding), KE shows 0 and Total is slightly off rather than
+  //  showing a nonsensical negative kinetic energy.
+  // ============================================================
+  // ieOffset is attributed to SIE only; combined IE and Total pick it up through dispSIE
+  const dispEIE = eiePotential;
+  const dispSIE = siePotential + ieOffset;
+  let dispKE = kinetic;
+  let dispIE = dispEIE + dispSIE;
+  let dispTotal = kinetic + dispIE;
+  if (conserveEnergy) {
+    if (referenceTotal === null) referenceTotal = dispTotal;  // Capture reference on first call
+    dispIE    = dispEIE + dispSIE;                           // Real IE — honest
+    dispKE    = Math.max(0, referenceTotal - dispIE);        // Fill the rest; clamp at 0
+    dispTotal = referenceTotal;                              // Pinned
+  }
+
+  kineticVal.textContent = Math.round(dispKE);
+  potentialVal.textContent = Math.round(dispIE);
+  totalVal.textContent = Math.round(dispTotal);
+
+  // Store display values in history (graph shows whatever the user sees)
+  energyHistory.push({ kinetic: dispKE, potential: dispIE, total: dispTotal, eie: dispEIE, sie: dispSIE });
+  if (energyHistory.length > MAX_HISTORY) energyHistory.shift();
+
+  return { kinetic, potential };  // Return true values for callers that need them
+}
+
+// ============================================================
+//  ENERGY GRAPH
+//  Two modes, toggled by the "Line/Bar" button:
+//
+//  Line mode: scrolling time-series of KE, IE, Total.
+//    Scroll wheel zooms the Y axis; drag pans time.
+//    Auto-fit scales Y to the visible window. Go live jumps
+//    back to the latest sample.
+//
+//  Bar mode: three bars showing current KE/IE/Total values.
+//    No time axis. Auto-fit, Go live, and scroll hint are hidden.
+// ============================================================
+const graphTooltip = document.getElementById('graphTooltip');
+const graphAutoFitBtn = document.getElementById('graphAutoFit');
+const graphGoLiveBtn = document.getElementById('graphGoLive');
+const graphHint = document.getElementById('graphHint');
+graphAutoFitBtn.style.display = 'none';
+graphGoLiveBtn.style.display  = 'none';
+graphHint.style.display       = 'none';
+
+function getVisibleRange() {
+  const len = energyHistory.length;
+  if (len === 0) return { start: 0, end: 0 };
+  // "live" mode: show the latest GRAPH_WINDOW samples
+  let end = (graphViewEnd < 0) ? len - 1 : Math.min(graphViewEnd, len - 1);
+  let start = Math.max(0, end - GRAPH_WINDOW + 1);
+  end = start + Math.min(GRAPH_WINDOW, len) - 1;  // Clamp if fewer samples
+  return { start, end };
+}
+
+function drawBarChart() {
+  const w = graphCanvas.offsetWidth;
+  const h = graphCanvas.offsetHeight;
+  gctx.clearRect(0, 0, w, h);
+  if (energyHistory.length === 0) return;
+
+  const latest = energyHistory[energyHistory.length - 1];
+  const bars = splitIE ? [
+    { label: 'KE',  value: latest.kinetic,   color: '#f87171' },
+    { label: 'EIE', value: latest.eie,        color: '#818cf8' },
+    { label: 'SIE', value: latest.sie,        color: '#fb923c' },
+    { label: 'Tot', value: latest.total,      color: '#22c55e' },
+  ] : [
+    { label: 'KE',  value: latest.kinetic,   color: '#f87171' },
+    { label: 'IE',  value: latest.potential,  color: '#3b82f6' },
+    { label: 'Tot', value: latest.total,      color: '#22c55e' },
+  ];
+
+  const maxVal = Math.max(1, ...bars.map(b => Math.abs(b.value))) * 1.15;
+  const pad = 10;
+  const labelH = 16;
+  const barW = (w - pad * 2) / bars.length;
+  const chartH = h - labelH - pad;
+  const baseline = h - labelH;  // positive bars grow upward from here
+
+  bars.forEach((bar, i) => {
+    const barPx = (bar.value / maxVal) * chartH;
+    const x = pad + i * barW + barW * 0.1;
+    const bw = barW * 0.8;
+
+    gctx.fillStyle = bar.color;
+    gctx.globalAlpha = 0.85;
+    if (bar.value >= 0) {
+      gctx.fillRect(x, baseline - barPx, bw, barPx);
+    } else {
+      gctx.fillRect(x, baseline, bw, -barPx);
+    }
+    gctx.globalAlpha = 1.0;
+
+    // Value label above/below bar
+    gctx.fillStyle = bar.color;
+    gctx.font = '10px sans-serif';
+    gctx.textAlign = 'center';
+    const labelY = bar.value >= 0
+      ? Math.max(10, baseline - barPx - 3)
+      : baseline - barPx + 12;
+    gctx.fillText(Math.round(bar.value), x + bw / 2, labelY);
+
+    // Name label at bottom
+    gctx.fillStyle = '#9ca3af';
+    gctx.fillText(bar.label, x + bw / 2, h - 3);
+  });
+
+  // Zero line
+  gctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  gctx.lineWidth = 1;
+  gctx.beginPath();
+  gctx.moveTo(0, baseline);
+  gctx.lineTo(w, baseline);
+  gctx.stroke();
+}
+
+function drawGraph() {
+  if (graphMode === 'bar') { drawBarChart(); return; }
+
+  const w = graphCanvas.offsetWidth;
+  const h = graphCanvas.offsetHeight;
+  gctx.clearRect(0, 0, w, h);
+
+  const len = energyHistory.length;
+  if (len < 2) return;
+
+  const { start, end } = getVisibleRange();
+  const visCount = end - start + 1;
+  if (visCount < 2) return;
+
+  // Y-axis scaling: auto-fit to visible data or use manual zoom
+  let maxVal = 1;
+  for (let i = start; i <= end; i++) {
+    const e = energyHistory[i];
+    maxVal = Math.max(maxVal, Math.abs(e.kinetic), Math.abs(e.potential), Math.abs(e.total));
+  }
+  maxVal *= 1.1;
+  if (!graphYAutoFit) {
+    maxVal /= graphYZoom;  // Manual zoom: smaller maxVal = more zoomed in
+  }
+
+  const xStep = w / (GRAPH_WINDOW - 1);
+  // Align so the visible samples fill from left to right
+  const xOff = (GRAPH_WINDOW - visCount) * xStep;
+
+  const yZero = h - 4;  // y coordinate of value = 0 (bottom of chart area)
+
+  function drawLine(key, color, offset = 0) {
+    gctx.strokeStyle = color;
+    gctx.lineWidth = 1.5;
+    gctx.beginPath();
+    for (let i = 0; i < visCount; i++) {
+      const x = xOff + i * xStep;
+      const val = energyHistory[start + i][key] + offset;
+      const y = h - (val / maxVal) * (h - 8) - 4;
+      if (i === 0) gctx.moveTo(x, y);
+      else gctx.lineTo(x, y);
+    }
+    gctx.stroke();
+  }
+
+  drawLine('potential', '#3b82f6');
+  drawLine('kinetic', '#f87171');
+  drawLine('total', '#22c55e');
+
+  // Draw crosshair and tooltip at hover position
+  if (graphHoverX >= 0 && graphHoverX <= w) {
+    // Map mouse X to sample index
+    const sampleF = (graphHoverX - xOff) / xStep;
+    const sampleI = Math.round(sampleF);
+    if (sampleI >= 0 && sampleI < visCount) {
+      const e = energyHistory[start + sampleI];
+      const crossX = xOff + sampleI * xStep;
+
+      // Vertical crosshair line
+      gctx.strokeStyle = 'rgba(255,255,255,0.25)';
+      gctx.lineWidth = 1;
+      gctx.beginPath();
+      gctx.moveTo(crossX, 0);
+      gctx.lineTo(crossX, h);
+      gctx.stroke();
+
+      // Dots on each line
+      const lines = [
+        { key: 'kinetic',   color: '#f87171', offset: 0 },
+        { key: 'potential', color: '#3b82f6', offset: 0 },
+        { key: 'total',     color: '#22c55e', offset: 0 },
+      ];
+      for (const l of lines) {
+        const y = h - ((e[l.key] + l.offset) / maxVal) * (h - 8) - 4;
+        gctx.fillStyle = l.color;
+        gctx.beginPath();
+        gctx.arc(crossX, y, 3, 0, Math.PI * 2);
+        gctx.fill();
+      }
+
+      // Position tooltip
+      graphTooltip.style.display = 'block';
+      graphTooltip.innerHTML =
+        `<span style="color:#f87171">KE</span> ${Math.round(e.kinetic)}<br>` +
+        `<span style="color:#3b82f6">IE</span> ${Math.round(e.potential)}<br>` +
+        `<span style="color:#22c55e">Tot</span> ${Math.round(e.total)}<br>` +
+        `<span style="color:#6b7280">t=${start + sampleI}</span>`;
+      // Place tooltip: prefer right of cursor, flip if near edge
+      const tipW = graphTooltip.offsetWidth;
+      let tipX = graphHoverX + 12;
+      if (tipX + tipW > w) tipX = graphHoverX - tipW - 8;
+      graphTooltip.style.left = tipX + 'px';
+      graphTooltip.style.top = '4px';
+    } else {
+      graphTooltip.style.display = 'none';
+    }
+  } else {
+    graphTooltip.style.display = 'none';
+  }
+
+  // Show "not live" indicator when scrolled back
+  if (graphViewEnd >= 0 && graphViewEnd < len - 1) {
+    gctx.fillStyle = 'rgba(255,100,100,0.7)';
+    gctx.font = '10px sans-serif';
+    gctx.textAlign = 'right';
+    gctx.fillText('PAUSED', w - 4, 12);
+  }
+}
+
+// --- Graph mouse events ---
+graphCanvas.addEventListener('mousedown', (e) => {
+  graphDragging = true;
+  const rect = graphCanvas.getBoundingClientRect();
+  graphDragStartX = e.clientX - rect.left;
+  // If live, pin to current position so drag starts from here
+  if (graphViewEnd < 0) {
+    graphViewEnd = energyHistory.length - 1;
+  }
+  graphDragStartEnd = graphViewEnd;
+});
+
+graphCanvas.addEventListener('mousemove', (e) => {
+  const rect = graphCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  graphHoverX = mx;
+
+  if (graphDragging) {
+    const dx = mx - graphDragStartX;
+    const w = graphCanvas.offsetWidth;
+    const xStep = w / (GRAPH_WINDOW - 1);
+    const sampleShift = Math.round(-dx / xStep);  // Drag left = go back in time
+    const len = energyHistory.length;
+    graphViewEnd = Math.max(GRAPH_WINDOW - 1, Math.min(len - 1, graphDragStartEnd + sampleShift));
+    // If dragged back to the latest, go live again
+    if (graphViewEnd >= len - 1) graphViewEnd = -1;
+  }
+
+  if (!running) drawGraph();
+});
+
+graphCanvas.addEventListener('mouseup', () => {
+  graphDragging = false;
+});
+
+graphCanvas.addEventListener('mouseleave', () => {
+  graphDragging = false;
+  graphHoverX = -1;
+  graphTooltip.style.display = 'none';
+  if (!running) drawGraph();
+});
+
+// Scroll to zoom Y axis
+graphCanvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  graphYAutoFit = false;
+  const zoomFactor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+  graphYZoom = Math.max(0.1, Math.min(100, graphYZoom * zoomFactor));
+  if (!running) drawGraph();
+}, { passive: false });
+
+// Auto-fit button: reset Y zoom to auto-scale
+graphAutoFitBtn.addEventListener('click', () => {
+  graphYAutoFit = true;
+  graphYZoom = 1.0;
+  if (!running) drawGraph();
+});
+
+// Go live button: jump to latest and pin
+graphGoLiveBtn.addEventListener('click', () => {
+  graphViewEnd = -1;
+  if (!running) drawGraph();
+});
+
+// Graph mode toggle
+const graphModeBtn = document.getElementById('graphModeBtn');
+graphModeBtn.addEventListener('click', () => {
+  graphMode = graphMode === 'line' ? 'bar' : 'line';
+  graphModeBtn.textContent = graphMode === 'line' ? 'Bar' : 'Line';
+  graphAutoFitBtn.style.display = graphMode === 'bar' ? 'none' : '';
+  graphGoLiveBtn.style.display  = graphMode === 'bar' ? 'none' : '';
+  graphHint.style.display       = graphMode === 'bar' ? 'none' : '';
+  if (!running) drawGraph();
+});
+
+// ============================================================
+//  PHYSICS STEP
+//  Called once per animation frame with dt = speed.
+//  Internally subdivides into SUBSTEPS for accuracy.
+//
+//  Each substep:
+//    1. Compute pairwise forces → accumulate into velocities
+//    2. Let dragged particle exert force without being pushed
+//    3. Integrate positions (symplectic Euler: v first, then x)
+//    4. Hard-sphere constraint: push apart any overlapping pairs
+//       and exchange their approaching normal velocities
+//
+//  After all substeps:
+//    5. Apply damping (currently disabled: damping = 1.0)
+//    6. Antispin: clamp cluster angular velocity if enabled
+// ============================================================
+function step(dt) {
+  const n = particles.length;
+  const subDt = dt / SUBSTEPS;  // Per-substep timestep
+
+  for (let sub = 0; sub < SUBSTEPS; sub++) {
+    // 1. Compute pairwise forces
+    for (let i = 0; i < n; i++) {
+      if (i === dragging) continue;
+      for (let j = i + 1; j < n; j++) {
+        if (j === dragging) continue;
+        const a = particles[i];
+        const b = particles[j];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const distSq = dx * dx + dy * dy;
+        const dist = Math.sqrt(distSq);
+        if (dist < 0.01) continue;  // Skip coincident particles
+        const force = pairForce(dist, distSq, a.type, b.type);
+        const fx = force * (dx / dist);
+        const fy = force * (dy / dist);
+        a.vx -= fx * subDt;
+        a.vy -= fy * subDt;
+        b.vx += fx * subDt;
+        b.vy += fy * subDt;
+      }
+    }
+
+    // 2. Dragged particle still exerts force on others (but is not itself pushed)
+    if (dragging !== null) {
+      const d = particles[dragging];
+      for (let j = 0; j < n; j++) {
+        if (j === dragging) continue;
+        const b = particles[j];
+        const dx = b.x - d.x;
+        const dy = b.y - d.y;
+        const distSq = dx * dx + dy * dy;
+        const dist = Math.sqrt(distSq);
+        if (dist < 0.01) continue;
+        const force = pairForce(dist, distSq, d.type, b.type);
+        const fx = force * (dx / dist);
+        const fy = force * (dy / dist);
+        b.vx += fx * subDt;
+        b.vy += fy * subDt;
+      }
+    }
+
+    // 3. Integrate positions (symplectic Euler: velocity already updated above)
+    for (let i = 0; i < n; i++) {
+      if (i === dragging) continue;
+      const p = particles[i];
+      p.x += p.vx * subDt;
+      p.y += p.vy * subDt;
+    }
+
+    // 4. Hard-sphere constraint: resolve any remaining overlaps.
+    //    Force softening caps—but doesn't eliminate—overlap at high speed.
+    //    Position correction: push overlapping centers apart by full overlap.
+    //    Velocity correction: only when particles are approaching (dvDotN < 0)
+    //    — swap the normal velocity component (equal-mass elastic collision).
+    //    If one particle is being dragged, only the free particle is corrected.
+    const minSep = PARTICLE_RADIUS * 2;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const a = particles[i];
+        const b = particles[j];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        const dSq = dx * dx + dy * dy;
+        if (dSq >= minSep * minSep) continue;
+        let d = Math.sqrt(dSq);
+        if (d < 0.001) { dx = 1; dy = 0; d = 0.001; }
+        const nx = dx / d;
+        const ny = dy / d;
+        const overlap = minSep - d;
+        const aFixed = (i === dragging);
+        const bFixed = (j === dragging);
+
+        // Position correction
+        if (aFixed && !bFixed) {
+          b.x += nx * overlap; b.y += ny * overlap;
+        } else if (bFixed && !aFixed) {
+          a.x -= nx * overlap; a.y -= ny * overlap;
+        } else if (!aFixed && !bFixed) {
+          a.x -= nx * overlap * 0.5; a.y -= ny * overlap * 0.5;
+          b.x += nx * overlap * 0.5; b.y += ny * overlap * 0.5;
+        }
+
+        // Inelastic velocity correction: zero out approaching velocity
+        // (the strong force handles the rebound; this is just a safety net)
+        const dvx = b.vx - a.vx;
+        const dvy = b.vy - a.vy;
+        const dvDotN = dvx * nx + dvy * ny;
+        if (dvDotN < 0) {  // approaching
+          const half = dvDotN * 0.5;
+          if (aFixed) {
+            b.vx -= dvDotN * nx; b.vy -= dvDotN * ny;
+          } else if (bFixed) {
+            a.vx += dvDotN * nx; a.vy += dvDotN * ny;
+          } else {
+            a.vx += half * nx; a.vy += half * ny;
+            b.vx -= half * nx; b.vy -= half * ny;
+          }
+        }
+      }
+    }
+  }  // end substep loop
+
+  // 5. Damping: multiply all velocities by damping factor once per frame.
+  //    Currently disabled (damping = 1.0) so energy is conserved.
+  if (damping < 1.0) {
+    for (let i = 0; i < n; i++) {
+      if (i === dragging) continue;
+      particles[i].vx *= damping;
+      particles[i].vy *= damping;
+    }
+  }
+
+  // 6. Antispin: suppress runaway rotation in bound clusters.
+  //    Without this, the strong force can pump angular momentum into a
+  //    nucleus over time and it will spin up indefinitely.
+  //    Algorithm:
+  //      a) Build adjacency list: particles within strongCutoff are "bonded"
+  //      b) Flood-fill to find connected clusters of 3+ particles
+  //      c) For each cluster: compute CM, angular momentum L, moment I
+  //         → omega = L / I  (angular velocity)
+  //      d) Only subtract the excess beyond MAX_OMEGA (1 rev/sim-s),
+  //         leaving a small allowed spin so clusters still feel natural.
+  //    MAX_OMEGA scales with speed so the allowed spin is speed-invariant.
+  if (antispin && n >= 3) {
+    const cutoffSpin = strongCutoff();
+    const cutoffSpinSq = cutoffSpin * cutoffSpin;
+
+    // Build adjacency list
+    const adj = new Array(n);
+    for (let i = 0; i < n; i++) adj[i] = [];
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const dx = particles[j].x - particles[i].x;
+        const dy = particles[j].y - particles[i].y;
+        if (dx * dx + dy * dy < cutoffSpinSq) {
+          adj[i].push(j);
+          adj[j].push(i);
+        }
+      }
+    }
+
+    // Flood-fill to find connected clusters
+    const visited = new Uint8Array(n);
+    for (let seed = 0; seed < n; seed++) {
+      if (visited[seed]) continue;
+      if (adj[seed].length === 0) { visited[seed] = 1; continue; }
+      const cluster = [seed];
+      visited[seed] = 1;
+      let head = 0;
+      while (head < cluster.length) {
+        const cur = cluster[head++];
+        for (let k = 0; k < adj[cur].length; k++) {
+          const nb = adj[cur][k];
+          if (!visited[nb]) { visited[nb] = 1; cluster.push(nb); }
+        }
+      }
+
+      if (cluster.length < 3) continue;
+
+      // Center of mass position and velocity
+      let cmx = 0, cmy = 0, cvx = 0, cvy = 0;
+      for (let k = 0; k < cluster.length; k++) {
+        const p = particles[cluster[k]];
+        cmx += p.x; cmy += p.y; cvx += p.vx; cvy += p.vy;
+      }
+      cmx /= cluster.length; cmy /= cluster.length;
+      cvx /= cluster.length; cvy /= cluster.length;
+
+      // Angular momentum L and moment of inertia I about center of mass
+      let L = 0, I = 0;
+      for (let k = 0; k < cluster.length; k++) {
+        const p = particles[cluster[k]];
+        const rx = p.x - cmx, ry = p.y - cmy;
+        const vxr = p.vx - cvx, vyr = p.vy - cvy;
+        L += rx * vyr - ry * vxr;
+        I += rx * rx + ry * ry;
+      }
+      if (I < 0.001) continue;
+
+      // omega in rad/subDt. MAX_OMEGA = 1 rev per sim-second at 60fps,
+      // scaled by speed so the visual spin rate is consistent across speeds.
+      // removeOmega is only the excess — spins within the cap are untouched.
+      const omega = L / I;
+      const MAX_OMEGA = 2 * Math.PI * speed / (60 * SUBSTEPS);  // 1 rev/sim-s, scales with speed
+      const removeOmega = Math.sign(omega) * Math.max(0, Math.abs(omega) - MAX_OMEGA);
+      for (let k = 0; k < cluster.length; k++) {
+        if (cluster[k] === dragging) continue;
+        const p = particles[cluster[k]];
+        const rx = p.x - cmx, ry = p.y - cmy;
+        p.vx -= -removeOmega * ry;
+        p.vy -=  removeOmega * rx;
+      }
+    }
+  }
+}
+
+// ============================================================
+//  COLORMAP
+//  Pre-baked 256-entry RGBA lookup table mapping energy density
+//  [0, 1] to a blue-white gradient (transparent at zero, opaque
+//  near-white at max). Used by the Coulomb heatmap renderer.
+// ============================================================
+function buildColorstops(stops, out) {
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    let s0 = stops[0], s1 = stops[1];
+    for (let s = 0; s < stops.length - 1; s++) {
+      if (t >= stops[s].t && t <= stops[s + 1].t) { s0 = stops[s]; s1 = stops[s + 1]; break; }
+    }
+    const f = (t - s0.t) / (s1.t - s0.t);
+    const idx = i * 4;
+    out[idx]     = s0.r + (s1.r - s0.r) * f;
+    out[idx + 1] = s0.g + (s1.g - s0.g) * f;
+    out[idx + 2] = s0.b + (s1.b - s0.b) * f;
+    out[idx + 3] = s0.a + (s1.a - s0.a) * f;
+  }
+}
+
+const COLORMAP = new Uint8Array(256 * 4);
+buildColorstops([
+  { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0   },
+  { t: 0.12, r: 10,  g: 35,  b: 170, a: 140 },
+  { t: 0.4,  r: 25,  g: 85,  b: 235, a: 210 },
+  { t: 0.7,  r: 70,  g: 165, b: 255, a: 245 },
+  { t: 1.0,  r: 210, g: 238, b: 255, a: 255 },
+], COLORMAP);
+
+const STRONG_COLORMAP = new Uint8Array(256 * 4);
+buildColorstops([
+  { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0   },
+  { t: 0.12, r: 160, g: 45,  b: 0,   a: 140 },
+  { t: 0.4,  r: 240, g: 110, b: 10,  a: 210 },
+  { t: 0.7,  r: 255, g: 185, b: 70,  a: 245 },
+  { t: 1.0,  r: 255, g: 238, b: 210, a: 255 },
+], STRONG_COLORMAP);
+
+// ============================================================
+//  COULOMB HEATMAP — normalized ribbon approach
+//  Each proton pair contributes a glowing ribbon along its axis.
+//  Brightness = log-scaled pair potential energy (same for all
+//  pixels along the ribbon). Falloff is Gaussian perpendicular
+//  to the axis; sigma = 18% of separation. Smooth ramp at
+//  endpoints over 15% of separation.
+// ============================================================
+function drawHeatmap() {
+  const protonList = particles.filter(p => p.type === 'proton');
+  if (protonList.length < 2) return;
+
+  // Precompute per-pair ribbon descriptors
+  const refEnergy = coulombStrength / (PARTICLE_RADIUS * 2);  // energy at touching
+  const logRef = Math.log(2);  // log(1+1): value when pairEnergy = refEnergy → mag 1.0
+  const pairs = [];
+  for (let i = 0; i < protonList.length; i++) {
+    for (let j = i + 1; j < protonList.length; j++) {
+      const a = protonList[i], b = protonList[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 0.01) continue;
+      const energy = coulombStrength / dist;
+      // sigma: wide bloom when close (inversely proportional), floors at medium distance
+      const sigma = Math.max(3.5, 28 / Math.sqrt(dist));
+      // mag fades with distance → more transparent far away, same width
+      const distFade = Math.exp(-dist / 350);
+      const mag = Math.min(1, Math.log(1 + energy / refEnergy) / logRef) * distFade;
+      const cullSq = 16 * (sigma * 3) * (sigma * 3);  // perp threshold: sigmaT peaks at 3×sigma
+      pairs.push({ ax: a.x, ay: a.y, ux: dx / dist, uy: dy / dist, dist, sigma, mag, cullSq });
+    }
+  }
+
+  const fullW = canvas.width, fullH = canvas.height;
+  const scale = 0.25;
+  const w = Math.ceil(fullW * scale), h = Math.ceil(fullH * scale);
+  const invScale = 1 / scale;
+  const cxH = fullW / 2, cyH = fullH / 2;
+
+  if (hmCanvas.width !== w || hmCanvas.height !== h) { hmCanvas.width = w; hmCanvas.height = h; }
+  const imageData = hmCtx.createImageData(w, h);
+  const data = imageData.data;
+
+  for (let py = 0; py < h; py++) {
+    const worldY = (py * invScale - cyH) / zoom + cyH;
+    for (let px = 0; px < w; px++) {
+      const worldX = (px * invScale - cxH) / zoom + cxH;
+
+      let total = 0;
+      for (const p of pairs) {
+        const rx = worldX - p.ax, ry = worldY - p.ay;
+        const para = rx * p.ux + ry * p.uy;
+        const rampPx = 8;
+        const e1 = Math.max(0, Math.min(1, para / rampPx));
+        const e2 = Math.max(0, Math.min(1, (p.dist - para) / rampPx));
+        const endFade = e1 * e2;
+        if (endFade <= 0) continue;
+        // Skip pixels too far from ribbon axis to contribute (exp(-8) threshold)
+        const perpSq = Math.max(0, rx * rx + ry * ry - para * para);
+        if (perpSq > p.cullSq) continue;
+        // Elliptical width: 3x wider at center (t=0.5) than at endpoints
+        const t = para / p.dist;
+        const sigmaT = p.sigma * (1 + 2 * Math.sin(Math.PI * t));
+        total += p.mag * Math.exp(-perpSq / (2 * sigmaT * sigmaT)) * endFade;
+      }
+
+      if (total > 0.002) {
+        const magnitude = Math.min(1, total * 3.0);
+        const ci = (magnitude * 255) | 0;
+        const di = (py * w + px) * 4;
+        const ci4 = ci * 4;
+        data[di]     = COLORMAP[ci4];
+        data[di + 1] = COLORMAP[ci4 + 1];
+        data[di + 2] = COLORMAP[ci4 + 2];
+        data[di + 3] = COLORMAP[ci4 + 3];
+      }
+    }
+  }
+
+  hmCtx.putImageData(imageData, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(hmCanvas, 0, 0, fullW, fullH);
+}
+
+// ============================================================
+//  STRONG HEATMAP — normalized ribbon approach
+//  Same structure as Coulomb heatmap. Brightness = normalized
+//  depth in the potential well (0 at cutoff edge, 1 at
+//  equilibrium). Sigma = 35% of separation.
+// ============================================================
+function drawStrongHeatmap() {
+  const n = particles.length;
+  if (n < 2) return;
+
+  const cutoff = strongCutoff();
+  const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
+  const span = cutoff - eqDist;
+  if (span <= 0) return;
+  const maxBinding = strongForceStrength * span / 2;  // deepest well magnitude
+
+  // Precompute per-pair ribbon descriptors (only pairs within cutoff)
+  const pairs = [];
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const a = particles[i], b = particles[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist === 0 || dist >= cutoff) continue;
+      const dr = dist - eqDist;
+      const energy = strongForceStrength / (2 * span) * (dr * dr - span * span);
+      const mag = Math.min(1, Math.abs(energy) / maxBinding);
+      const sigma = Math.max(0.375, 0.0875 * dist);
+      const spread = 2; // uniform scale: ellipse 2x bigger in both length and width
+      const cullSq = 16 * (sigma * spread * 3) * (sigma * spread * 3);
+      pairs.push({ ax: a.x, ay: a.y, ux: dx / dist, uy: dy / dist, dist, sigma, mag, spread, cullSq });
+    }
+  }
+  if (pairs.length === 0) return;
+
+  const fullW = canvas.width, fullH = canvas.height;
+  const scale = 0.25;
+  const w = Math.ceil(fullW * scale), h = Math.ceil(fullH * scale);
+  const invScale = 1 / scale;
+  const cxH = fullW / 2, cyH = fullH / 2;
+
+  if (hmCanvas.width !== w || hmCanvas.height !== h) { hmCanvas.width = w; hmCanvas.height = h; }
+  const imageData = hmCtx.createImageData(w, h);
+  const data = imageData.data;
+
+  for (let py = 0; py < h; py++) {
+    const worldY = (py * invScale - cyH) / zoom + cyH;
+    for (let px = 0; px < w; px++) {
+      const worldX = (px * invScale - cxH) / zoom + cxH;
+
+      let total = 0;
+      for (const p of pairs) {
+        const rx = worldX - p.ax, ry = worldY - p.ay;
+        const para = rx * p.ux + ry * p.uy;
+        // Extend the ribbon equally beyond both endpoints so the ellipse
+        // scales uniformly in both length and width
+        const margin = (p.spread - 1) / 2 * p.dist;
+        const extDist = p.dist * p.spread;
+        const paraExt = para + margin;
+        const rampPx = 8;
+        const e1 = Math.max(0, Math.min(1, paraExt / rampPx));
+        const e2 = Math.max(0, Math.min(1, (extDist - paraExt) / rampPx));
+        const endFade = e1 * e2;
+        if (endFade <= 0) continue;
+        // Skip pixels too far from ribbon axis to contribute (exp(-8) threshold)
+        const perpSq = Math.max(0, rx * rx + ry * ry - para * para);
+        if (perpSq > p.cullSq) continue;
+        const t = paraExt / extDist;
+        const sigmaT = p.sigma * p.spread * (1 + 2 * Math.sin(Math.PI * t));
+        total += p.mag * Math.exp(-perpSq / (2 * sigmaT * sigmaT)) * endFade;
+      }
+
+      if (total > 0.002) {
+        const magnitude = Math.min(1, total * 3.0);
+        const ci = (magnitude * 255) | 0;
+        const di = (py * w + px) * 4;
+        const ci4 = ci * 4;
+        data[di]     = STRONG_COLORMAP[ci4];
+        data[di + 1] = STRONG_COLORMAP[ci4 + 1];
+        data[di + 2] = STRONG_COLORMAP[ci4 + 2];
+        data[di + 3] = STRONG_COLORMAP[ci4 + 3];
+      }
+    }
+  }
+
+  hmCtx.putImageData(imageData, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(hmCanvas, 0, 0, fullW, fullH);
+}
+
+
+// ============================================================
+//  MAIN DRAW
+//  Render order (back to front):
+//    1. Coulomb field visualization (ribbon or cloud)
+//    2. All particle bodies
+//
+//  Everything is drawn inside a centered zoom transform so the
+//  zoom slider scales visuals without touching physics coordinates.
+// ============================================================
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Heatmaps render in screen space before the zoom transform.
+  // They account for zoom internally via coordinate mapping.
+  if (showFieldEnergy && particles.length >= 2) {
+    drawHeatmap();
+    drawStrongHeatmap();
+  }
+
+  // Centered zoom: scale around canvas center so existing particles stay visible
+  const _cx = canvas.width / 2, _cy = canvas.height / 2;
+  ctx.save();
+  ctx.translate(_cx, _cy);
+  ctx.scale(zoom, zoom);
+  ctx.translate(-_cx, -_cy);
+
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    const isProton = p.type === 'proton';
+
+    // Body: offset inner highlight (-3,-3) gives a 3D spherical look
+    const bodyGrad = ctx.createRadialGradient(p.x - 3, p.y - 3, 1, p.x, p.y, PARTICLE_RADIUS);
+    if (isProton) {
+      bodyGrad.addColorStop(0, '#ff9999');
+      bodyGrad.addColorStop(0.7, '#ff4444');
+      bodyGrad.addColorStop(1, '#cc2222');
+    } else {
+      bodyGrad.addColorStop(0, '#ccccdd');
+      bodyGrad.addColorStop(0.7, '#8888aa');
+      bodyGrad.addColorStop(1, '#666688');
+    }
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, PARTICLE_RADIUS, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Label
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(isProton ? '+' : 'n', p.x, p.y + 1);
+  }
+
+  ctx.restore();
+}
+
+// ============================================================
+//  ANIMATION LOOP
+//  Called once per animation frame while running.
+//  Order: physics → energy → visuals → schedule next frame.
+// ============================================================
+function loop() {
+  if (!running) return;
+  step(speed);
+  computeEnergy();
+  draw();
+  drawGraph();
+  animId = requestAnimationFrame(loop);
+}
+
+// Initial draw to populate the canvas before Go is pressed
+draw();
+</script>
+</body>
+</html>
