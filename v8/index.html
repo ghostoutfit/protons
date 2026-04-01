@@ -1560,7 +1560,7 @@ function drawHeatmap() {
       // mag fades with distance → more transparent far away, same width
       const distFade = Math.exp(-dist / 350);
       const mag = Math.min(1, Math.log(1 + energy / refEnergy) / logRef) * distFade;
-      const cullSq = 16 * (sigma * 3) * (sigma * 3);  // perp threshold: sigmaT peaks at 3×sigma
+      const cullSq = 16 * (sigma * 2) * (sigma * 2);  // perp threshold: sigmaT peaks at 2×sigma
       pairs.push({ ax: a.x, ay: a.y, ux: dx / dist, uy: dy / dist, dist, sigma, mag, cullSq });
     }
   }
@@ -1592,9 +1592,9 @@ function drawHeatmap() {
         // Skip pixels too far from ribbon axis to contribute (exp(-8) threshold)
         const perpSq = Math.max(0, rx * rx + ry * ry - para * para);
         if (perpSq > p.cullSq) continue;
-        // Elliptical width: 3x wider at center (t=0.5) than at endpoints
+        // Elliptical width: 2x wider at center (t=0.5) than at endpoints
         const t = para / p.dist;
-        const sigmaT = p.sigma * (1 + 2 * Math.sin(Math.PI * t));
+        const sigmaT = p.sigma * (1 + 1 * Math.sin(Math.PI * t));
         total += p.mag * Math.exp(-perpSq / (2 * sigmaT * sigmaT)) * endFade;
       }
 
@@ -1645,7 +1645,7 @@ function drawStrongHeatmap() {
       const energy = strongForceStrength / (2 * span) * (dr * dr - span * span);
       const mag = Math.min(1, Math.abs(energy) / maxBinding);
       const sigma = Math.max(0.375, 0.0875 * dist);
-      const spread = 2; // uniform scale: ellipse 2x bigger in both length and width
+      const spread = 1.6; // uniform scale: ellipse size in both length and width
       const cullSq = 16 * (sigma * spread * 3) * (sigma * spread * 3);
       pairs.push({ ax: a.x, ay: a.y, ux: dx / dist, uy: dy / dist, dist, sigma, mag, spread, cullSq });
     }
@@ -1686,7 +1686,7 @@ function drawStrongHeatmap() {
         if (perpSq > p.cullSq) continue;
         const t = paraExt / extDist;
         const sigmaT = p.sigma * p.spread * (1 + 2 * Math.sin(Math.PI * t));
-        total += p.mag * Math.exp(-perpSq / (2 * sigmaT * sigmaT)) * endFade;
+        total = Math.max(total, p.mag * Math.exp(-perpSq / (2 * sigmaT * sigmaT)) * endFade);
       }
 
       if (total > 0.002) {
