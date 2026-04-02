@@ -1563,7 +1563,7 @@ function loop() {
       const isDT = (leftChoice === 'd' && rightChoice === 't') || (leftChoice === 't' && rightChoice === 'd');
       if (hasCollided && !fusionFired && isDT) {
         framesSinceCollision++;
-        if (framesSinceCollision > 40) {
+        if (framesSinceCollision > 20) {
           const e = computeEnergy();
           if (e.ke >= KE_EJECT_THRESHOLD || now - collisionTime > KE_EJECT_FALLBACK_MS) {
             fireFusion();
