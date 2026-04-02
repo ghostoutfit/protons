@@ -446,8 +446,8 @@
       <button class="arrow-btn" data-mode="2">Net force</button>
     </div>
     <div class="slider-group">
-      <label>Strong F: <span id="strongFVal">0.50</span></label>
-      <input type="range" id="strongFSlider" min="1" max="100" step="1" value="50">
+      <label>Strong F: <span id="strongFVal">0.25</span></label>
+      <input type="range" id="strongFSlider" min="1" max="100" step="1" value="25">
     </div>
   </div>
 </div>
@@ -509,7 +509,7 @@ const MIN_DIST = 20;         // Minimum distance for force calc = 2*PARTICLE_RAD
 //  of the simulation (equilibrium distance, fusion threshold, etc.)
 // ============================================================
 const coulombStrength = 139;      // K in F = K/r² (Coulomb repulsion, proton-proton only)
-let strongForceStrength = 0.5;    // Constant attractive force magnitude within cutoff
+let strongForceStrength = 0.25;   // Constant attractive force magnitude within cutoff
 let strongForceRange = 1.2;       // Cutoff = PARTICLE_RADIUS * 2 * strongForceRange
 const equilibriumRatio = 0.6;     // Ratio r_eq / r_cutoff (informational, not used directly)
 const damping = 1.00;             // Velocity multiplier per frame; 1.0 = no damping
@@ -961,6 +961,12 @@ function applyTab(isProtonOnly) {
   document.getElementById('arrowToggle').style.display = isProtonOnly ? 'flex' : 'none';
   document.getElementById('tabA').classList.toggle('active', isProtonOnly);
   document.getElementById('tabB').classList.toggle('active', !isProtonOnly);
+  // Reset strong force to tab default
+  if (isProtonOnly) {
+    strongForceStrength = 0.25;
+    document.getElementById('strongFSlider').value = 25;
+    document.getElementById('strongFVal').textContent = '0.25';
+  }
   // Clear simulation state on tab switch
   running = false;
   cancelAnimationFrame(animId);
