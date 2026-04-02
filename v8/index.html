@@ -278,6 +278,38 @@
   }
 
   /* ========================================
+     ARROW TOGGLE
+     ======================================== */
+  .arrow-toggle-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .arrow-btn {
+    padding: 3px 10px;
+    border: 1px solid #3a3a5a;
+    border-radius: 4px;
+    background: transparent;
+    color: #6b7280;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .arrow-btn.active {
+    background: #6366f1;
+    color: #fff;
+    border-color: #6366f1;
+  }
+
+  .arrow-btn:hover:not(.active) {
+    color: #e0e0e0;
+    border-color: #6366f1;
+  }
+
+  /* ========================================
      STATS DISPLAY
      ======================================== */
   #stats {
@@ -407,6 +439,12 @@
     </div>
     <label class="toggle-label"><input type="checkbox" id="electricFieldToggle" checked> <span style="color:#7dd3fc">Electric field</span></label>
     <label class="toggle-label"><input type="checkbox" id="strongFieldToggle" checked> <span style="color:#fb923c">Strong field</span></label>
+    <div id="arrowToggle" class="arrow-toggle-group">
+      <span style="font-size:12px;color:#9ca3af">Arrows:</span>
+      <button class="arrow-btn active" data-mode="0">Off</button>
+      <button class="arrow-btn" data-mode="1">Per-source</button>
+      <button class="arrow-btn" data-mode="2">Net force</button>
+    </div>
     <div class="slider-group">
       <label>Strong F: <span id="strongFVal">0.50</span></label>
       <input type="range" id="strongFSlider" min="1" max="100" step="1" value="50">
@@ -453,8 +491,10 @@ let showStrongField = true;     // Toggle for strong nuclear heatmap
 
 const antispin = true;            // Always on; suppresses runaway cluster spin
 
-// ---- Selection ----
+// ---- Selection & force arrows ----
 let selectedParticle = null;  // Index of the clicked particle
+let arrowMode = 0;            // 0=off, 1=per-source arrows, 2=net force arrow
+let currentTabIsProton = true; // true = Tab A (protons only)
 
 // ---- View ----
 let zoom = 2.0;  // Canvas zoom centered on canvas midpoint
@@ -481,6 +521,27 @@ const SUBSTEPS = 20;              // Physics substeps per animation frame for in
 // ============================================================
 const hmCanvas = document.createElement('canvas');
 const hmCtx = hmCanvas.getContext('2d');
+
+// Composite canvas: holds the fully-blended heatmap at full resolution.
+// Cached between frames so we can skip recomputation every other frame.
+const hmComposite = document.createElement('canvas');
+const hmcCtx = hmComposite.getContext('2d');
+
+// Pre-allocated pixel buffers; resized when canvas dimensions change.
+let hmW = 0, hmH = 0;
+let hmDataElec = null, hmDataStrong = null;
+let hmImgElec  = null, hmImgStrong  = null;
+let hmFrameCounter = 0;
+
+function ensureHmBuffers(w, h) {
+  if (hmW === w && hmH === h) return;
+  hmW = w; hmH = h;
+  hmCanvas.width = w; hmCanvas.height = h;
+  hmDataElec   = new Uint8ClampedArray(w * h * 4);
+  hmDataStrong = new Uint8ClampedArray(w * h * 4);
+  hmImgElec    = new ImageData(hmDataElec,   w, h);
+  hmImgStrong  = new ImageData(hmDataStrong, w, h);
+}
 
 // ============================================================
 //  DRAG STATE
@@ -695,11 +756,48 @@ function buildPackedCluster(numProtons, numNeutrons, spacing = PARTICLE_RADIUS *
 }
 
 // ============================================================
-//  CLUSTER PLACEMENT
-//  placeProtons(n)  — Tab A: n protons, spaced 1 diameter apart
-//  addClusterBtn    — Tab B: P+N from number inputs
+//  RANDOM PROTON PLACER (Tab A)
+//  Poisson-disk rejection sampling: each proton is placed at a
+//  random position in a disk, retrying until it is farther than
+//  minDist from every already-placed proton.  minDist is set well
+//  above the strong-force cutoff so no interactions start.
 // ============================================================
-function placeCluster(numProtons, numNeutrons, spacing) {
+function buildRandomProtons(n) {
+  if (n === 0) return [];
+  const minDist = strongCutoff() * 1.8;          // clear margin above strong range
+  const radius  = minDist * Math.sqrt(n) * 0.85; // disk sized for n non-overlapping protons
+  const placed  = [];
+
+  for (let i = 0; i < n; i++) {
+    let best = null, bestMinD = -1;
+    const attempts = 300;
+    for (let a = 0; a < attempts; a++) {
+      // Uniform random point inside disk
+      const angle = Math.random() * 2 * Math.PI;
+      const r     = Math.sqrt(Math.random()) * radius;
+      const x = r * Math.cos(angle), y = r * Math.sin(angle);
+
+      let minD = Infinity;
+      for (const p of placed) {
+        const dx = p.x - x, dy = p.y - y;
+        const d  = Math.sqrt(dx * dx + dy * dy);
+        if (d < minD) minD = d;
+      }
+      if (placed.length === 0 || minD >= minDist) { best = { x, y }; break; }
+      if (minD > bestMinD) { bestMinD = minD; best = { x, y }; }
+    }
+    placed.push(best);
+  }
+  return placed.map(p => ({ x: p.x, y: p.y, type: 'proton' }));
+}
+
+// ============================================================
+//  CLUSTER PLACEMENT
+//  placeProtons(n)     — Tab A: random layout, no strong force
+//  placeNucleus(p, n)  — Tab B: tight hex pack, called by
+//                        Add buttons and neutron slider
+// ============================================================
+function resetSim() {
   running = false;
   cancelAnimationFrame(animId);
   goBtn.textContent = 'Go';
@@ -707,6 +805,10 @@ function placeCluster(numProtons, numNeutrons, spacing) {
   particles = [];
   snapshot = null;
   replayBtn.disabled = true;
+}
+
+function placeCluster(numProtons, numNeutrons, spacing) {
+  resetSim();
 
   const nzRatio = numProtons > 0 ? numNeutrons / numProtons : 1.0;
   strongForceStrength = Math.min(1.0, Math.max(0.01, 2 * nzRatio - 1));
@@ -723,8 +825,21 @@ function placeCluster(numProtons, numNeutrons, spacing) {
 }
 
 function placeProtons(n) {
-  // Space centers 1 diameter apart (gap = 1 diameter = 2×PARTICLE_RADIUS)
-  placeCluster(n, 0, PARTICLE_RADIUS * 4);
+  resetSim();
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+  const pts = buildRandomProtons(n);
+  for (const p of pts) particles.push(createParticle(cx + p.x, cy + p.y, 'proton'));
+  updateStats();
+  computeEnergy();
+  draw();
+  hideInstructions();
+}
+
+let lastNucleusProtonCount = 0;  // tracks last Add N button pressed in Tab B
+
+function placeNucleus(numProtons, numNeutrons) {
+  lastNucleusProtonCount = numProtons;
+  placeCluster(numProtons, numNeutrons, PARTICLE_RADIUS * 2);
 }
 
 
@@ -839,9 +954,11 @@ const nucleusBtns  = document.getElementById('nucleusBtns');
 const neutronFrame = document.getElementById('neutronFrame');
 
 function applyTab(isProtonOnly) {
+  currentTabIsProton = isProtonOnly;
   protonBtns.style.display      = isProtonOnly ? 'flex' : 'none';
   nucleusBtns.style.display     = isProtonOnly ? 'none' : 'flex';
   neutronFrame.style.visibility = isProtonOnly ? 'hidden' : 'visible';
+  document.getElementById('arrowToggle').style.display = isProtonOnly ? 'flex' : 'none';
   document.getElementById('tabA').classList.toggle('active', isProtonOnly);
   document.getElementById('tabB').classList.toggle('active', !isProtonOnly);
   // Clear simulation state on tab switch
@@ -851,6 +968,7 @@ function applyTab(isProtonOnly) {
   goBtn.classList.remove('running');
   particles = [];
   snapshot = null;
+  selectedParticle = null;
   replayBtn.disabled = true;
   updateStats();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -863,17 +981,27 @@ document.querySelectorAll('.proton-add-btn').forEach(btn => {
   btn.addEventListener('click', () => placeProtons(parseInt(btn.dataset.count)));
 });
 
-const neutronSlider   = document.getElementById('neutronSlider');
+const neutronSlider    = document.getElementById('neutronSlider');
 const neutronSliderVal = document.getElementById('neutronSliderVal');
 neutronSlider.addEventListener('input', function() {
   neutronSliderVal.textContent = this.value;
+  if (lastNucleusProtonCount > 0) {
+    placeNucleus(lastNucleusProtonCount, parseInt(this.value));
+  }
 });
 
 document.querySelectorAll('.nucleus-add-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    const numProtons  = parseInt(btn.dataset.count);
-    const numNeutrons = parseInt(neutronSlider.value);
-    placeCluster(numProtons, numNeutrons, PARTICLE_RADIUS * 2);
+    placeNucleus(parseInt(btn.dataset.count), parseInt(neutronSlider.value));
+  });
+});
+
+// Arrow mode toggle
+document.querySelectorAll('.arrow-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    arrowMode = parseInt(btn.dataset.mode);
+    document.querySelectorAll('.arrow-btn').forEach(b => b.classList.toggle('active', b === btn));
+    if (!running) draw();
   });
 });
 
@@ -1235,181 +1363,241 @@ buildColorstops([
 ], STRONG_COLORMAP);
 
 // ============================================================
-//  COULOMB HEATMAP — normalized ribbon approach
-//  Each proton pair contributes a glowing ribbon along its axis.
-//  Brightness = log-scaled pair potential energy (same for all
-//  pixels along the ribbon). Falloff is Gaussian perpendicular
-//  to the axis; sigma = 18% of separation. Smooth ramp at
-//  endpoints over 15% of separation.
+//  COMBINED HEATMAP
+//  Single pixel loop computes both electric (blue) and strong
+//  (orange) fields. Results are composited into hmComposite at
+//  full resolution. When running, the composite is reused every
+//  other frame (heatmap every 2 frames — imperceptible at the
+//  blurred quarter-resolution the maps are rendered at).
 // ============================================================
-function drawHeatmap() {
-  const protonList = particles.filter(p => p.type === 'proton');
-  if (protonList.length < 2) return;
-
-  // Precompute per-pair ribbon descriptors
-  const refEnergy = coulombStrength / (PARTICLE_RADIUS * 2);  // energy at touching
-  const logRef = Math.log(2);  // log(1+1): value when pairEnergy = refEnergy → mag 1.0
-  const pairs = [];
-  for (let i = 0; i < protonList.length; i++) {
-    for (let j = i + 1; j < protonList.length; j++) {
-      const a = protonList[i], b = protonList[j];
-      const dx = b.x - a.x, dy = b.y - a.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < 0.01) continue;
-      const energy = coulombStrength / dist;
-      // sigma: wide bloom when close (inversely proportional), floors at medium distance
-      const sigma = Math.max(3.5, 28 / Math.sqrt(dist));
-      // mag fades with distance → more transparent far away, same width
-      const distFade = Math.exp(-dist / 350);
-      const mag = Math.min(1, Math.log(1 + energy / refEnergy) / logRef) * distFade;
-      const cullSq = 16 * (sigma * 2) * (sigma * 2);  // perp threshold: sigmaT peaks at 2×sigma
-      pairs.push({ ax: a.x, ay: a.y, ux: dx / dist, uy: dy / dist, dist, sigma, mag, cullSq });
-    }
-  }
-
+function drawCombinedHeatmap() {
   const fullW = canvas.width, fullH = canvas.height;
   const scale = 0.25;
   const w = Math.ceil(fullW * scale), h = Math.ceil(fullH * scale);
+
+  // Every other frame when running: blit cached composite and return
+  hmFrameCounter++;
+  if (running && (hmFrameCounter & 1) &&
+      hmComposite.width === fullW && hmComposite.height === fullH) {
+    ctx.drawImage(hmComposite, 0, 0);
+    return;
+  }
+
+  // Build electric pairs (proton-proton only)
+  const elecPairs = [];
+  if (showElectricField) {
+    const refEnergy = coulombStrength / (PARTICLE_RADIUS * 2);
+    const logRef = Math.log(2);
+    const protonList = particles.filter(p => p.type === 'proton');
+    for (let i = 0; i < protonList.length; i++) {
+      for (let j = i + 1; j < protonList.length; j++) {
+        const a = protonList[i], b = protonList[j];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 0.01) continue;
+        const energy = coulombStrength / dist;
+        const sigma = Math.max(3.5, 28 / Math.sqrt(dist));
+        const distFade = Math.exp(-dist / 350);
+        const mag = Math.min(1, Math.log(1 + energy / refEnergy) / logRef) * distFade;
+        const cullSq = 16 * (sigma * 2) * (sigma * 2);
+        elecPairs.push({ ax: a.x, ay: a.y, ux: dx / dist, uy: dy / dist, dist, sigma, mag, cullSq });
+      }
+    }
+  }
+
+  // Build strong pairs (all nucleons within cutoff)
+  const strongPairs = [];
+  if (showStrongField) {
+    const cutoff = strongCutoff();
+    const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
+    const span = cutoff - eqDist;
+    if (span > 0) {
+      const maxBinding = strongForceStrength * span / 2;
+      const n = particles.length;
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const a = particles[i], b = particles[j];
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist === 0 || dist >= cutoff) continue;
+          const dr = dist - eqDist;
+          const energy = strongForceStrength / (2 * span) * (dr * dr - span * span);
+          const mag = Math.min(1, Math.abs(energy) / maxBinding);
+          const sigma = Math.max(0.375, 0.0875 * dist);
+          const spread = 1.6;
+          const cullSq = 16 * (sigma * spread * 3) * (sigma * spread * 3);
+          strongPairs.push({ ax: a.x, ay: a.y, ux: dx / dist, uy: dy / dist, dist, sigma, mag, spread, cullSq });
+        }
+      }
+    }
+  }
+
+  if (elecPairs.length === 0 && strongPairs.length === 0) return;
+
+  ensureHmBuffers(w, h);
+  if (elecPairs.length   > 0) hmDataElec.fill(0);
+  if (strongPairs.length > 0) hmDataStrong.fill(0);
+
   const invScale = 1 / scale;
   const cxH = fullW / 2, cyH = fullH / 2;
 
-  if (hmCanvas.width !== w || hmCanvas.height !== h) { hmCanvas.width = w; hmCanvas.height = h; }
-  const imageData = hmCtx.createImageData(w, h);
-  const data = imageData.data;
-
+  // Single pixel loop — computes both fields at once
   for (let py = 0; py < h; py++) {
     const worldY = (py * invScale - cyH) / zoom + cyH;
     for (let px = 0; px < w; px++) {
       const worldX = (px * invScale - cxH) / zoom + cxH;
+      const di = (py * w + px) * 4;
 
-      let total = 0;
-      for (const p of pairs) {
-        const rx = worldX - p.ax, ry = worldY - p.ay;
-        const para = rx * p.ux + ry * p.uy;
-        const rampPx = 8;
-        const e1 = Math.max(0, Math.min(1, para / rampPx));
-        const e2 = Math.max(0, Math.min(1, (p.dist - para) / rampPx));
-        const endFade = e1 * e2;
-        if (endFade <= 0) continue;
-        // Skip pixels too far from ribbon axis to contribute (exp(-8) threshold)
-        const perpSq = Math.max(0, rx * rx + ry * ry - para * para);
-        if (perpSq > p.cullSq) continue;
-        // Elliptical width: 2x wider at center (t=0.5) than at endpoints
-        const t = para / p.dist;
-        const sigmaT = p.sigma * (1 + 1 * Math.sin(Math.PI * t));
-        total += p.mag * Math.exp(-perpSq / (2 * sigmaT * sigmaT)) * endFade;
+      // Electric field
+      if (elecPairs.length > 0) {
+        let total = 0;
+        for (let k = 0; k < elecPairs.length; k++) {
+          const p = elecPairs[k];
+          const rx = worldX - p.ax, ry = worldY - p.ay;
+          const para = rx * p.ux + ry * p.uy;
+          const e1 = para > 0 ? Math.min(1, para / 8) : 0;
+          const e2 = para < p.dist ? Math.min(1, (p.dist - para) / 8) : 0;
+          const endFade = e1 * e2;
+          if (endFade <= 0) continue;
+          const perpSq = Math.max(0, rx * rx + ry * ry - para * para);
+          if (perpSq > p.cullSq) continue;
+          const t = para / p.dist;
+          const sigmaT = p.sigma * (1 + Math.sin(Math.PI * t));
+          total += p.mag * Math.exp(-perpSq / (2 * sigmaT * sigmaT)) * endFade;
+        }
+        if (total > 0.002) {
+          const ci = (Math.min(255, (total * 3.0 * 255) | 0));
+          const ci4 = ci * 4;
+          hmDataElec[di]     = COLORMAP[ci4];
+          hmDataElec[di + 1] = COLORMAP[ci4 + 1];
+          hmDataElec[di + 2] = COLORMAP[ci4 + 2];
+          hmDataElec[di + 3] = COLORMAP[ci4 + 3];
+        }
       }
 
-      if (total > 0.002) {
-        const magnitude = Math.min(1, total * 3.0);
-        const ci = (magnitude * 255) | 0;
-        const di = (py * w + px) * 4;
-        const ci4 = ci * 4;
-        data[di]     = COLORMAP[ci4];
-        data[di + 1] = COLORMAP[ci4 + 1];
-        data[di + 2] = COLORMAP[ci4 + 2];
-        data[di + 3] = COLORMAP[ci4 + 3];
+      // Strong field
+      if (strongPairs.length > 0) {
+        let total = 0;
+        for (let k = 0; k < strongPairs.length; k++) {
+          const p = strongPairs[k];
+          const rx = worldX - p.ax, ry = worldY - p.ay;
+          const para = rx * p.ux + ry * p.uy;
+          const margin = (p.spread - 1) / 2 * p.dist;
+          const extDist = p.dist * p.spread;
+          const paraExt = para + margin;
+          const e1 = paraExt > 0 ? Math.min(1, paraExt / 8) : 0;
+          const e2 = paraExt < extDist ? Math.min(1, (extDist - paraExt) / 8) : 0;
+          const endFade = e1 * e2;
+          if (endFade <= 0) continue;
+          const perpSq = Math.max(0, rx * rx + ry * ry - para * para);
+          if (perpSq > p.cullSq) continue;
+          const t = paraExt / extDist;
+          const sigmaT = p.sigma * p.spread * (1 + 2 * Math.sin(Math.PI * t));
+          const val = p.mag * Math.exp(-perpSq / (2 * sigmaT * sigmaT)) * endFade;
+          if (val > total) total = val;
+        }
+        if (total > 0.002) {
+          const ci = (Math.min(255, (total * 3.0 * 255) | 0));
+          const ci4 = ci * 4;
+          hmDataStrong[di]     = STRONG_COLORMAP[ci4];
+          hmDataStrong[di + 1] = STRONG_COLORMAP[ci4 + 1];
+          hmDataStrong[di + 2] = STRONG_COLORMAP[ci4 + 2];
+          hmDataStrong[di + 3] = STRONG_COLORMAP[ci4 + 3];
+        }
       }
     }
   }
 
-  hmCtx.putImageData(imageData, 0, 0);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(hmCanvas, 0, 0, fullW, fullH);
+  // Composite both layers into hmComposite at full resolution
+  if (hmComposite.width !== fullW || hmComposite.height !== fullH) {
+    hmComposite.width = fullW; hmComposite.height = fullH;
+  }
+  hmcCtx.clearRect(0, 0, fullW, fullH);
+  hmcCtx.imageSmoothingEnabled = true;
+  hmcCtx.imageSmoothingQuality = 'high';
+  if (elecPairs.length > 0) {
+    hmCtx.putImageData(hmImgElec, 0, 0);
+    hmcCtx.drawImage(hmCanvas, 0, 0, fullW, fullH);
+  }
+  if (strongPairs.length > 0) {
+    hmCtx.putImageData(hmImgStrong, 0, 0);
+    hmcCtx.drawImage(hmCanvas, 0, 0, fullW, fullH);
+  }
+
+  ctx.drawImage(hmComposite, 0, 0);
 }
 
-// ============================================================
-//  STRONG HEATMAP — normalized ribbon approach
-//  Same structure as Coulomb heatmap. Brightness = normalized
-//  depth in the potential well (0 at cutoff edge, 1 at
-//  equilibrium). Sigma = 35% of separation.
-// ============================================================
-function drawStrongHeatmap() {
-  const n = particles.length;
-  if (n < 2) return;
 
-  const cutoff = strongCutoff();
-  const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
-  const span = cutoff - eqDist;
-  if (span <= 0) return;
-  const maxBinding = strongForceStrength * span / 2;  // deepest well magnitude
+// ============================================================
+//  FORCE ARROW RENDERING (Tab A / Proton mode)
+//
+//  drawArrow draws a single arrow (shaft + arrowhead) in world
+//  space inside the active zoom transform.
+//
+//  drawProtonForceArrows renders arrows on the selected proton:
+//    mode 1: one arrow per other proton showing the Coulomb push
+//    mode 2: one arrow showing the vector sum of all Coulomb forces
+// ============================================================
+function drawArrow(fromX, fromY, nx, ny, len, color, w) {
+  if (len < 1) return;
+  w = w || PARTICLE_RADIUS * 0.5;
+  const HEAD = w * 2.5;
+  const px = -ny, py = nx;
+  const tipX = fromX + nx * len,  tipY = fromY + ny * len;
+  const baseX = tipX - nx * HEAD, baseY = tipY - ny * HEAD;
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = w * 2; ctx.globalAlpha = 0.88; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(fromX, fromY); ctx.lineTo(baseX, baseY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(tipX, tipY);
+  ctx.lineTo(baseX + px * w * 2.8, baseY + py * w * 2.8);
+  ctx.lineTo(baseX - px * w * 2.8, baseY - py * w * 2.8);
+  ctx.closePath(); ctx.fill();
+  ctx.globalAlpha = 1.0; ctx.lineCap = 'butt';
+}
 
-  // Precompute per-pair ribbon descriptors (only pairs within cutoff)
-  const pairs = [];
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 1; j < n; j++) {
-      const a = particles[i], b = particles[j];
-      const dx = b.x - a.x, dy = b.y - a.y;
+function drawProtonForceArrows() {
+  if (arrowMode === 0 || selectedParticle === null) return;
+  if (selectedParticle >= particles.length) return;
+  const pi = particles[selectedParticle];
+  if (pi.type !== 'proton') return;
+
+  const MAX_LEN = 40;
+  const refDist = PARTICLE_RADIUS * 2;
+  const aw = PARTICLE_RADIUS * 0.15;
+
+  if (arrowMode === 1) {
+    // Per-source: one arrow on pi for each other proton's Coulomb push
+    for (let j = 0; j < particles.length; j++) {
+      if (j === selectedParticle || particles[j].type !== 'proton') continue;
+      const pj = particles[j];
+      const dx = pi.x - pj.x, dy = pi.y - pj.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist === 0 || dist >= cutoff) continue;
-      const dr = dist - eqDist;
-      const energy = strongForceStrength / (2 * span) * (dr * dr - span * span);
-      const mag = Math.min(1, Math.abs(energy) / maxBinding);
-      const sigma = Math.max(0.375, 0.0875 * dist);
-      const spread = 1.6; // uniform scale: ellipse size in both length and width
-      const cullSq = 16 * (sigma * spread * 3) * (sigma * spread * 3);
-      pairs.push({ ax: a.x, ay: a.y, ux: dx / dist, uy: dy / dist, dist, sigma, mag, spread, cullSq });
+      if (dist === 0) continue;
+      const nx = dx / dist, ny = dy / dist;
+      // Scale arrow length ~ 1/dist (closer = longer), capped at MAX_LEN
+      const len = MAX_LEN * Math.min(1, (refDist / Math.max(dist, refDist)) * 2.4);
+      drawArrow(pi.x + nx * PARTICLE_RADIUS, pi.y + ny * PARTICLE_RADIUS, nx, ny, len, '#fb923c', aw);
     }
-  }
-  if (pairs.length === 0) return;
-
-  const fullW = canvas.width, fullH = canvas.height;
-  const scale = 0.25;
-  const w = Math.ceil(fullW * scale), h = Math.ceil(fullH * scale);
-  const invScale = 1 / scale;
-  const cxH = fullW / 2, cyH = fullH / 2;
-
-  if (hmCanvas.width !== w || hmCanvas.height !== h) { hmCanvas.width = w; hmCanvas.height = h; }
-  const imageData = hmCtx.createImageData(w, h);
-  const data = imageData.data;
-
-  for (let py = 0; py < h; py++) {
-    const worldY = (py * invScale - cyH) / zoom + cyH;
-    for (let px = 0; px < w; px++) {
-      const worldX = (px * invScale - cxH) / zoom + cxH;
-
-      let total = 0;
-      for (const p of pairs) {
-        const rx = worldX - p.ax, ry = worldY - p.ay;
-        const para = rx * p.ux + ry * p.uy;
-        // Extend the ribbon equally beyond both endpoints so the ellipse
-        // scales uniformly in both length and width
-        const margin = (p.spread - 1) / 2 * p.dist;
-        const extDist = p.dist * p.spread;
-        const paraExt = para + margin;
-        const rampPx = 8;
-        const e1 = Math.max(0, Math.min(1, paraExt / rampPx));
-        const e2 = Math.max(0, Math.min(1, (extDist - paraExt) / rampPx));
-        const endFade = e1 * e2;
-        if (endFade <= 0) continue;
-        // Skip pixels too far from ribbon axis to contribute (exp(-8) threshold)
-        const perpSq = Math.max(0, rx * rx + ry * ry - para * para);
-        if (perpSq > p.cullSq) continue;
-        const t = paraExt / extDist;
-        const sigmaT = p.sigma * p.spread * (1 + 2 * Math.sin(Math.PI * t));
-        total = Math.max(total, p.mag * Math.exp(-perpSq / (2 * sigmaT * sigmaT)) * endFade);
-      }
-
-      if (total > 0.002) {
-        const magnitude = Math.min(1, total * 3.0);
-        const ci = (magnitude * 255) | 0;
-        const di = (py * w + px) * 4;
-        const ci4 = ci * 4;
-        data[di]     = STRONG_COLORMAP[ci4];
-        data[di + 1] = STRONG_COLORMAP[ci4 + 1];
-        data[di + 2] = STRONG_COLORMAP[ci4 + 2];
-        data[di + 3] = STRONG_COLORMAP[ci4 + 3];
-      }
+  } else {
+    // Net: vector sum of the same display arrows used in per-source mode
+    let sumX = 0, sumY = 0;
+    for (let j = 0; j < particles.length; j++) {
+      if (j === selectedParticle || particles[j].type !== 'proton') continue;
+      const pj = particles[j];
+      const dx = pi.x - pj.x, dy = pi.y - pj.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist === 0) continue;
+      const nx = dx / dist, ny = dy / dist;
+      const len = MAX_LEN * Math.min(1, (refDist / Math.max(dist, refDist)) * 2.4);
+      sumX += nx * len;
+      sumY += ny * len;
     }
+    const netLen = Math.sqrt(sumX * sumX + sumY * sumY);
+    if (netLen === 0) return;
+    drawArrow(pi.x + (sumX / netLen) * PARTICLE_RADIUS, pi.y + (sumY / netLen) * PARTICLE_RADIUS,
+              sumX / netLen, sumY / netLen, netLen, '#facc15', PARTICLE_RADIUS * 0.22);
   }
-
-  hmCtx.putImageData(imageData, 0, 0);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(hmCanvas, 0, 0, fullW, fullH);
 }
-
 
 // ============================================================
 //  MAIN DRAW
@@ -1425,8 +1613,7 @@ function draw() {
 
   // Heatmaps render in screen space before the zoom transform.
   // They account for zoom internally via coordinate mapping.
-  if (showElectricField && particles.length >= 2) drawHeatmap();
-  if (showStrongField && particles.length >= 2) drawStrongHeatmap();
+  if ((showElectricField || showStrongField) && particles.length >= 2) drawCombinedHeatmap();
 
   // Centered zoom: scale around canvas center so existing particles stay visible
   const _cx = canvas.width / 2, _cy = canvas.height / 2;
@@ -1438,6 +1625,17 @@ function draw() {
   for (let i = 0; i < particles.length; i++) {
     const p = particles[i];
     const isProton = p.type === 'proton';
+
+    // Selection ring (shown in Tab A when arrows active)
+    if (i === selectedParticle && currentTabIsProton && arrowMode > 0) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, PARTICLE_RADIUS + 5, 0, Math.PI * 2);
+      ctx.strokeStyle = '#facc15';
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.7;
+      ctx.stroke();
+      ctx.globalAlpha = 1.0;
+    }
 
     // Body: offset inner highlight (-3,-3) gives a 3D spherical look
     const bodyGrad = ctx.createRadialGradient(p.x - 3, p.y - 3, 1, p.x, p.y, PARTICLE_RADIUS);
@@ -1462,6 +1660,9 @@ function draw() {
     ctx.textBaseline = 'middle';
     ctx.fillText(isProton ? '+' : 'n', p.x, p.y + 1);
   }
+
+  // Force arrows on selected particle (Tab A only)
+  if (currentTabIsProton) drawProtonForceArrows();
 
   ctx.restore();
 }
