@@ -337,6 +337,13 @@ const FUSION_ANIM_FRAMES = 5;    // Frames to lerp into He-4 geometry
 let fusionStartPos = null;        // Particle positions at start of rearrangement animation
 let fusionTargets = null;         // Target positions/velocities for the rearrangement
 
+// ---- Photon-capture reactions (P+N, P+D, P+T, N+D) ----
+let photonCaptureFired = false;   // True once firePhotonCapture() called
+let photon = null;                // { x, y, vx, vy, age, maxAge } — flying gamma ray
+let photonEscapeFrames = 0;       // Frames since photon faded (for P+N auto-stop)
+const PHOTON_SPEED  = 18;         // px per frame in world space
+const PHOTON_MAX_AGE = 90;        // frames until fully faded
+
 
 // ============================================================
 //  NUCLEUS SELECTOR — cluster definitions and state
@@ -370,7 +377,19 @@ let hitFrames = 0;               // frames since collision detected
 let ppInitialKE = 0;             // p+p only: total KE at sim start
 let ppInitialSep = 310;          // p+p only: initial proton-proton separation (px)
 let elasticInitialKE = 0;        // n+n / n+He / n+T: total CM-frame KE at sim start
-const HIT_FRAMES = 15;           // frames to label "Collision"
+function HIT_FRAMES() {
+  const l = leftChoice, r = rightChoice;
+  return ((l==='n'&&r==='t') || (l==='t'&&r==='n')) ? 7 : 15;
+}
+
+// Combos that produce a photon (radiative capture): P+N, P+D, P+T, N+D
+function isPhotonCapture() {
+  const l = leftChoice, r = rightChoice;
+  return (l==='p'&&r==='n') || (l==='n'&&r==='p') ||
+         (l==='p'&&r==='d') || (l==='d'&&r==='p') ||
+         (l==='p'&&r==='t') || (l==='t'&&r==='p') ||
+         (l==='n'&&r==='d') || (l==='d'&&r==='n');
+}
 
 // Combos that scatter elastically (same products in, same KE out, can scatter angle)
 function isElasticScatter() {
@@ -402,8 +421,13 @@ function setupScenario() {
   const cy = canvas.height / 2;
   const sep = 155; // horizontal distance from canvas center to each cluster center
 
-  const leftDef  = CLUSTER_DEFS[leftChoice];
-  const rightDef = CLUSTER_DEFS[rightChoice];
+  // For D+T reactions, always place D on the left so fireFusion() gets the
+  // same particle ordering (D=0,1  T=2,3,4) regardless of selector order.
+  const effectiveLeft  = (leftChoice === 't' && rightChoice === 'd') ? 'd' : leftChoice;
+  const effectiveRight = (leftChoice === 't' && rightChoice === 'd') ? 't' : rightChoice;
+
+  const leftDef  = CLUSTER_DEFS[effectiveLeft];
+  const rightDef = CLUSTER_DEFS[effectiveRight];
   leftClusterSize = leftDef.length;
 
   particles = [];
@@ -422,8 +446,8 @@ function setupScenario() {
 
   // Capture initial CM-frame KE for elastic scatter combos
   if (isElasticScatter()) {
-    const lSize = CLUSTER_DEFS[leftChoice].length;
-    const rSize = CLUSTER_DEFS[rightChoice].length;
+    const lSize = CLUSTER_DEFS[effectiveLeft].length;
+    const rSize = CLUSTER_DEFS[effectiveRight].length;
     const cmvx = approachSpeed * (lSize - rSize) / (lSize + rSize);
     elasticInitialKE = lSize * 0.5 * (approachSpeed - cmvx) ** 2 +
                        rSize * 0.5 * (-approachSpeed - cmvx) ** 2;
@@ -484,6 +508,31 @@ function step(dt) {
 
   // Skip all intra-cluster interactions for elastic-scatter combos in escape phase.
   const rigidEscape = collisionPhase === 'escape' && isElasticScatter();
+
+  // For photon-capture reactions in hit phase, hold particles in product geometry
+  // centered at CM so they appear fused and side-by-side (not overlapping).
+  if (collisionPhase === 'hit' && isPhotonCapture() && !photonCaptureFired) {
+    let sumVx = 0, sumVy = 0, sumX = 0, sumY = 0;
+    for (const p of particles) { sumVx += p.vx; sumVy += p.vy; sumX += p.x; sumY += p.y; }
+    const cmvx = sumVx / n, cmvy = sumVy / n;
+    const cmx  = sumX  / n, cmy  = sumY  / n;
+    const sortedIdx = [...Array(n).keys()].sort((a, b) =>
+      (particles[a].type === 'proton' ? 0 : 1) - (particles[b].type === 'proton' ? 0 : 1));
+    const def = getProductDef();
+    const sortedDef = [...def].sort((a, b) =>
+      (a.type === 'proton' ? 0 : 1) - (b.type === 'proton' ? 0 : 1));
+    let defCx = 0, defCy = 0;
+    for (const d of sortedDef) { defCx += d.x; defCy += d.y; }
+    defCx /= n; defCy /= n;
+    for (let i = 0; i < n; i++) {
+      const pi = sortedIdx[i];
+      particles[pi].x  = cmx + (sortedDef[i].x - defCx);
+      particles[pi].y  = cmy + (sortedDef[i].y - defCy);
+      particles[pi].vx = cmvx;
+      particles[pi].vy = cmvy;
+    }
+    return;
+  }
 
   for (let sub = 0; sub < SUBSTEPS; sub++) {
     // Pairwise forces
@@ -853,7 +902,7 @@ function drawBarChart() {
   let displayKE = e.ke;
   let displaySIE = e.sie + sieOffset;
   if (leftChoice === 'p' && rightChoice === 'p' && collisionPhase === 'hit') {
-    const t = hitFrames / HIT_FRAMES;
+    const t = hitFrames / HIT_FRAMES();
     const ppSIEContrib = -ppInitialKE * Math.sin(Math.PI * t);
     displaySIE += ppSIEContrib;
     displayKE  -= ppSIEContrib;
@@ -935,6 +984,49 @@ function drawBarChart() {
 
 
 // ============================================================
+//  PHOTON RENDERING
+//  Drawn inside the zoom transform (world coordinates).
+//  Looks like a glowing purple ribbon: gradient trail + radial
+//  glow at the head. Fades linearly over PHOTON_MAX_AGE frames.
+// ============================================================
+function drawPhoton() {
+  if (!photon) return;
+  const fade = Math.max(0, 1 - photon.age / photon.maxAge);
+  const sp = Math.sqrt(photon.vx * photon.vx + photon.vy * photon.vy);
+  if (sp < 0.01) return;
+  const nx = photon.vx / sp, ny = photon.vy / sp;
+
+  const trailLen = 50;
+  const tailX = photon.x - nx * trailLen;
+  const tailY = photon.y - ny * trailLen;
+
+  // Ribbon trail — gradient from transparent tail to bright head
+  const trail = ctx.createLinearGradient(tailX, tailY, photon.x, photon.y);
+  trail.addColorStop(0,   `rgba(120,0,220,0)`);
+  trail.addColorStop(0.45,`rgba(155,30,255,${(fade * 0.45).toFixed(3)})`);
+  trail.addColorStop(1,   `rgba(220,100,255,${fade.toFixed(3)})`);
+  ctx.strokeStyle = trail;
+  ctx.lineWidth = 11 * fade;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(tailX, tailY);
+  ctx.lineTo(photon.x, photon.y);
+  ctx.stroke();
+
+  // Head glow — radial purple burst
+  const glow = ctx.createRadialGradient(photon.x, photon.y, 0, photon.x, photon.y, 22);
+  glow.addColorStop(0,    `rgba(255,230,255,${fade.toFixed(3)})`);
+  glow.addColorStop(0.35, `rgba(210,65,255,${(fade * 0.9).toFixed(3)})`);
+  glow.addColorStop(1,    `rgba(100,0,180,0)`);
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(photon.x, photon.y, 22, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.lineCap = 'butt';
+}
+
+// ============================================================
 //  DRAWING — particles with zoom transform
 //  Fixed 1.5x zoom centered on the centroid of all particles.
 //  Everything is drawn in world coordinates; the transform
@@ -1013,6 +1105,8 @@ function draw() {
     ctx.fillText(isProton ? '+' : 'n', p.x, p.y + 1);
   }
 
+  drawPhoton();
+
   ctx.restore();
 
   // Bar chart — always drawn over the right edge of the canvas
@@ -1028,13 +1122,16 @@ function renderFrame(idx) {
   const liveParticles = particles;
   const liveCollided = hasCollided;
   const liveCollisionPhase = collisionPhase;
+  const livePhoton = photon;
   particles = frame.p;
   hasCollided = (collisionFrame >= 0 && idx >= collisionFrame);
   collisionPhase = frame.collisionPhase || 'approach';
+  photon = frame.photon || null;
   draw();
   particles = liveParticles;
   hasCollided = liveCollided;
   collisionPhase = liveCollisionPhase;
+  photon = livePhoton;
 }
 
 // ============================================================
@@ -1094,6 +1191,9 @@ replayBtn.addEventListener('click', () => {
   fusionAnimFrame = 0;
   fusionStartPos = null;
   fusionTargets = null;
+  photonCaptureFired = false;
+  photon = null;
+  photonEscapeFrames = 0;
   collisionPhase = 'approach';
   hitFrames = 0;
   ppInitialKE = 0;
@@ -1169,6 +1269,9 @@ function resetAndSetup() {
   fusionAnimFrame = 0;
   fusionStartPos = null;
   fusionTargets = null;
+  photonCaptureFired = false;
+  photon = null;
+  photonEscapeFrames = 0;
   particleHistory = [];
   scrubFrame = -1;
   timeSlider.value = 0;
@@ -1202,13 +1305,23 @@ document.getElementById('v4SpeedSlider').addEventListener('input', function() {
   document.getElementById('v4SpeedVal').textContent = approachSpeed.toFixed(2);
 });
 
+function applyComboDefaults() {
+  const isDT = (leftChoice === 'd' && rightChoice === 't') ||
+               (leftChoice === 't' && rightChoice === 'd');
+  sieOffset = isDT ? 250 : 0;
+  document.getElementById('sieOffsetSlider').value = sieOffset;
+  document.getElementById('sieOffsetVal').textContent = sieOffset;
+}
+
 document.getElementById('leftChoice').addEventListener('change', function() {
   leftChoice = this.value;
+  applyComboDefaults();
   resetAndSetup();
 });
 
 document.getElementById('rightChoice').addEventListener('change', function() {
   rightChoice = this.value;
+  applyComboDefaults();
   resetAndSetup();
 });
 
@@ -1300,7 +1413,11 @@ function applyElasticEscape() {
   const newRvx = cmvx - (lSize / rSize) * vl * cosT;
   const newRvy = cmvy - (lSize / rSize) * vl * sinT;
 
-  // Snap each cluster to def geometry centered on its current centroid
+  // Snap both clusters to def geometry starting from the shared system centroid,
+  // so escape trajectories always originate from the same point.
+  const smx = (lcx * lSize + rcx * rSize) / n;
+  const smy = (lcy * lSize + rcy * rSize) / n;
+
   const lDef = CLUSTER_DEFS[leftChoice];
   const rDef = CLUSTER_DEFS[rightChoice];
   let lDefCx = 0, lDefCy = 0;
@@ -1310,46 +1427,28 @@ function applyElasticEscape() {
   for (const d of rDef) { rDefCx += d.x; rDefCy += d.y; }
   rDefCx /= rSize; rDefCy /= rSize;
 
-  for (let i = 0; i < lSize; i++) {
-    particles[i].x = lcx + (lDef[i].x - lDefCx);
-    particles[i].y = lcy + (lDef[i].y - lDefCy);
-    particles[i].vx = newLvx; particles[i].vy = newLvy;
-  }
-  for (let i = 0; i < rSize; i++) {
-    particles[lSize + i].x = rcx + (rDef[i].x - rDefCx);
-    particles[lSize + i].y = rcy + (rDef[i].y - rDefCy);
-    particles[lSize + i].vx = newRvx; particles[lSize + i].vy = newRvy;
-  }
-
   // Cluster radii from def
   let lr = PARTICLE_RADIUS;
   for (const d of lDef) lr = Math.max(lr, Math.sqrt((d.x-lDefCx)**2+(d.y-lDefCy)**2)+PARTICLE_RADIUS);
   let rr = PARTICLE_RADIUS;
   for (const d of rDef) rr = Math.max(rr, Math.sqrt((d.x-rDefCx)**2+(d.y-rDefCy)**2)+PARTICLE_RADIUS);
-
   const minSafeSep = lr + rr + strongCutoff() * 1.1;
-  const hasHe = leftChoice === 'he' || rightChoice === 'he';
-  if (sdist < minSafeSep) {
-    if (hasHe) {
-      // Keep neutron at its exact collision position; push He away from it
-      if (lSize === 1) {
-        const rShiftX = lcx + snx * minSafeSep - rcx;
-        const rShiftY = lcy + sny * minSafeSep - rcy;
-        for (let i = lSize; i < n; i++) { particles[i].x += rShiftX; particles[i].y += rShiftY; }
-      } else {
-        const lShiftX = rcx - snx * minSafeSep - lcx;
-        const lShiftY = rcy - sny * minSafeSep - lcy;
-        for (let i = 0; i < lSize; i++) { particles[i].x += lShiftX; particles[i].y += lShiftY; }
-      }
-    } else {
-      const smx = (lcx + rcx) / 2, smy = (lcy + rcy) / 2;
-      const lShiftX = smx - snx * minSafeSep / 2 - lcx;
-      const lShiftY = smy - sny * minSafeSep / 2 - lcy;
-      const rShiftX = smx + snx * minSafeSep / 2 - rcx;
-      const rShiftY = smy + sny * minSafeSep / 2 - rcy;
-      for (let i = 0; i < lSize; i++) { particles[i].x += lShiftX; particles[i].y += lShiftY; }
-      for (let i = lSize; i < n; i++) { particles[i].x += rShiftX; particles[i].y += rShiftY; }
-    }
+
+  // Place left cluster at smx - half-sep, right at smx + half-sep along escape axis
+  const lOriginX = smx - snx * minSafeSep / 2;
+  const lOriginY = smy - sny * minSafeSep / 2;
+  const rOriginX = smx + snx * minSafeSep / 2;
+  const rOriginY = smy + sny * minSafeSep / 2;
+
+  for (let i = 0; i < lSize; i++) {
+    particles[i].x = lOriginX + (lDef[i].x - lDefCx);
+    particles[i].y = lOriginY + (lDef[i].y - lDefCy);
+    particles[i].vx = newLvx; particles[i].vy = newLvy;
+  }
+  for (let i = 0; i < rSize; i++) {
+    particles[lSize + i].x = rOriginX + (rDef[i].x - rDefCx);
+    particles[lSize + i].y = rOriginY + (rDef[i].y - rDefCy);
+    particles[lSize + i].vx = newRvx; particles[lSize + i].vy = newRvy;
   }
 }
 
@@ -1428,6 +1527,64 @@ function fireFusion() {
 
   fusionAnimating = true;
   fusionAnimFrame = 0;
+}
+
+function getProductDef() {
+  const l = leftChoice, r = rightChoice;
+  if ((l==='p'&&r==='n') || (l==='n'&&r==='p')) return CLUSTER_DEFS.d;
+  if ((l==='p'&&r==='d') || (l==='d'&&r==='p')) return [
+    { type:'proton',  x:-10, y:-6 },
+    { type:'proton',  x: 10, y:-6 },
+    { type:'neutron', x:  0, y:12  },
+  ];
+  if ((l==='p'&&r==='t') || (l==='t'&&r==='p')) return CLUSTER_DEFS.he;
+  return CLUSTER_DEFS.t; // N+D → tritium
+}
+
+// ============================================================
+//  PHOTON CAPTURE — P+N → D+γ, P+D → He-3+γ, P+T → He-4+γ, N+D → T+γ
+//
+//  Snaps all incoming particles into the product cluster geometry
+//  at their common centroid, gives them the CM velocity (product
+//  recoils negligibly), and emits a photon in a random direction.
+// ============================================================
+function firePhotonCapture() {
+  photonCaptureFired = true;
+
+  const n = particles.length;
+  let sumVx = 0, sumVy = 0, sumX = 0, sumY = 0;
+  for (const p of particles) { sumVx += p.vx; sumVy += p.vy; sumX += p.x; sumY += p.y; }
+  const cmvx = sumVx / n, cmvy = sumVy / n;
+  const pcx = sumX / n, pcy = sumY / n;
+
+  // Random photon direction; product recoils opposite with KE = initial KE
+  const theta = Math.random() * 2 * Math.PI;
+  const pnx = Math.cos(theta), pny = Math.sin(theta);
+  // For P+N (and other PC reactions): product speed such that KE_product = initial KE.
+  // Initial KE = n * ½ * approachSpeed² (each particle approaches at approachSpeed).
+  // Product KE = ½ * n * v² → v = approachSpeed.
+  const recoilSpeed = approachSpeed;
+
+  // Product cluster geometry
+  const productDef = getProductDef();
+  const sortedIdx = [...Array(n).keys()].sort((a, b) =>
+    (particles[a].type === 'proton' ? 0 : 1) - (particles[b].type === 'proton' ? 0 : 1));
+  const sortedDef = [...productDef].sort((a, b) =>
+    (a.type === 'proton' ? 0 : 1) - (b.type === 'proton' ? 0 : 1));
+
+  // Snap to product geometry and give recoil velocity opposite the photon
+  const pvx = cmvx - pnx * recoilSpeed, pvy = cmvy - pny * recoilSpeed;
+  for (let i = 0; i < n; i++) {
+    const pi = sortedIdx[i];
+    particles[pi].x  = pcx + sortedDef[i].x;
+    particles[pi].y  = pcy + sortedDef[i].y;
+    particles[pi].vx = pvx;
+    particles[pi].vy = pvy;
+  }
+
+  // Spawn photon
+  photon = { x: pcx, y: pcy, vx: pnx * PHOTON_SPEED, vy: pny * PHOTON_SPEED,
+             age: 0, maxAge: PHOTON_MAX_AGE };
 }
 
 // ============================================================
@@ -1529,8 +1686,13 @@ function loop() {
       if (collisionPhase === 'hit') {
         hitFrames++;
         const isDT = (leftChoice === 'd' && rightChoice === 't') || (leftChoice === 't' && rightChoice === 'd');
-        // D+T: stay in 'hit' until fusion fires; others: timer-based
-        const readyToEscape = isDT ? fusionFired : hitFrames >= HIT_FRAMES;
+        const isPC = isPhotonCapture();
+        // Trigger photon capture once HIT_FRAMES elapsed
+        if (isPC && !photonCaptureFired && hitFrames >= HIT_FRAMES()) {
+          firePhotonCapture();
+        }
+        // D+T: stay in 'hit' until fusion fires; PC: stay until fired; others: timer-based
+        const readyToEscape = isDT ? fusionFired : (isPC ? photonCaptureFired : hitFrames >= HIT_FRAMES());
         if (readyToEscape) {
           collisionPhase = 'escape';
           if (isElasticScatter()) {
@@ -1592,11 +1754,33 @@ function loop() {
           draw();
           return;
         }
+
+        // For photon-capture reactions (e.g. P+N) the product may linger near centre;
+        // auto-stop ~90 frames after the photon fades away.
+        if (photonCaptureFired && !photon) {
+          photonEscapeFrames++;
+          if (photonEscapeFrames > 90) {
+            running = false;
+            goBtn.textContent = 'New';
+            goBtn.classList.remove('running');
+            draw();
+            return;
+          }
+        }
       }
     }
 
+    // Advance photon every live frame
+    if (photon) {
+      photon.x += photon.vx;
+      photon.y += photon.vy;
+      photon.age++;
+      if (photon.age > photon.maxAge) photon = null;
+    }
+
     // Record history snapshot
-    particleHistory.push({ p: particles.map(p => ({ ...p })), t: now, collisionPhase });
+    particleHistory.push({ p: particles.map(p => ({ ...p })), t: now, collisionPhase,
+                           photon: photon ? { ...photon } : null });
     if (particleHistory.length > MAX_HISTORY) particleHistory.shift();
 
     timeSlider.disabled = false;

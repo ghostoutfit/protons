@@ -391,6 +391,7 @@
   <div id="tabBar">
     <button class="tab-btn active" id="tabA">Protons</button>
     <button class="tab-btn" id="tabB">Protons + Neutrons</button>
+    <button class="tab-btn" id="tabC" style="display:none">Quantum</button>
   </div>
   <div class="toolbar-row" style="align-items:flex-start;gap:10px">
     <!-- NEUTRONS frame: visible in Tab B, invisible-but-present in Tab A to hold position -->
@@ -398,8 +399,8 @@
       <div class="particle-frame-title">NEUTRONS</div>
       <div class="particle-frame-controls">
         <div class="neutron-slider-wrap">
-          <input type="range" id="neutronSlider" min="0" max="50" step="1" value="6">
-          <span class="neutron-slider-label"><span id="neutronSliderVal">6</span></span>
+          <input type="range" id="neutronSlider" min="0" max="50" step="1" value="2">
+          <span class="neutron-slider-label"><span id="neutronSliderVal">2</span></span>
         </div>
       </div>
     </div>
@@ -408,16 +409,18 @@
       <div class="particle-frame-title">PROTONS</div>
       <div class="particle-frame-controls">
         <div id="protonBtns" style="display:flex;gap:6px">
-          <button class="btn proton-add-btn" data-count="2">Add 2</button>
-          <button class="btn proton-add-btn" data-count="6">Add 6</button>
-          <button class="btn proton-add-btn" data-count="20">Add 20</button>
-          <button class="btn proton-add-btn" data-count="36">Add 36</button>
+          <button class="btn proton-add-btn" data-count="1">1</button>
+          <button class="btn proton-add-btn" data-count="2">2</button>
+          <button class="btn proton-add-btn" data-count="6">6</button>
+          <button class="btn proton-add-btn" data-count="20">20</button>
+          <button class="btn proton-add-btn" data-count="36">36</button>
         </div>
         <div id="nucleusBtns" style="display:none;gap:6px">
-          <button class="btn nucleus-add-btn" data-count="2">Add 2</button>
-          <button class="btn nucleus-add-btn" data-count="6">Add 6</button>
-          <button class="btn nucleus-add-btn" data-count="20">Add 20</button>
-          <button class="btn nucleus-add-btn" data-count="36">Add 36</button>
+          <button class="btn nucleus-add-btn" data-count="1">1</button>
+          <button class="btn nucleus-add-btn" data-count="2">2</button>
+          <button class="btn nucleus-add-btn" data-count="6">6</button>
+          <button class="btn nucleus-add-btn" data-count="20">20</button>
+          <button class="btn nucleus-add-btn" data-count="36">36</button>
         </div>
       </div>
     </div>
@@ -426,7 +429,10 @@
       <button class="btn" id="goBtn">Go</button>
       <button class="btn" id="replayBtn" disabled>Replay</button>
     </div>
-    <span id="stats" style="align-self:center;margin-left:8px">Protons: 0 &nbsp; Neutrons: 0</span>
+    <div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin-left:8px;align-self:center">
+      <span id="stats">Protons: 0 &nbsp; Neutrons: 0</span>
+      <button class="btn" id="centerBtn" style="display:none;font-size:11px;padding:2px 8px">Center</button>
+    </div>
   </div>
   <div class="toolbar-row">
     <div class="slider-group">
@@ -441,9 +447,9 @@
     <label class="toggle-label"><input type="checkbox" id="strongFieldToggle" checked> <span style="color:#fb923c">Strong field</span></label>
     <div id="arrowToggle" class="arrow-toggle-group">
       <span style="font-size:12px;color:#9ca3af">Arrows:</span>
-      <button class="arrow-btn active" data-mode="0">Off</button>
-      <button class="arrow-btn" data-mode="1">Per-source</button>
-      <button class="arrow-btn" data-mode="2">Net force</button>
+      <button class="arrow-btn active" data-mode="0">Force arrows off</button>
+      <button class="arrow-btn" data-mode="1">Show all forces</button>
+      <button class="arrow-btn" data-mode="2">Show total forces</button>
     </div>
     <div class="slider-group">
       <label>Strong F: <span id="strongFVal">0.25</span></label>
@@ -495,6 +501,130 @@ const antispin = true;            // Always on; suppresses runaway cluster spin
 let selectedParticle = null;  // Index of the clicked particle
 let arrowMode = 0;            // 0=off, 1=per-source arrows, 2=net force arrow
 let currentTabIsProton = true; // true = Tab A (protons only)
+let currentTab = 'proton';    // 'proton' | 'nucleus' | 'quantum'
+
+// ============================================================
+//  QUANTUM: NUCLEAR STABILITY + NEUTRON DECAY CASCADE
+// ============================================================
+const STABILITY_TABLE = { 1:2, 2:2, 3:4, 4:6, 5:6, 6:8, 7:8, 8:10, 9:10, 10:12 };
+function maxStableNeutrons(z) {
+  if (z <= 0) return 0;
+  return STABILITY_TABLE[z] !== undefined ? STABILITY_TABLE[z] : Math.floor(z * 1.5);
+}
+
+const QUANTUM_ESCAPE_SPEED = 4.0;  // px/frame for ejected neutron
+const COHESION_K = 0.004;          // Spring constant toward cluster CM (Quantum tab only)
+let quantumEjectAt      = null;    // performance.now() when next ejection fires
+let quantumTimerStartAt = null;    // when current timer began
+let quantumFlashes      = [];      // [{x,y,startTime}] brief ejection flashes
+
+function ejectDelayRange(excessRatio) {
+  if (excessRatio >= 4) return [ 20,  50];
+  if (excessRatio >= 3) return [ 50, 100];
+  if (excessRatio >= 2) return [100, 200];
+  if (excessRatio >= 1) return [200, 400];
+  return                       [400, 800];
+}
+
+function ejectCount(excessRatio) {
+  if (excessRatio >= 4) return 4;
+  if (excessRatio >= 3) return 3;
+  if (excessRatio >= 2) return 2;
+  return 1;
+}
+
+function updateQuantumStability() {
+  if (currentTab !== 'quantum') return;
+
+  for (const p of particles) {
+    if (!p.ejected) { p.unstable = false; p.strongScale = 1.0; }
+  }
+
+  // Evaluate each cluster independently; cache each cluster's CM on its particles
+  // so step() can apply the cohesion spring without re-clustering every substep.
+  const clusters = findAllClusters();
+  for (const cluster of clusters) {
+    let cmx = 0, cmy = 0;
+    for (const p of cluster) { cmx += p.x; cmy += p.y; }
+    cmx /= cluster.length; cmy /= cluster.length;
+    for (const p of cluster) { p.clusterCmx = cmx; p.clusterCmy = cmy; }
+  }
+
+  let maxExcessRatio = 0;
+  const unstableClusters = [];
+
+  for (const cluster of clusters) {
+    const Z       = cluster.filter(p => p.type === 'proton').length;
+    const neutrons = cluster.filter(p => p.type === 'neutron');
+    const excess  = neutrons.length - maxStableNeutrons(Z);
+    if (excess <= 0) continue;
+
+    const excessRatio = Z > 0 ? excess / Z : excess;
+    if (excessRatio > maxExcessRatio) maxExcessRatio = excessRatio;
+
+    let cx = 0, cy = 0;
+    for (const p of cluster) { cx += p.x; cy += p.y; }
+    cx /= cluster.length; cy /= cluster.length;
+
+    const protons = cluster.filter(p => p.type === 'proton');
+    const sorted = neutrons.map(p => {
+      let nearestDist = Infinity;
+      for (const pr of protons) {
+        const d = Math.hypot(p.x - pr.x, p.y - pr.y);
+        if (d < nearestDist) nearestDist = d;
+      }
+      if (!isFinite(nearestDist)) nearestDist = Math.hypot(p.x - cx, p.y - cy);
+      return { p, d: nearestDist };
+    }).sort((a, b) => b.d - a.d);
+
+    for (let i = 0; i < excess; i++) {
+      sorted[i].p.unstable    = true;
+      sorted[i].p.strongScale = 0.2;
+    }
+
+    unstableClusters.push({ cluster, sorted, excess, excessRatio, cx, cy });
+  }
+
+  if (unstableClusters.length === 0) {
+    quantumEjectAt = quantumTimerStartAt = null;
+    return;
+  }
+
+  const now = performance.now();
+  if (quantumEjectAt === null) {
+    const [lo, hi] = ejectDelayRange(maxExcessRatio);
+    quantumTimerStartAt = now;
+    quantumEjectAt      = now + lo + Math.random() * (hi - lo);
+  } else if (now >= quantumEjectAt) {
+    // Eject from every unstable cluster simultaneously
+    for (const { cluster, sorted, excessRatio, cx, cy } of unstableClusters) {
+      const count   = Math.min(ejectCount(excessRatio), sorted.length);
+      const targets = sorted.slice(0, count).map(s => s.p);
+      let totalRecoilVx = 0, totalRecoilVy = 0;
+
+      for (const target of targets) {
+        const dx = target.x - cx, dy = target.y - cy;
+        const d  = Math.sqrt(dx * dx + dy * dy);
+        const nx = d > 0.01 ? dx / d : Math.random() * 2 - 1;
+        const ny = d > 0.01 ? dy / d : Math.random() * 2 - 1;
+        target.vx = nx * QUANTUM_ESCAPE_SPEED;
+        target.vy = ny * QUANTUM_ESCAPE_SPEED;
+        target.ejected = true; target.unstable = false; target.strongScale = 0;
+        delete target.clusterCmx; delete target.clusterCmy;
+        totalRecoilVx -= target.vx; totalRecoilVy -= target.vy;
+        quantumFlashes.push({ x: target.x, y: target.y, startTime: now });
+      }
+
+      const remaining = cluster.filter(p => !p.ejected);
+      if (remaining.length > 0) {
+        const rvx = totalRecoilVx / remaining.length;
+        const rvy = totalRecoilVy / remaining.length;
+        for (const p of remaining) { p.vx += rvx; p.vy += rvy; }
+      }
+    }
+    quantumEjectAt = quantumTimerStartAt = null;
+  }
+}
 
 // ---- View ----
 let zoom = 2.0;  // Canvas zoom centered on canvas midpoint
@@ -835,7 +965,7 @@ function placeProtons(n) {
   hideInstructions();
 }
 
-let lastNucleusProtonCount = 0;  // tracks last Add N button pressed in Tab B
+let lastNucleusProtonCount = 2;  // tracks last Add N button pressed in Tab B
 
 function placeNucleus(numProtons, numNeutrons) {
   lastNucleusProtonCount = numProtons;
@@ -953,14 +1083,20 @@ const protonBtns   = document.getElementById('protonBtns');
 const nucleusBtns  = document.getElementById('nucleusBtns');
 const neutronFrame = document.getElementById('neutronFrame');
 
-function applyTab(isProtonOnly) {
+function applyTab(tab) {
+  const isProtonOnly = tab === true;
+  const isQuantum    = tab === 'quantum';
+  const isNucleus    = !isProtonOnly && !isQuantum;
   currentTabIsProton = isProtonOnly;
+  currentTab = isQuantum ? 'quantum' : (isProtonOnly ? 'proton' : 'nucleus');
   protonBtns.style.display      = isProtonOnly ? 'flex' : 'none';
-  nucleusBtns.style.display     = isProtonOnly ? 'none' : 'flex';
-  neutronFrame.style.visibility = isProtonOnly ? 'hidden' : 'visible';
+  nucleusBtns.style.display     = (!isProtonOnly) ? 'flex' : 'none';
+  neutronFrame.style.visibility = (!isProtonOnly) ? 'visible' : 'hidden';
   document.getElementById('arrowToggle').style.display = isProtonOnly ? 'flex' : 'none';
   document.getElementById('tabA').classList.toggle('active', isProtonOnly);
-  document.getElementById('tabB').classList.toggle('active', !isProtonOnly);
+  document.getElementById('tabB').classList.toggle('active', isNucleus);
+  document.getElementById('tabC').classList.toggle('active', isQuantum);
+  document.getElementById('centerBtn').style.display = isQuantum ? '' : 'none';
   // Reset strong force to tab default
   if (isProtonOnly) {
     strongForceStrength = 0.25;
@@ -976,12 +1112,88 @@ function applyTab(isProtonOnly) {
   snapshot = null;
   selectedParticle = null;
   replayBtn.disabled = true;
+  quantumEjectAt = quantumTimerStartAt = null;
+  quantumFlashes = [];
   updateStats();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
 
 document.getElementById('tabA').addEventListener('click', () => applyTab(true));
-document.getElementById('tabB').addEventListener('click', () => applyTab(false));
+document.getElementById('tabB').addEventListener('click', () => {
+  applyTab(false);
+  neutronSlider.value = 2;
+  neutronSliderVal.textContent = '2';
+  placeNucleus(2, 2);
+});
+document.getElementById('tabC').addEventListener('click', () => {
+  applyTab('quantum');
+  neutronSlider.value = 2;
+  neutronSliderVal.textContent = '2';
+  placeNucleus(2, 2);
+});
+
+function findAllClusters() {
+  const active = particles.filter(p => !p.ejected);
+  if (active.length === 0) return [];
+  const threshold = strongCutoff() * 1.5;
+  const visited = new Array(active.length).fill(false);
+  const clusters = [];
+  for (let i = 0; i < active.length; i++) {
+    if (visited[i]) continue;
+    const cluster = [];
+    const queue = [i];
+    visited[i] = true;
+    while (queue.length) {
+      const idx = queue.shift();
+      cluster.push(active[idx]);
+      for (let j = 0; j < active.length; j++) {
+        if (visited[j]) continue;
+        const dx = active[idx].x - active[j].x;
+        const dy = active[idx].y - active[j].y;
+        if (dx * dx + dy * dy <= threshold * threshold) {
+          visited[j] = true;
+          queue.push(j);
+        }
+      }
+    }
+    clusters.push(cluster);
+  }
+  return clusters;
+}
+
+function findBiggestCluster() {
+  return findAllClusters().reduce((best, c) => c.length > best.length ? c : best, []);
+}
+
+document.getElementById('centerBtn').addEventListener('click', () => {
+  const cluster = findBiggestCluster();
+  if (cluster.length === 0) return;
+
+  // Position: translate so cluster centroid is at canvas centre
+  let cx = 0, cy = 0;
+  for (const p of cluster) { cx += p.x; cy += p.y; }
+  cx /= cluster.length; cy /= cluster.length;
+  const dx = canvas.width / 2 - cx;
+  const dy = canvas.height / 2 - cy;
+  for (const p of particles) { p.x += dx; p.y += dy; }
+  for (const f of quantumFlashes) { f.x += dx; f.y += dy; }
+
+  // Velocity: subtract cluster CM velocity from all particles
+  let cvx = 0, cvy = 0;
+  for (const p of cluster) { cvx += p.vx; cvy += p.vy; }
+  cvx /= cluster.length; cvy /= cluster.length;
+  for (const p of particles) { p.vx -= cvx; p.vy -= cvy; }
+
+  if (!running) draw();
+});
+
+function unlockQuantum() {
+  document.getElementById('tabC').style.display = '';
+  applyTab('quantum');
+  neutronSlider.value = 2;
+  neutronSliderVal.textContent = '2';
+  placeNucleus(2, 2);
+}
 
 document.querySelectorAll('.proton-add-btn').forEach(btn => {
   btn.addEventListener('click', () => placeProtons(parseInt(btn.dataset.count)));
@@ -1020,9 +1232,11 @@ function hideInstructions() {
 }
 
 function updateStats() {
-  const np = particles.filter(p => p.type === 'proton').length;
-  const nn = particles.filter(p => p.type === 'neutron').length;
-  statsEl.textContent = `Protons: ${np}  Neutrons: ${nn}`;
+  const counted = currentTab === 'quantum' ? findBiggestCluster() : particles;
+  const np = counted.filter(p => p.type === 'proton').length;
+  const nn = counted.filter(p => p.type === 'neutron').length;
+  statsEl.innerHTML = `Protons: ${np} &nbsp; <span id="neutronsTrigger" style="cursor:default">Neutrons</span>: ${nn}`;
+  document.getElementById('neutronsTrigger').addEventListener('click', unlockQuantum);
 }
 
 // ============================================================
@@ -1046,7 +1260,7 @@ function strongCutoff() {
 
 // Returns net force magnitude along the axis between two particles.
 // Positive = repulsive (pushes apart), negative = attractive (pulls together).
-function pairForce(dist, distSq, aType, bType) {
+function pairForce(dist, distSq, aType, bType, strongScale) {
   let force = 0;
   // Coulomb: only between protons (1/r² with softening to prevent blow-up)
   if (aType === 'proton' && bType === 'proton') {
@@ -1056,7 +1270,7 @@ function pairForce(dist, distSq, aType, bType) {
   // Strong nuclear force: constant attraction within cutoff, no repulsive core
   const cutoff = strongCutoff();
   if (dist < cutoff) {
-    force -= strongForceStrength;
+    force -= strongForceStrength * (strongScale ?? 1.0);
   }
   return force;
 }
@@ -1139,18 +1353,39 @@ function step(dt) {
         if (j === dragging) continue;
         const a = particles[i];
         const b = particles[j];
+        if (a.ejected || b.ejected) continue;
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const distSq = dx * dx + dy * dy;
         const dist = Math.sqrt(distSq);
         if (dist < 0.01) continue;  // Skip coincident particles
-        const force = pairForce(dist, distSq, a.type, b.type);
+        const ss = currentTab === 'quantum'
+          ? Math.min(a.strongScale ?? 1, b.strongScale ?? 1)
+          : 1;
+        const force = pairForce(dist, distSq, a.type, b.type, ss);
         const fx = force * (dx / dist);
         const fy = force * (dy / dist);
         a.vx -= fx * subDt;
         a.vy -= fy * subDt;
         b.vx += fx * subDt;
         b.vy += fy * subDt;
+      }
+    }
+
+
+    // Quantum cohesion: gentle spring toward each particle's cluster CM
+    if (currentTab === 'quantum') {
+      for (let i = 0; i < n; i++) {
+        if (i === dragging) continue;
+        const p = particles[i];
+        if (p.ejected || p.clusterCmx === undefined) continue;
+        const dx = p.clusterCmx - p.x;
+        const dy = p.clusterCmy - p.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 0.01) continue;
+        const f = COHESION_K * dist;
+        p.vx += (dx / dist) * f * subDt;
+        p.vy += (dy / dist) * f * subDt;
       }
     }
 
@@ -1192,6 +1427,7 @@ function step(dt) {
       for (let j = i + 1; j < n; j++) {
         const a = particles[i];
         const b = particles[j];
+        if (a.ejected || b.ejected) continue;
         let dx = b.x - a.x;
         let dy = b.y - a.y;
         const dSq = dx * dx + dy * dy;
@@ -1643,6 +1879,25 @@ function draw() {
       ctx.globalAlpha = 1.0;
     }
 
+    // Unstable neutron: pulsing red glow that intensifies as ejection nears (Quantum only)
+    if (p.unstable && currentTab === 'quantum') {
+      const now = performance.now();
+      let timerProgress = 0;
+      if (quantumTimerStartAt !== null && quantumEjectAt !== null) {
+        timerProgress = Math.min(1, (now - quantumTimerStartAt) / (quantumEjectAt - quantumTimerStartAt));
+      }
+      const pulse  = 0.5 + 0.5 * Math.sin(now / 180);
+      const glowR  = PARTICLE_RADIUS + 5 + pulse * 3 + timerProgress * 10;
+      const alpha  = 0.35 + timerProgress * 0.55 + pulse * 0.1;
+      const glow   = ctx.createRadialGradient(p.x, p.y, PARTICLE_RADIUS * 0.4, p.x, p.y, glowR);
+      glow.addColorStop(0, `rgba(255,60,40,${Math.min(1, alpha).toFixed(2)})`);
+      glow.addColorStop(1, 'rgba(255,0,0,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, glowR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     // Body: offset inner highlight (-3,-3) gives a 3D spherical look
     const bodyGrad = ctx.createRadialGradient(p.x - 3, p.y - 3, 1, p.x, p.y, PARTICLE_RADIUS);
     if (isProton) {
@@ -1667,10 +1922,38 @@ function draw() {
     ctx.fillText(isProton ? '+' : 'n', p.x, p.y + 1);
   }
 
+  // Ejection flashes (Quantum only) — fixed position at ejection site
+  if (currentTab === 'quantum') {
+    const now = performance.now();
+    quantumFlashes = quantumFlashes.filter(f => {
+      const age = now - f.startTime;
+      if (age > 350) return false;
+      const t = age / 350;
+      const r = PARTICLE_RADIUS + t * PARTICLE_RADIUS * 3;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, r, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255,180,80,${(1 - t).toFixed(2)})`;
+      ctx.lineWidth = 3 * (1 - t);
+      ctx.stroke();
+      return true;
+    });
+  }
+
   // Force arrows on selected particle (Tab A only)
   if (currentTabIsProton) drawProtonForceArrows();
 
   ctx.restore();
+
+  // Remove ejected neutrons once off-screen. Non-ejected particles
+  // (the nucleus, even if drifted off-screen) are always kept.
+  if (currentTab === 'quantum') {
+    const margin = PARTICLE_RADIUS * 4;
+    particles = particles.filter(p =>
+      !p.ejected ||
+      (p.x > -margin && p.x < canvas.width  + margin &&
+       p.y > -margin && p.y < canvas.height + margin)
+    );
+  }
 }
 
 // ============================================================
@@ -1680,8 +1963,10 @@ function draw() {
 // ============================================================
 function loop() {
   if (!running) return;
+  updateQuantumStability();
   step(speed);
   computeEnergy();
+  updateStats();
   draw();
   animId = requestAnimationFrame(loop);
 }
