@@ -343,6 +343,9 @@ let photon = null;                // { x, y, vx, vy, age, maxAge } — flying ga
 let photonEscapeFrames = 0;       // Frames since photon faded (for P+N auto-stop)
 const PHOTON_SPEED  = 18;         // px per frame in world space
 const PHOTON_MAX_AGE = 90;        // frames until fully faded
+let pnBound = false;              // P+N: true once particles are snapped together
+let pnJiggleFrame = 0;            // P+N: counts up from snap moment for jiggle animation
+const PN_JIGGLE_FRAMES = 25;     // frames of jiggle before photon fires
 
 
 // ============================================================
@@ -373,12 +376,14 @@ let sieOffset = 0;                // Display offset added to SIE bar value
 //  approach → hit → escape   (combined removed per user request)
 // ============================================================
 let collisionPhase = 'approach'; // 'approach' | 'hit' | 'escape'
+let cameraSiteX = 0, cameraSiteY = 0; // fixed collision-site camera anchor
 let hitFrames = 0;               // frames since collision detected
-let ppInitialKE = 0;             // p+p only: total KE at sim start
-let ppInitialSep = 310;          // p+p only: initial proton-proton separation (px)
-let elasticInitialKE = 0;        // n+n / n+He / n+T: total CM-frame KE at sim start
+let ppInitialTotal = 0;          // p+p only: total energy (KE+EIE+SIE) at sim start
+let elasticInitialTotal = 0;     // n+n / n+He / n+T: total energy at sim start
+let pcInitialKE = 0;             // photon-capture: CM-frame KE at sim start
 function HIT_FRAMES() {
   const l = leftChoice, r = rightChoice;
+  if (isPhotonCapture()) return 40; // longer wobble before gamma fires
   return ((l==='n'&&r==='t') || (l==='t'&&r==='n')) ? 7 : 15;
 }
 
@@ -394,8 +399,8 @@ function isPhotonCapture() {
 // Combos that scatter elastically (same products in, same KE out, can scatter angle)
 function isElasticScatter() {
   const l = leftChoice, r = rightChoice;
-  return (l === 'n' && (r === 'd' || r === 'he' || r === 't')) ||
-         (r === 'n' && (l === 'd' || l === 'he' || l === 't'));
+  return (l === 'n' && (r === 'he' || r === 't')) ||
+         (r === 'n' && (l === 'he' || l === 't'));
 }
 
 // Offscreen canvas for heatmap rendering (half resolution)
@@ -438,20 +443,25 @@ function setupScenario() {
     particles.push({ x: cx + sep + d.x, y: cy + d.y, vx: -approachSpeed, vy: 0, type: d.type });
   }
 
-  // Capture initial KE and EIE for p+p energy conservation on escape
+  // Capture initial total energy for p+p energy conservation on escape
   if (leftChoice === 'p' && rightChoice === 'p') {
-    ppInitialKE = approachSpeed * approachSpeed; // total KE (2 × ½mv²)
-    ppInitialSep = sep * 2;                      // initial proton-proton separation
+    ppInitialTotal = computeEnergy().total;
   }
 
-  // Capture initial CM-frame KE for elastic scatter combos
-  if (isElasticScatter()) {
-    const lSize = CLUSTER_DEFS[effectiveLeft].length;
-    const rSize = CLUSTER_DEFS[effectiveRight].length;
-    const cmvx = approachSpeed * (lSize - rSize) / (lSize + rSize);
-    elasticInitialKE = lSize * 0.5 * (approachSpeed - cmvx) ** 2 +
-                       rSize * 0.5 * (-approachSpeed - cmvx) ** 2;
+  // Capture initial total energy for elastic scatter and N-N display pinning
+  if (isElasticScatter() || (leftChoice === 'n' && rightChoice === 'n')) {
+    elasticInitialTotal = computeEnergy().total;
   }
+
+  // Capture initial CM-frame KE for photon-capture wobble scaling
+  if (isPhotonCapture()) {
+    pcInitialKE = computeEnergy().ke;
+  }
+
+  // Lock camera to system CM at setup — stays fixed throughout so collision site
+  // is always at the center of the frame, even as products fly apart.
+  cameraSiteX = particles.reduce((s, p) => s + p.x, 0) / particles.length;
+  cameraSiteY = particles.reduce((s, p) => s + p.y, 0) / particles.length;
 }
 
 // Snapshot for replay
@@ -509,33 +519,12 @@ function step(dt) {
   // Skip all intra-cluster interactions for elastic-scatter combos in escape phase.
   const rigidEscape = collisionPhase === 'escape' && isElasticScatter();
 
-  // For photon-capture reactions in hit phase, hold particles in product geometry
-  // centered at CM so they appear fused and side-by-side (not overlapping).
-  if (collisionPhase === 'hit' && isPhotonCapture() && !photonCaptureFired) {
-    let sumVx = 0, sumVy = 0, sumX = 0, sumY = 0;
-    for (const p of particles) { sumVx += p.vx; sumVy += p.vy; sumX += p.x; sumY += p.y; }
-    const cmvx = sumVx / n, cmvy = sumVy / n;
-    const cmx  = sumX  / n, cmy  = sumY  / n;
-    const sortedIdx = [...Array(n).keys()].sort((a, b) =>
-      (particles[a].type === 'proton' ? 0 : 1) - (particles[b].type === 'proton' ? 0 : 1));
-    const def = getProductDef();
-    const sortedDef = [...def].sort((a, b) =>
-      (a.type === 'proton' ? 0 : 1) - (b.type === 'proton' ? 0 : 1));
-    let defCx = 0, defCy = 0;
-    for (const d of sortedDef) { defCx += d.x; defCy += d.y; }
-    defCx /= n; defCy /= n;
-    for (let i = 0; i < n; i++) {
-      const pi = sortedIdx[i];
-      particles[pi].x  = cmx + (sortedDef[i].x - defCx);
-      particles[pi].y  = cmy + (sortedDef[i].y - defCy);
-      particles[pi].vx = cmvx;
-      particles[pi].vy = cmvy;
-    }
-    return;
-  }
+  // Photon-capture escape: particles coast at constant velocity — no forces applied.
+  const pcEscape = collisionPhase === 'escape' && isPhotonCapture();
 
   for (let sub = 0; sub < SUBSTEPS; sub++) {
-    // Pairwise forces
+    // Pairwise forces (skipped entirely during photon-capture escape so KE stays constant)
+    if (!pcEscape) {
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
         if (rigidEscape && (i < leftClusterSize) === (j < leftClusterSize)) continue;
@@ -556,6 +545,7 @@ function step(dt) {
         b.vy += fy * subDt;
       }
     }
+    } // end !pcEscape force block
 
     // Integrate positions (symplectic Euler)
     for (let i = 0; i < n; i++) {
@@ -563,11 +553,16 @@ function step(dt) {
       particles[i].y += particles[i].vy * subDt;
     }
 
-    // Hard-sphere collision constraint
+    // Hard-sphere collision constraint (skipped during photon-capture escape)
+    const isPNhit = ((leftChoice==='p'&&rightChoice==='n') || (leftChoice==='n'&&rightChoice==='p'))
+                    && hasCollided && collisionPhase === 'hit';
+    if (!pcEscape) {
     const minSep = PARTICLE_RADIUS * 2;
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
         if (rigidEscape && (i < leftClusterSize) === (j < leftClusterSize)) continue;
+        // P+N during hit: let strong force handle repulsion, no hard-sphere teleport
+        if (isPNhit) continue;
         const a = particles[i];
         const b = particles[j];
         let dx = b.x - a.x;
@@ -598,16 +593,20 @@ function step(dt) {
         }
       }
     }
+    } // end !pcEscape hard-sphere block
+
   }
 
 
   // Apply damping only after first collision — free approach is undamped
-  if (hasCollided) {
+  // Skip during photon-capture escape so KE stays perfectly constant
+  if (hasCollided && !pcEscape) {
     for (let i = 0; i < n; i++) {
       particles[i].vx *= damping;
       particles[i].vy *= damping;
     }
   }
+
 }
 
 // ============================================================
@@ -681,8 +680,8 @@ function drawHeatmap() {
   const invScale = 1 / scale;
   const cxH = fullW / 2, cyH = fullH / 2;
   const zoomScale = 1.5;
-  const midX = particles.reduce((s, p) => s + p.x, 0) / particles.length;
-  const midY = particles.reduce((s, p) => s + p.y, 0) / particles.length;
+  const midX = cameraSiteX || canvas.width / 2;
+  const midY = cameraSiteY || canvas.height / 2;
 
   if (hmCanvas.width !== w || hmCanvas.height !== h) { hmCanvas.width = w; hmCanvas.height = h; }
   const imageData = hmCtx.createImageData(w, h);
@@ -767,8 +766,8 @@ function drawStrongHeatmap() {
   const invScale = 1 / scale;
   const cxH = fullW / 2, cyH = fullH / 2;
   const zoomScale = 1.5;
-  const midX = particles.reduce((s, p) => s + p.x, 0) / particles.length;
-  const midY = particles.reduce((s, p) => s + p.y, 0) / particles.length;
+  const midX = cameraSiteX || canvas.width / 2;
+  const midY = cameraSiteY || canvas.height / 2;
 
   if (hmCanvas.width !== w || hmCanvas.height !== h) { hmCanvas.width = w; hmCanvas.height = h; }
   const imageData = hmCtx.createImageData(w, h);
@@ -852,16 +851,20 @@ function computeEnergy() {
         eie += coulombStrength / Math.max(dist, PARTICLE_RADIUS);
       }
 
+      // Strong PE: quadratic well matching linear spring force law.
+      // F = -S*(dist-eqDist)/span → V(r) = S/(2*span)*((r-eqDist)²-span²), zero at cutoff.
       if (dist < cutoff) {
         const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
         const span = cutoff - eqDist;
-        const dr = dist - eqDist;
-        sie += strongForceStrength / (2 * span) * (dr * dr - span * span);
+        if (span > 0) {
+          const dr = dist - eqDist;
+          sie += strongForceStrength / (2 * span) * (dr * dr - span * span);
+        }
       }
     }
   }
 
-  return { ke, eie, sie, total: ke + eie };
+  return { ke, eie, sie, total: ke + eie + sie };
 }
 
 // ============================================================
@@ -897,29 +900,29 @@ function drawBarChart() {
   ctx.lineTo(gx, gy + H);
   ctx.stroke();
 
-  // p+p: during the hit window, show synthetic SIE ↔ KE transfer.
-  // SIE pulses 0 → −ppInitialKE → 0 (sin curve); KE rises by same amount.
   let displayKE = e.ke;
   let displaySIE = e.sie + sieOffset;
-  if (leftChoice === 'p' && rightChoice === 'p' && collisionPhase === 'hit') {
-    const t = hitFrames / HIT_FRAMES();
-    const ppSIEContrib = -ppInitialKE * Math.sin(Math.PI * t);
-    displaySIE += ppSIEContrib;
-    displayKE  -= ppSIEContrib;
+  const isPPScen = leftChoice === 'p' && rightChoice === 'p';
+  const pinnedE = (isPPScen && ppInitialTotal !== 0) ? ppInitialTotal
+                : ((isElasticScatter() || (leftChoice==='n'&&rightChoice==='n')) && elasticInitialTotal !== 0) ? elasticInitialTotal
+                : null;
+  if (pinnedE !== null) {
+    displaySIE = pinnedE - e.ke - e.eie + sieOffset;
   }
 
   const sie = displaySIE;
+  const pinnedTotal = pinnedE !== null ? pinnedE + sieOffset : displayKE + e.eie + displaySIE;
   const bars = splitIE
     ? [
-        { label: 'KE',  value: Math.max(0, displayKE),       color: '#f87171' },
-        { label: 'EIE', value: e.eie,                         color: '#818cf8' },
-        { label: 'SIE', value: displaySIE,                    color: '#fb923c' },
-        { label: 'Tot', value: displayKE + e.eie + displaySIE, color: '#22c55e' },
+        { label: 'KE',  value: Math.max(0, displayKE), color: '#f87171' },
+        { label: 'EIE', value: e.eie,                   color: '#818cf8' },
+        { label: 'SIE', value: displaySIE,              color: '#fb923c' },
+        { label: 'Tot', value: pinnedTotal,              color: '#22c55e' },
       ]
     : [
-        { label: 'KE',  value: Math.max(0, displayKE),        color: '#f87171' },
-        { label: 'IE',  value: e.eie + displaySIE,            color: '#818cf8' },
-        { label: 'Tot', value: displayKE + e.eie + displaySIE, color: '#22c55e' },
+        { label: 'KE',  value: Math.max(0, displayKE),  color: '#f87171' },
+        { label: 'IE',  value: e.eie + displaySIE,      color: '#818cf8' },
+        { label: 'Tot', value: pinnedTotal,              color: '#22c55e' },
       ];
 
   const pad = 12;
@@ -1035,13 +1038,9 @@ function drawPhoton() {
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Compute centroid of all particles (zoom target)
-  let midX = canvas.width / 2;
-  let midY = canvas.height / 2;
-  if (particles.length > 0) {
-    midX = particles.reduce((s, p) => s + p.x, 0) / particles.length;
-    midY = particles.reduce((s, p) => s + p.y, 0) / particles.length;
-  }
+  // Camera fixed to collision site — products escape from screen center
+  const midX = cameraSiteX || canvas.width / 2;
+  const midY = cameraSiteY || canvas.height / 2;
 
   // Apply zoom transform: translate so midpoint is at canvas center, then scale
   const zoomScale = 1.5;
@@ -1194,11 +1193,13 @@ replayBtn.addEventListener('click', () => {
   photonCaptureFired = false;
   photon = null;
   photonEscapeFrames = 0;
+  pnBound = false;
+  pnJiggleFrame = 0;
   collisionPhase = 'approach';
   hitFrames = 0;
-  ppInitialKE = 0;
-  ppInitialSep = 310;
-  elasticInitialKE = 0;
+  ppInitialTotal = 0;
+  elasticInitialTotal = 0;
+  pcInitialKE = 0;
   particleHistory = [];
   scrubFrame = -1;
   timeSlider.value = 0;
@@ -1272,6 +1273,8 @@ function resetAndSetup() {
   photonCaptureFired = false;
   photon = null;
   photonEscapeFrames = 0;
+  pnBound = false;
+  pnJiggleFrame = 0;
   particleHistory = [];
   scrubFrame = -1;
   timeSlider.value = 0;
@@ -1282,9 +1285,9 @@ function resetAndSetup() {
   replayBtn.disabled = true;
   collisionPhase = 'approach';
   hitFrames = 0;
-  ppInitialKE = 0;
-  ppInitialSep = 310;
-  elasticInitialKE = 0;
+  ppInitialTotal = 0;
+  elasticInitialTotal = 0;
+  pcInitialKE = 0;
   setupScenario();
   draw();
 }
@@ -1364,18 +1367,63 @@ function computeSIEForPositions(positions) {
 
 // ============================================================
 //  ELASTIC SCATTER ESCAPE — n+n, n+He, n+T
-//  Picks a random scatter angle (±90° around backscatter, ensuring
-//  separation), then computes both cluster velocities from CM-frame
-//  momentum + energy conservation. Snaps clusters to def geometry
-//  and teleports apart. For n+He the neutron stays at its collision
-//  position; He is pushed away.
+//  Redirects each cluster's CM-frame velocity to a random scatter
+//  angle (±90° around backscatter) without moving any particles.
+//  For N-He collisions the He cluster is snapped back to its stable
+//  diamond geometry so it exits as a clean, non-jiggly nucleus.
 // ============================================================
+
+// Snap a He-4 cluster (particles[startIdx..endIdx-1]) to the stable diamond
+// geometry centered at its current CM. Protons go left/right, neutrons top/bottom.
+function snapHe4Geometry(startIdx, endIdx) {
+  const count = endIdx - startIdx;
+  if (count !== 4) return;
+  let cx = 0, cy = 0;
+  for (let i = startIdx; i < endIdx; i++) { cx += particles[i].x; cy += particles[i].y; }
+  cx /= count; cy /= count;
+  const r = PARTICLE_RADIUS * 1.05;
+  const protonIdx = [], neutronIdx = [];
+  for (let i = startIdx; i < endIdx; i++) {
+    (particles[i].type === 'proton' ? protonIdx : neutronIdx).push(i);
+  }
+  particles[protonIdx[0]].x  = cx - r; particles[protonIdx[0]].y  = cy;
+  particles[protonIdx[1]].x  = cx + r; particles[protonIdx[1]].y  = cy;
+  particles[neutronIdx[0]].x = cx;     particles[neutronIdx[0]].y = cy - r;
+  particles[neutronIdx[1]].x = cx;     particles[neutronIdx[1]].y = cy + r;
+}
+
 function applyElasticEscape() {
   const n = particles.length;
   const lSize = leftClusterSize;
   const rSize = n - lSize;
 
-  // Cluster centroids
+  // For N-He: snap He to stable diamond geometry AND teleport neutron outside strong
+  // force range, so inter-cluster forces drop to zero before velocities are assigned.
+  const isNHe = (lSize === 1 && rSize === 4) || (lSize === 4 && rSize === 1);
+  if (isNHe) {
+    const heStart = (lSize === 4) ? 0 : lSize;
+    const heEnd   = (lSize === 4) ? lSize : n;
+    const nIdx    = (lSize === 1) ? 0 : lSize;
+    snapHe4Geometry(heStart, heEnd);
+
+    // He CM after snap
+    let hcx = 0, hcy = 0;
+    for (let i = heStart; i < heEnd; i++) { hcx += particles[i].x; hcy += particles[i].y; }
+    hcx /= 4; hcy /= 4;
+
+    // Direction from He CM to neutron
+    let ndx = particles[nIdx].x - hcx, ndy = particles[nIdx].y - hcy;
+    const ndist = Math.sqrt(ndx * ndx + ndy * ndy);
+    const nnx = ndist > 0.01 ? ndx / ndist : 1;
+    const nny = ndist > 0.01 ? ndy / ndist : 0;
+
+    // Teleport neutron outside strong force range
+    const safeDist = strongCutoff() * 1.15 + PARTICLE_RADIUS;
+    particles[nIdx].x = hcx + nnx * safeDist;
+    particles[nIdx].y = hcy + nny * safeDist;
+  }
+
+  // Cluster centroids (for separation axis only)
   let lcx = 0, lcy = 0;
   for (let i = 0; i < lSize; i++) { lcx += particles[i].x; lcy += particles[i].y; }
   lcx /= lSize; lcy /= lSize;
@@ -1389,7 +1437,7 @@ function applyElasticEscape() {
   if (sdist < 0.01) return;
   const snx = sdx / sdist, sny = sdy / sdist;
 
-  // System CM velocity (conserved throughout)
+  // System CM velocity
   let lvx = 0, lvy = 0;
   for (let i = 0; i < lSize; i++) { lvx += particles[i].vx; lvy += particles[i].vy; }
   lvx /= lSize; lvy /= lSize;
@@ -1399,11 +1447,28 @@ function applyElasticEscape() {
   const cmvx = (lSize * lvx + rSize * rvx) / n;
   const cmvy = (lSize * lvy + rSize * rvy) / n;
 
-  // Random scatter angle: left cluster scatters into the half-space away from
-  // right cluster (backscatter ± 90°), guaranteeing the clusters separate.
-  // CM-frame speed derived analytically from elasticInitialKE.
-  // KE = ½·lSize·vl² + ½·rSize·(lSize/rSize·vl)² = ½·vl²·lSize·n/rSize
-  const vl = Math.sqrt(2 * elasticInitialKE * rSize / (lSize * n));
+  // Compute current total SIE so we can target the correct final KE.
+  // After separation SIE→0, so KE_final = cmFrameKE_new + SIE_now.
+  // We want KE_final = elasticInitialTotal, so cmFrameKE_new = elasticInitialTotal - SIE_now.
+  let currentSIE = 0;
+  const escCutoff = strongCutoff();
+  const escEqDist = Math.max(escCutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
+  const escSpan = escCutoff - escEqDist;
+  if (escSpan > 0) {
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const dx = particles[j].x - particles[i].x, dy = particles[j].y - particles[i].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < escCutoff) {
+          const dr = dist - escEqDist;
+          currentSIE += strongForceStrength / (2 * escSpan) * (dr * dr - escSpan * escSpan);
+        }
+      }
+    }
+  }
+  const targetCmKE = Math.max(0, elasticInitialTotal - currentSIE);
+  const vl = Math.sqrt(2 * targetCmKE * rSize / (lSize * n));
+
   const backAngle = Math.atan2(-sny, -snx); // left cluster straight-back direction
   const theta = backAngle + (Math.random() - 0.5) * Math.PI; // ±90° of that
   const cosT = Math.cos(theta), sinT = Math.sin(theta);
@@ -1413,41 +1478,10 @@ function applyElasticEscape() {
   const newRvx = cmvx - (lSize / rSize) * vl * cosT;
   const newRvy = cmvy - (lSize / rSize) * vl * sinT;
 
-  // Snap both clusters to def geometry starting from the shared system centroid,
-  // so escape trajectories always originate from the same point.
-  const smx = (lcx * lSize + rcx * rSize) / n;
-  const smy = (lcy * lSize + rcy * rSize) / n;
-
-  const lDef = CLUSTER_DEFS[leftChoice];
-  const rDef = CLUSTER_DEFS[rightChoice];
-  let lDefCx = 0, lDefCy = 0;
-  for (const d of lDef) { lDefCx += d.x; lDefCy += d.y; }
-  lDefCx /= lSize; lDefCy /= lSize;
-  let rDefCx = 0, rDefCy = 0;
-  for (const d of rDef) { rDefCx += d.x; rDefCy += d.y; }
-  rDefCx /= rSize; rDefCy /= rSize;
-
-  // Cluster radii from def
-  let lr = PARTICLE_RADIUS;
-  for (const d of lDef) lr = Math.max(lr, Math.sqrt((d.x-lDefCx)**2+(d.y-lDefCy)**2)+PARTICLE_RADIUS);
-  let rr = PARTICLE_RADIUS;
-  for (const d of rDef) rr = Math.max(rr, Math.sqrt((d.x-rDefCx)**2+(d.y-rDefCy)**2)+PARTICLE_RADIUS);
-  const minSafeSep = lr + rr + strongCutoff() * 1.1;
-
-  // Place left cluster at smx - half-sep, right at smx + half-sep along escape axis
-  const lOriginX = smx - snx * minSafeSep / 2;
-  const lOriginY = smy - sny * minSafeSep / 2;
-  const rOriginX = smx + snx * minSafeSep / 2;
-  const rOriginY = smy + sny * minSafeSep / 2;
-
   for (let i = 0; i < lSize; i++) {
-    particles[i].x = lOriginX + (lDef[i].x - lDefCx);
-    particles[i].y = lOriginY + (lDef[i].y - lDefCy);
     particles[i].vx = newLvx; particles[i].vy = newLvy;
   }
   for (let i = 0; i < rSize; i++) {
-    particles[lSize + i].x = rOriginX + (rDef[i].x - rDefCx);
-    particles[lSize + i].y = rOriginY + (rDef[i].y - rDefCy);
     particles[lSize + i].vx = newRvx; particles[lSize + i].vy = newRvy;
   }
 }
@@ -1557,32 +1591,33 @@ function firePhotonCapture() {
   const cmvx = sumVx / n, cmvy = sumVy / n;
   const pcx = sumX / n, pcy = sumY / n;
 
-  // Random photon direction; product recoils opposite with KE = initial KE
+  // Photon fires in a random direction; nucleus recoils opposite (momentum conservation).
+  // Both shoot out from the collision point. Recoil speed matches approach speed so
+  // the nucleus visibly separates from the photon symmetrically about the CM.
   const theta = Math.random() * 2 * Math.PI;
   const pnx = Math.cos(theta), pny = Math.sin(theta);
-  // For P+N (and other PC reactions): product speed such that KE_product = initial KE.
-  // Initial KE = n * ½ * approachSpeed² (each particle approaches at approachSpeed).
-  // Product KE = ½ * n * v² → v = approachSpeed.
-  const recoilSpeed = approachSpeed;
+  const pvx = cmvx - pnx * approachSpeed;
+  const pvy = cmvy - pny * approachSpeed;
 
-  // Product cluster geometry
+  // Snap positions to product geometry centered on system CM
   const productDef = getProductDef();
   const sortedIdx = [...Array(n).keys()].sort((a, b) =>
     (particles[a].type === 'proton' ? 0 : 1) - (particles[b].type === 'proton' ? 0 : 1));
   const sortedDef = [...productDef].sort((a, b) =>
     (a.type === 'proton' ? 0 : 1) - (b.type === 'proton' ? 0 : 1));
+  let defCx = 0, defCy = 0;
+  for (const d of sortedDef) { defCx += d.x; defCy += d.y; }
+  defCx /= n; defCy /= n;
 
-  // Snap to product geometry and give recoil velocity opposite the photon
-  const pvx = cmvx - pnx * recoilSpeed, pvy = cmvy - pny * recoilSpeed;
   for (let i = 0; i < n; i++) {
     const pi = sortedIdx[i];
-    particles[pi].x  = pcx + sortedDef[i].x;
-    particles[pi].y  = pcy + sortedDef[i].y;
+    particles[pi].x  = pcx + (sortedDef[i].x - defCx);
+    particles[pi].y  = pcy + (sortedDef[i].y - defCy);
+    // All product particles share the same velocity — they move as one rigid nucleus
     particles[pi].vx = pvx;
     particles[pi].vy = pvy;
   }
 
-  // Spawn photon
   photon = { x: pcx, y: pcy, vx: pnx * PHOTON_SPEED, vy: pny * PHOTON_SPEED,
              age: 0, maxAge: PHOTON_MAX_AGE };
 }
@@ -1662,6 +1697,16 @@ function loop() {
           if (relV >= 0) {
             collisionPhase = 'hit';
             hitFrames = 0;
+            // P+N: the approach→hit flip IS the collision — trigger binding here
+            // because by the time step() returns, the bounce has already separated them
+            const isPN2 = (leftChoice==='p'&&rightChoice==='n') || (leftChoice==='n'&&rightChoice==='p');
+            if (isPN2 && !pnBound) {
+              pnBound = true;
+              pnJiggleFrame = 0;
+              hasCollided = true;
+              collisionFrame = particleHistory.length;
+              collisionTime = now;
+            }
           }
         }
       }
@@ -1682,24 +1727,49 @@ function loop() {
         }
       }
 
+      // ── P+N scripted binding: jiggle as one deuterium, then fire photon ──
+      const isPN = (leftChoice==='p'&&rightChoice==='n') || (leftChoice==='n'&&rightChoice==='p');
+      if (isPN && pnBound && !photonCaptureFired) {
+        pnJiggleFrame++;
+        const cmx = (particles[0].x + particles[1].x) / 2;
+        const cmy = (particles[0].y + particles[1].y) / 2;
+        const cmvx2 = (particles[0].vx + particles[1].vx) / 2;
+        const cmvy2 = (particles[0].vy + particles[1].vy) / 2;
+        const pIdx = particles[0].type === 'proton' ? 0 : 1;
+        const nIdx = 1 - pIdx;
+        // Oscillate separation between 1 diameter (2r) and 2 diameters (4r) center-to-center
+        const minSep = PARTICLE_RADIUS * 2, maxSep = PARTICLE_RADIUS * 4;
+        const midSep = (minSep + maxSep) / 2;   // 30px
+        const amp    = (maxSep - minSep) / 2;   // 10px
+        const halfSep = (midSep + amp * Math.sin(pnJiggleFrame * 1.8)) / 2;
+        // Fixed axis: 45°
+        const ax = Math.SQRT1_2, ay = Math.SQRT1_2;
+        particles[pIdx].x = cmx - ax * halfSep;  particles[pIdx].y = cmy - ay * halfSep;
+        particles[nIdx].x = cmx + ax * halfSep;  particles[nIdx].y = cmy + ay * halfSep;
+        particles[0].vx = cmvx2; particles[0].vy = cmvy2;
+        particles[1].vx = cmvx2; particles[1].vy = cmvy2;
+        if (pnJiggleFrame >= PN_JIGGLE_FRAMES) firePhotonCapture();
+      }
+
       // ── Hit phase: label "Collision" for HIT_FRAMES, then escape ─────
       if (collisionPhase === 'hit') {
         hitFrames++;
         const isDT = (leftChoice === 'd' && rightChoice === 't') || (leftChoice === 't' && rightChoice === 'd');
         const isPC = isPhotonCapture();
-        // Trigger photon capture once HIT_FRAMES elapsed
-        if (isPC && !photonCaptureFired && hitFrames >= HIT_FRAMES()) {
+        // Trigger photon capture once HIT_FRAMES elapsed (P+N fires from scripted block above)
+        if (isPC && !isPN && !photonCaptureFired && hitFrames >= HIT_FRAMES()) {
           firePhotonCapture();
         }
         // D+T: stay in 'hit' until fusion fires; PC: stay until fired; others: timer-based
         const readyToEscape = isDT ? fusionFired : (isPC ? photonCaptureFired : hitFrames >= HIT_FRAMES());
         if (readyToEscape) {
           collisionPhase = 'escape';
+          const isNN = leftChoice === 'n' && rightChoice === 'n';
           if (isElasticScatter()) {
             applyElasticEscape();
-          } else if (isPP) {
-            // Teleport outside strong range, then set escape speed so that
-            // KE_release + EIE_release = KE_initial + EIE_initial (energy conserved).
+          } else if (isNN) {
+            // Mirror P-P: teleport apart, bounce straight back, speed from elasticInitialTotal.
+            // No EIE (neutrons), so after teleport KE = elasticInitialTotal exactly.
             const edx = particles[1].x - particles[0].x;
             const edy = particles[1].y - particles[0].y;
             const edist = Math.sqrt(edx * edx + edy * edy);
@@ -1709,10 +1779,25 @@ function loop() {
             const emy = (particles[0].y + particles[1].y) / 2;
             particles[0].x = emx - enx * safeSep / 2; particles[0].y = emy - eny * safeSep / 2;
             particles[1].x = emx + enx * safeSep / 2; particles[1].y = emy + eny * safeSep / 2;
-            // v² = KE_initial + EIE_initial − EIE_at_safeSep
-            const initialEIE = coulombStrength / ppInitialSep;
+            // KE = 2 × ½v² = v², so escapeSpeed = sqrt(elasticInitialTotal)
+            const escapeSpeed = Math.sqrt(Math.max(0, elasticInitialTotal));
+            particles[0].vx = -enx * escapeSpeed; particles[0].vy = -eny * escapeSpeed;
+            particles[1].vx =  enx * escapeSpeed; particles[1].vy =  eny * escapeSpeed;
+          } else if (isPP) {
+            // Teleport outside strong range (SIE→0), then set escape speed so that
+            // KE + EIE = ppInitialTotal (total energy conserved).
+            const edx = particles[1].x - particles[0].x;
+            const edy = particles[1].y - particles[0].y;
+            const edist = Math.sqrt(edx * edx + edy * edy);
+            const enx = edx / edist, eny = edy / edist;
+            const safeSep = Math.max(edist, strongCutoff() * 1.1 + PARTICLE_RADIUS * 2);
+            const emx = (particles[0].x + particles[1].x) / 2;
+            const emy = (particles[0].y + particles[1].y) / 2;
+            particles[0].x = emx - enx * safeSep / 2; particles[0].y = emy - eny * safeSep / 2;
+            particles[1].x = emx + enx * safeSep / 2; particles[1].y = emy + eny * safeSep / 2;
+            // After teleport SIE=0, so KE = ppInitialTotal − EIE_at_safeSep
             const releaseEIE = coulombStrength / safeSep;
-            const v2 = Math.max(0, ppInitialKE + initialEIE - releaseEIE);
+            const v2 = Math.max(0, ppInitialTotal - releaseEIE);
             const escapeSpeed = Math.sqrt(v2);
             particles[0].vx = -enx * escapeSpeed; particles[0].vy = -eny * escapeSpeed;
             particles[1].vx =  enx * escapeSpeed; particles[1].vy =  eny * escapeSpeed;

@@ -827,62 +827,48 @@ window.addEventListener('mouseup', (e) => {
 //  This maximises the spread of positive charge across the cluster.
 // ============================================================
 function buildPackedCluster(numProtons, numNeutrons, spacing = PARTICLE_RADIUS * 2) {
-  const total = numProtons + numNeutrons;
-  if (total === 0) return [];
+  if (numProtons + numNeutrons === 0) return [];
 
-  const D    = spacing;                    // center-to-center spacing
-  const rowH = D * Math.sqrt(3) / 2;      // vertical row spacing in hex lattice
-
-  // Generate a hex grid large enough; odd rows are offset by D/2.
-  // Add a small random jitter (up to 15% of D) so each cluster looks
-  // slightly different while remaining well within touching distance.
+  const D    = spacing;               // 1 diameter — fine grid spacing
+  const rowH = D * Math.sqrt(3) / 2;
   const jitter = () => (Math.random() - 0.5) * D * 0.3;
-  const span = Math.ceil(Math.sqrt(total)) + 3;
-  const candidates = [];
+
+  // Generate a large fine hex grid (enough for all particles plus room for proton spacing)
+  const span = Math.ceil(Math.sqrt(numProtons * 4 + numNeutrons)) + 4;
+  const grid = [];
   for (let row = -span; row <= span; row++) {
     const xOff = (Math.abs(row) % 2 === 1) ? D / 2 : 0;
     for (let col = -span; col <= span; col++) {
       const x = col * D + xOff + jitter();
       const y = row * rowH + jitter();
-      candidates.push({ x, y, dist2: x * x + y * y });
+      grid.push({ x, y, dist2: x * x + y * y });
     }
   }
+  grid.sort((a, b) => a.dist2 - b.dist2);
 
-  // Keep the `total` positions closest to centre
-  candidates.sort((a, b) => a.dist2 - b.dist2);
-  const pos = candidates.slice(0, total);
-
-  // Assign proton positions with farthest-point greedy
-  const type = new Array(total).fill('neutron');
-  if (numProtons > 0) {
-    // Seed: outermost slot
-    let seed = 0;
-    for (let i = 1; i < total; i++) {
-      if (pos[i].dist2 > pos[seed].dist2) seed = i;
+  // Step 1: pick proton slots — innermost positions at least 1.5 diameters apart.
+  const protonMinDist2 = (D * 1.0) * (D * 1.0);
+  const protonSlots = [];
+  const usedIdx = new Set();
+  for (let i = 0; i < grid.length && protonSlots.length < numProtons; i++) {
+    let tooClose = false;
+    for (const pp of protonSlots) {
+      const dx = grid[i].x - pp.x, dy = grid[i].y - pp.y;
+      if (dx * dx + dy * dy < protonMinDist2) { tooClose = true; break; }
     }
-    const protonSlots = [seed];
-    type[seed] = 'proton';
-
-    for (let p = 1; p < numProtons; p++) {
-      let bestIdx = -1, bestMin = -1;
-      for (let i = 0; i < total; i++) {
-        if (type[i] === 'proton') continue;
-        // Min squared distance to any already-placed proton
-        let minD2 = Infinity;
-        for (const pi of protonSlots) {
-          const dx = pos[i].x - pos[pi].x;
-          const dy = pos[i].y - pos[pi].y;
-          const d2 = dx * dx + dy * dy;
-          if (d2 < minD2) minD2 = d2;
-        }
-        if (minD2 > bestMin) { bestMin = minD2; bestIdx = i; }
-      }
-      protonSlots.push(bestIdx);
-      type[bestIdx] = 'proton';
-    }
+    if (!tooClose) { protonSlots.push(grid[i]); usedIdx.add(i); }
   }
 
-  return pos.map((p, i) => ({ x: p.x, y: p.y, type: type[i] }));
+  // Step 2: pick neutron slots — innermost positions not already used by protons.
+  const neutronSlots = [];
+  for (let i = 0; i < grid.length && neutronSlots.length < numNeutrons; i++) {
+    if (!usedIdx.has(i)) neutronSlots.push(grid[i]);
+  }
+
+  return [
+    ...protonSlots.map(p => ({ x: p.x, y: p.y, type: 'proton'  })),
+    ...neutronSlots.map(p => ({ x: p.x, y: p.y, type: 'neutron' })),
+  ];
 }
 
 // ============================================================
