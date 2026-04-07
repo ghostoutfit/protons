@@ -1,0 +1,1746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nuclear Collisions — v9</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a1a;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #toolbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 20px;
+    background: #12122a;
+    border-bottom: 1px solid #2a2a4a;
+    z-index: 10;
+  }
+
+  #toolbar h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #ff6b6b;
+    margin-right: 8px;
+    white-space: nowrap;
+  }
+
+  .btn {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  #goBtn { background: #22c55e; color: #fff; }
+  #goBtn:hover { background: #16a34a; }
+  #goBtn.running { background: #ef4444; }
+  #goBtn.running:hover { background: #dc2626; }
+
+  #replayBtn { background: #0e7490; color: #fff; }
+  #replayBtn:hover { background: #0891b2; }
+  #replayBtn:disabled { background: #1e293b; color: #4b5563; cursor: not-allowed; }
+
+  .toggle-label {
+    font-size: 13px;
+    color: #9ca3af;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .toggle-label input[type="checkbox"] { accent-color: #f59e0b; }
+
+  #canvasWrap {
+    flex: 1;
+    position: relative;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  #canvas { display: block; cursor: default; }
+
+  #barYSliderWrap {
+    position: absolute;
+    right: 313px;
+    top: 8px;
+    bottom: 52px;
+    width: 16px;
+    display: flex;
+    align-items: center;
+  }
+
+  #barYRangeSlider {
+    writing-mode: vertical-lr;
+    direction: rtl;
+    flex: 1;
+    width: 12px;
+    accent-color: #6366f1;
+    cursor: pointer;
+    opacity: 0.7;
+  }
+  #barYRangeSlider:hover { opacity: 1; }
+
+  #barBottomControls {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 320px;
+    height: 30px;
+    background: rgba(10,10,26,0.9);
+    border-top: 1px solid #2a2a4a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+  }
+
+  #scrubBar {
+    height: 56px;
+    background: #0e0e22;
+    border-top: 1px solid #2a2a4a;
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    gap: 14px;
+    flex-shrink: 0;
+  }
+  #scrubBar .scrub-label { font-size: 12px; color: #6b7280; white-space: nowrap; }
+  #scrubBar .scrub-time {
+    font-size: 12px; color: #6b7280; white-space: nowrap;
+    min-width: 7em; text-align: right; font-variant-numeric: tabular-nums;
+  }
+  #timeSlider { flex: 1; height: 10px; accent-color: #6366f1; cursor: pointer; }
+  #timeSlider:disabled { opacity: 0.25; cursor: not-allowed; }
+
+  #portrait-overlay {
+    display: none;
+    position: fixed; inset: 0; z-index: 9999;
+    background: #0a0a1a; color: #e0e0e0;
+    flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 2rem;
+  }
+  #portrait-overlay .rotate-icon { font-size: 64px; margin-bottom: 1.5rem; }
+  #portrait-overlay h2 { font-size: 22px; font-weight: 600; color: #ff6b6b; margin-bottom: 0.75rem; }
+  #portrait-overlay p { font-size: 16px; color: #9ca3af; max-width: 280px; }
+
+  @media (max-width: 860px) and (orientation: portrait) {
+    #portrait-overlay { display: flex; }
+    body > *:not(#portrait-overlay) { display: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div id="portrait-overlay">
+  <div class="rotate-icon">&#x1F4F1;&#x21BB;</div>
+  <h2>Rotate Your Device</h2>
+  <p>Go horizontal to use this app</p>
+</div>
+
+<div id="toolbar">
+  <h1>Fusion v9</h1>
+  <button class="btn" id="goBtn">Go</button>
+  <button class="btn" id="replayBtn" disabled>Replay</button>
+
+  <label class="toggle-label" style="gap:6px;">
+    Left:
+    <select id="leftChoice" style="background:#1a1a3a;color:#e0e0e0;border:1px solid #3a3a5a;border-radius:4px;padding:2px 8px;font-size:12px;cursor:pointer;">
+      <option value="p" selected>Proton</option>
+      <option value="n">Neutron</option>
+      <option value="d">Deuterium (p+n)</option>
+      <option value="t">Tritium (p+2n)</option>
+      <option value="he">Helium-4 (2p+2n)</option>
+    </select>
+  </label>
+  <label class="toggle-label" style="gap:6px;">
+    Right:
+    <select id="rightChoice" style="background:#1a1a3a;color:#e0e0e0;border:1px solid #3a3a5a;border-radius:4px;padding:2px 8px;font-size:12px;cursor:pointer;">
+      <option value="p" selected>Proton</option>
+      <option value="n">Neutron</option>
+      <option value="d">Deuterium (p+n)</option>
+      <option value="t">Tritium (p+2n)</option>
+      <option value="he">Helium-4 (2p+2n)</option>
+    </select>
+  </label>
+
+  <label class="toggle-label" style="gap:6px;">
+    <input type="checkbox" id="fieldToggle" checked style="accent-color:#7dd3fc;">
+    <span style="color:#7dd3fc;font-size:12px;">Field</span>
+  </label>
+
+  <label class="toggle-label" style="gap:6px;">
+    <span style="color:#fb923c;font-size:12px;">SIE offset: <span id="sieOffsetVal">0</span></span>
+    <input type="range" id="sieOffsetSlider" min="0" max="1000" step="1" value="0" style="width:80px;accent-color:#fb923c;">
+  </label>
+
+  <div style="display:flex;flex-direction:column;gap:4px;">
+    <label class="toggle-label" style="gap:6px;">
+      Electric: <span id="v9ElecVal">150</span>
+      <input type="range" id="v9ElecSlider" min="10" max="600" step="10" value="150" style="width:72px;accent-color:#7dd3fc;">
+    </label>
+    <label class="toggle-label" style="gap:6px;">
+      Speed: <span id="v9SpeedVal">2.00</span>
+      <input type="range" id="v9SpeedSlider" min="0.1" max="4.0" step="0.05" value="2.0" style="width:72px;accent-color:#6366f1;">
+    </label>
+  </div>
+</div>
+
+<div id="canvasWrap">
+  <canvas id="canvas"></canvas>
+
+  <div id="barYSliderWrap">
+    <input type="range" id="barYRangeSlider" min="10" max="500" step="10" value="50">
+  </div>
+
+  <div id="barBottomControls">
+    <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:#9ca3af;cursor:pointer;">
+      <input type="checkbox" id="splitIEToggle" checked style="accent-color:#fb923c;">
+      Split IE → <span style="color:#818cf8">EIE</span>&nbsp;+&nbsp;<span style="color:#fb923c">SIE</span>
+    </label>
+  </div>
+</div>
+
+<div id="scrubBar">
+  <span class="scrub-label">Time</span>
+  <input type="range" id="timeSlider" min="0" max="0" value="0" disabled>
+  <span class="scrub-time" id="timeLabel">–</span>
+</div>
+
+<script>
+// ============================================================
+//  DOM REFERENCES
+// ============================================================
+const canvas    = document.getElementById('canvas');
+const ctx       = canvas.getContext('2d');
+const goBtn     = document.getElementById('goBtn');
+const replayBtn = document.getElementById('replayBtn');
+const timeSlider   = document.getElementById('timeSlider');
+const timeLabelEl  = document.getElementById('timeLabel');
+
+// ============================================================
+//  PHYSICS CONSTANTS
+// ============================================================
+const PARTICLE_RADIUS     = 10;
+const SUBSTEPS            = 20;
+const strongForceStrength = 4;
+const strongForceRange    = 2.0;   // fixed — no slider
+const equilibriumRatio    = 0.35;
+
+// Timing
+const COLLISION_FRAMES    = 30;    // max frames of collision phase
+const ESCAPE_ANIM_FRAMES  = 5;     // frames to lerp into escape geometry
+const FRAME_SPEED         = 1.5;   // dt per frame
+
+// ============================================================
+//  MUTABLE PARAMETERS  (slider-controlled)
+// ============================================================
+let coulombStrength = 150;
+let approachSpeed   = 2.0;
+
+// ============================================================
+//  SIMULATION STATE
+// ============================================================
+let particles = [];
+let running   = false;
+let animId    = null;
+
+// ============================================================
+//  HISTORY & SCRUBBER
+// ============================================================
+const MAX_HISTORY = 4000;
+let particleHistory = [];
+let scrubFrame = -1;
+
+// ============================================================
+//  ENERGY BASELINE
+//  Captured at setup after snapping clusters to escape geometry
+//  so KE is exactly conserved on escape.
+// ============================================================
+let initialTotal = 0;
+let initialKE    = 0;   // CM-frame KE at sim start — escape KE must match this exactly
+
+// ============================================================
+//  PHASE STATE
+//  'approach' → 'collision' → 'escapeAnim' → 'escape'
+// ============================================================
+let collisionPhase   = 'approach';
+let collisionFrames  = 0;
+let escapeAnimFrame  = 0;
+let escapeAnimStartPos  = null;   // particle positions at collision end
+let escapeAnimTargetPos = null;   // target positions after snap / teleport
+let escapeAnimStartVel  = null;   // {lv, rv} cluster velocities at collision end
+let escapeAnimTargetVel = null;   // {lv, rv} final escape cluster velocities
+
+// Camera: geometric midpoint between cluster centroids
+let cameraSiteX = 0, cameraSiteY = 0;
+
+// ============================================================
+//  DISPLAY STATE
+// ============================================================
+let showField = true;
+let barYRange = 50;
+let splitIE   = true;
+let sieOffset = 0;
+
+// ============================================================
+//  CLUSTER DEFINITIONS  (per-nucleon offsets from cluster CM)
+// ============================================================
+const CLUSTER_DEFS = {
+  'p':  [{ type:'proton',  x:0,   y:0   }],
+  'n':  [{ type:'neutron', x:0,   y:0   }],
+  'd':  [{ type:'proton',  x:-9,  y:-5  }, { type:'neutron', x:9,   y:5   }],
+  't':  [{ type:'proton',  x:-9,  y:-5  }, { type:'neutron', x:9,   y:5   }, { type:'neutron', x:9,   y:-15 }],
+  'he': [{ type:'proton',  x:-13, y:-8  }, { type:'neutron', x:8,   y:-13 }, { type:'proton',  x:13,  y:8   }, { type:'neutron', x:-8,  y:13  }],
+};
+
+let leftChoice      = 'p';
+let rightChoice     = 'p';
+let leftClusterSize = 1;
+
+// Offscreen canvas for heatmap rendering
+const hmCanvas = document.createElement('canvas');
+const hmCtx    = hmCanvas.getContext('2d');
+
+// ============================================================
+//  GEOMETRY SNAP
+//  Snap He-4 to perfect diamond (protons ±r on x-axis,
+//  neutrons ±r on y-axis, r = PARTICLE_RADIUS × √2 gives
+//  exactly 1-diameter adjacent spacing).
+//  Snap T to its CLUSTER_DEFS geometry centred at current CM.
+// ============================================================
+function snapHe4Geometry(startIdx, endIdx) {
+  const count = endIdx - startIdx;
+  if (count !== 4) return;
+  let cx = 0, cy = 0;
+  for (let i = startIdx; i < endIdx; i++) { cx += particles[i].x; cy += particles[i].y; }
+  cx /= count; cy /= count;
+  const r = PARTICLE_RADIUS * Math.SQRT2;
+  const protonIdx = [], neutronIdx = [];
+  for (let i = startIdx; i < endIdx; i++) {
+    (particles[i].type === 'proton' ? protonIdx : neutronIdx).push(i);
+  }
+  particles[protonIdx[0]].x  = cx - r;  particles[protonIdx[0]].y  = cy;
+  particles[protonIdx[1]].x  = cx + r;  particles[protonIdx[1]].y  = cy;
+  particles[neutronIdx[0]].x = cx;       particles[neutronIdx[0]].y = cy - r;
+  particles[neutronIdx[1]].x = cx;       particles[neutronIdx[1]].y = cy + r;
+}
+
+function snapTGeometry(startIdx, endIdx) {
+  const count = endIdx - startIdx;
+  if (count !== 3) return;
+  let cx = 0, cy = 0;
+  for (let i = startIdx; i < endIdx; i++) { cx += particles[i].x; cy += particles[i].y; }
+  cx /= count; cy /= count;
+  const protonIdx = [], neutronIdx = [];
+  for (let i = startIdx; i < endIdx; i++) {
+    (particles[i].type === 'proton' ? protonIdx : neutronIdx).push(i);
+  }
+  const def    = CLUSTER_DEFS.t;
+  const defCx  = (def[0].x + def[1].x + def[2].x) / 3;
+  const defCy  = (def[0].y + def[1].y + def[2].y) / 3;
+  particles[protonIdx[0]].x  = cx + def[0].x - defCx;
+  particles[protonIdx[0]].y  = cy + def[0].y - defCy;
+  particles[neutronIdx[0]].x = cx + def[1].x - defCx;
+  particles[neutronIdx[0]].y = cy + def[1].y - defCy;
+  particles[neutronIdx[1]].x = cx + def[2].x - defCx;
+  particles[neutronIdx[1]].y = cy + def[2].y - defCy;
+}
+
+// ============================================================
+//  HE3 GEOMETRY SNAP
+//  He3 = 2p + 1n.  Use same triangle shape as T but with
+//  2 protons assigned to the first two offset slots.
+// ============================================================
+function snapHe3Geometry(startIdx, endIdx) {
+  const count = endIdx - startIdx;
+  if (count !== 3) return;
+  let cx = 0, cy = 0;
+  for (let i = startIdx; i < endIdx; i++) { cx += particles[i].x; cy += particles[i].y; }
+  cx /= count; cy /= count;
+  const protonIdx = [], neutronIdx = [];
+  for (let i = startIdx; i < endIdx; i++) {
+    (particles[i].type === 'proton' ? protonIdx : neutronIdx).push(i);
+  }
+  const def   = CLUSTER_DEFS.t;
+  const defCx = (def[0].x + def[1].x + def[2].x) / 3;
+  const defCy = (def[0].y + def[1].y + def[2].y) / 3;
+  particles[protonIdx[0]].x  = cx + def[0].x - defCx;
+  particles[protonIdx[0]].y  = cy + def[0].y - defCy;
+  particles[protonIdx[1]].x  = cx + def[1].x - defCx;
+  particles[protonIdx[1]].y  = cy + def[1].y - defCy;
+  particles[neutronIdx[0]].x = cx + def[2].x - defCx;
+  particles[neutronIdx[0]].y = cy + def[2].y - defCy;
+}
+
+// ============================================================
+//  CATEGORY HELPERS
+// ============================================================
+function isCategory1() {
+  const l = leftChoice, r = rightChoice;
+  return (l==='p' && r==='p') ||
+         (l==='n' && r==='n') ||
+         (l==='n' && r==='he') || (l==='he' && r==='n') ||
+         (l==='n' && r==='t')  || (l==='t'  && r==='n');
+}
+
+function isCategory2() {
+  const l = leftChoice, r = rightChoice;
+  return (l==='d' && r==='t') || (l==='t' && r==='d') ||
+         (l==='d' && r==='d') ||
+         (l==='t' && r==='t');
+}
+
+// P+N→D, P+D→He3, N+D→T, P+T→He4  (fusion + gamma emission)
+function isCategory3() {
+  const l = leftChoice, r = rightChoice;
+  return (l==='p' && r==='n') || (l==='n' && r==='p') ||
+         (l==='p' && r==='d') || (l==='d' && r==='p') ||
+         (l==='n' && r==='d') || (l==='d' && r==='n') ||
+         (l==='p' && r==='t') || (l==='t' && r==='p');
+}
+
+// He + anything that has a proton: Coulomb barrier prevents nuclear contact
+function isCoulombOnly() {
+  const l = leftChoice, r = rightChoice;
+  if (l !== 'he' && r !== 'he') return false;
+  const other = (l === 'he') ? r : l;
+  return other === 'p' || other === 'd' || other === 't' || other === 'he';
+}
+
+// Maximum safe approach speed for Coulomb-only combos.
+// Ensures CM kinetic energy < Coulomb barrier at the edge of strong range.
+function maxSafeCoulombSpeed() {
+  const l = leftChoice, r = rightChoice;
+  const lMass    = CLUSTER_DEFS[l].length;
+  const rMass    = CLUSTER_DEFS[r].length;
+  const lProtons = CLUSTER_DEFS[l].filter(p => p.type === 'proton').length;
+  const rProtons = CLUSTER_DEFS[r].filter(p => p.type === 'proton').length;
+  const pairs    = lProtons * rProtons; // inter-cluster proton pairs
+
+  // Both clusters approach at ±approachSpeed; CM vel = (lMass-rMass)/(lMass+rMass)*v
+  const total  = lMass + rMass;
+  const cmNorm = (lMass - rMass) / total;
+  const lRel   = 1 - cmNorm;           // left vel in CM frame (as multiple of v)
+  const rRel   = -1 - cmNorm;          // right vel in CM frame
+  const keCoeff = 0.5 * lMass * lRel * lRel + 0.5 * rMass * rRel * rRel;
+
+  const barrier = pairs * coulombStrength / strongCutoff();
+  return Math.sqrt(barrier / keCoeff) * 0.80; // 20% safety margin
+}
+
+// ============================================================
+//  SETUP
+// ============================================================
+function setupScenario() {
+  const cx  = canvas.width  / 2;
+  const cy  = canvas.height / 2;
+  const sep = 155;
+
+  const leftDef  = CLUSTER_DEFS[leftChoice];
+  const rightDef = CLUSTER_DEFS[rightChoice];
+  leftClusterSize = leftDef.length;
+
+  particles = [];
+  for (const d of leftDef) {
+    particles.push({ x: cx - sep + d.x, y: cy + d.y, vx:  approachSpeed, vy: 0, type: d.type });
+  }
+  for (const d of rightDef) {
+    particles.push({ x: cx + sep + d.x, y: cy + d.y, vx: -approachSpeed, vy: 0, type: d.type });
+  }
+
+  // Snap He-4 / T clusters to their escape geometry so the SIE baseline
+  // (initialTotal) matches the SIE they will have on exit → exact KE conservation.
+  const lSz = leftDef.length, rSz = rightDef.length;
+  if (lSz === 4) snapHe4Geometry(0, lSz);
+  if (rSz === 4) snapHe4Geometry(lSz, particles.length);
+  if (lSz === 3) snapTGeometry(0, lSz);
+  if (rSz === 3) snapTGeometry(lSz, particles.length);
+
+  const e0  = computeEnergy();
+  initialTotal = e0.total;
+  initialKE    = e0.ke;
+  updateCamera();
+}
+
+let snapshot = null;
+function takeSnapshot()    { snapshot = particles.map(p => ({ ...p })); replayBtn.disabled = false; }
+function restoreSnapshot() { if (!snapshot) return; particles = snapshot.map(p => ({ ...p })); }
+
+// ============================================================
+//  FORCE MODEL
+// ============================================================
+function strongCutoff() { return PARTICLE_RADIUS * 2 * strongForceRange; }
+
+function pairForce(dist, distSq, aType, bType) {
+  if (aType === 'gamma' || bType === 'gamma') return 0;
+  let force = 0;
+  if (aType === 'proton' && bType === 'proton') {
+    force += coulombStrength / Math.max(distSq, PARTICLE_RADIUS * PARTICLE_RADIUS);
+  }
+  const cutoff = strongCutoff();
+  if (dist < cutoff) {
+    const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
+    const span   = cutoff - eqDist;
+    const t      = (dist - eqDist) / span;
+    force -= t * strongForceStrength;
+  }
+  return force;
+}
+
+// ============================================================
+//  PHYSICS STEP  (forces + substep Euler + hard-sphere)
+// ============================================================
+function step(dt) {
+  const n     = particles.length;
+  const subDt = dt / SUBSTEPS;
+
+  for (let sub = 0; sub < SUBSTEPS; sub++) {
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const a = particles[i], b = particles[j];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const distSq = dx * dx + dy * dy;
+        const dist   = Math.sqrt(distSq);
+        if (dist < 0.01) continue;
+        const force = pairForce(dist, distSq, a.type, b.type);
+        const fx = force * (dx / dist), fy = force * (dy / dist);
+        a.vx -= fx * subDt;  a.vy -= fy * subDt;
+        b.vx += fx * subDt;  b.vy += fy * subDt;
+      }
+    }
+    for (let i = 0; i < n; i++) {
+      particles[i].x += particles[i].vx * subDt;
+      particles[i].y += particles[i].vy * subDt;
+    }
+    // Hard-sphere
+    const minSep = PARTICLE_RADIUS * 2;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const a = particles[i], b = particles[j];
+        let dx = b.x - a.x, dy = b.y - a.y;
+        const dSq = dx * dx + dy * dy;
+        if (dSq >= minSep * minSep) continue;
+        let d = Math.sqrt(dSq);
+        if (d < 0.001) { dx = 1; dy = 0; d = 0.001; }
+        const nx = dx / d, ny = dy / d;
+        const overlap = minSep - d;
+        a.x -= nx * overlap * 0.5;  a.y -= ny * overlap * 0.5;
+        b.x += nx * overlap * 0.5;  b.y += ny * overlap * 0.5;
+        const dvx = b.vx - a.vx, dvy = b.vy - a.vy;
+        const dvDotN = dvx * nx + dvy * ny;
+        if (dvDotN < 0) {
+          a.vx += dvDotN * nx;  a.vy += dvDotN * ny;
+          b.vx -= dvDotN * nx;  b.vy -= dvDotN * ny;
+        }
+      }
+    }
+  }
+}
+
+// ============================================================
+//  RIGID CLUSTER LOCK
+//  After step(), snap all particles in each cluster to that
+//  cluster's CM velocity — prevents inter-cluster forces from
+//  causing internal oscillation during approach.
+// ============================================================
+function lockClusterVelocities() {
+  const n = particles.length, lSize = leftClusterSize, rSize = n - lSize;
+  let lvx = 0, lvy = 0, rvx = 0, rvy = 0;
+  for (let i = 0;     i < lSize; i++) { lvx += particles[i].vx; lvy += particles[i].vy; }
+  for (let i = lSize; i < n;     i++) { rvx += particles[i].vx; rvy += particles[i].vy; }
+  lvx /= lSize;  lvy /= lSize;
+  rvx /= rSize;  rvy /= rSize;
+  for (let i = 0;     i < lSize; i++) { particles[i].vx = lvx; particles[i].vy = lvy; }
+  for (let i = lSize; i < n;     i++) { particles[i].vx = rvx; particles[i].vy = rvy; }
+}
+
+// ============================================================
+//  CAMERA  — geometric midpoint between cluster centroids
+// ============================================================
+function updateCamera() {
+  const n = particles.length, lSize = leftClusterSize;
+  let lcx = 0, lcy = 0, rcx = 0, rcy = 0, lCnt = 0, rCnt = 0;
+  for (let i = 0;     i < lSize; i++) {
+    if (particles[i].type === 'gamma') continue;
+    lcx += particles[i].x; lcy += particles[i].y; lCnt++;
+  }
+  for (let i = lSize; i < n; i++) {
+    if (particles[i].type === 'gamma') continue;
+    rcx += particles[i].x; rcy += particles[i].y; rCnt++;
+  }
+  if (lCnt > 0) { lcx /= lCnt; lcy /= lCnt; }
+  // If right cluster is all gamma (Cat3), camera tracks product only
+  if (rCnt > 0) { rcx /= rCnt; rcy /= rCnt; }
+  else          { rcx = lcx; rcy = lcy; }
+  cameraSiteX = (lcx + rcx) / 2;
+  cameraSiteY = (lcy + rcy) / 2;
+  return { lcx, lcy, rcx, rcy };
+}
+
+// ============================================================
+//  ENERGY COMPUTATION
+//  KE in CM frame (mass = 1 per nucleon), plus pairwise EIE/SIE.
+// ============================================================
+function computeEnergy() {
+  // Gamma particles carry energy out of the system and are excluded from all accounting.
+  const phys = particles.filter(p => p.type !== 'gamma');
+  const n = phys.length;
+  if (n === 0) return { ke: 0, eie: 0, sie: 0, total: 0 };
+  let cmvx = 0, cmvy = 0;
+  for (const p of phys) { cmvx += p.vx; cmvy += p.vy; }
+  cmvx /= n;  cmvy /= n;
+  let ke = 0;
+  for (const p of phys) {
+    const rvx = p.vx - cmvx, rvy = p.vy - cmvy;
+    ke += 0.5 * (rvx * rvx + rvy * rvy);
+  }
+  let eie = 0, sie = 0;
+  const cutoff = strongCutoff();
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const a = phys[i], b = phys[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist === 0) continue;
+      if (a.type === 'proton' && b.type === 'proton') {
+        eie += coulombStrength / Math.max(dist, PARTICLE_RADIUS);
+      }
+      if (dist < cutoff) {
+        const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
+        const span   = cutoff - eqDist;
+        if (span > 0) {
+          const dr = dist - eqDist;
+          sie += strongForceStrength / (2 * span) * (dr * dr - span * span);
+        }
+      }
+    }
+  }
+  return { ke, eie, sie, total: ke + eie + sie };
+}
+
+// Compute SIE for an array of {x,y} positions (used for escape KE budget).
+function computeSIEForPositions(positions) {
+  const cutoff = strongCutoff();
+  const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
+  const span   = cutoff - eqDist;
+  if (span <= 0) return 0;
+  let sie = 0;
+  for (let i = 0; i < positions.length; i++) {
+    for (let j = i + 1; j < positions.length; j++) {
+      const dx   = positions[i].x - positions[j].x;
+      const dy   = positions[i].y - positions[j].y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < cutoff) {
+        const dr = dist - eqDist;
+        sie += strongForceStrength / (2 * span) * (dr * dr - span * span);
+      }
+    }
+  }
+  return sie;
+}
+
+// ============================================================
+//  CATEGORY 1 ESCAPE
+//
+//  Same products exit with a random new trajectory.
+//  KE budget: initialTotal − SIE_at_target (≈ initial KE since
+//  clusters exit in the same geometry as they started).
+//
+//  For N+He4 / N+T: snap multi-particle cluster, teleport the
+//  lone neutron outside the strong cutoff so inter-cluster SIE
+//  is zero at the escape start, matching the baseline.
+//
+//  Lerp animation runs over ESCAPE_ANIM_FRAMES frames: positions
+//  slide from the end-of-collision state to the clean geometry,
+//  while velocities are applied immediately.
+// ============================================================
+function fireCategory1Escape() {
+  const n     = particles.length;
+  const lSize = leftClusterSize;
+  const rSize = n - lSize;
+
+  // ── Save collision-end positions as lerp start ──────────────
+  escapeAnimStartPos = particles.map(p => ({ x: p.x, y: p.y }));
+
+  // ── Apply snap / teleport to find target positions ──────────
+  // (Temporarily modifies particles.x/y — will be restored below.)
+  const isNHe = (lSize === 1 && rSize === 4) || (lSize === 4 && rSize === 1);
+  const isNT  = (lSize === 1 && rSize === 3) || (lSize === 3 && rSize === 1);
+
+  if (isNHe) {
+    const heStart = (lSize === 4) ? 0 : lSize;
+    const heEnd   = (lSize === 4) ? lSize : n;
+    const nIdx    = (lSize === 1) ? 0 : lSize;
+
+    snapHe4Geometry(heStart, heEnd);
+
+    let hcx = 0, hcy = 0;
+    for (let i = heStart; i < heEnd; i++) { hcx += particles[i].x; hcy += particles[i].y; }
+    hcx /= 4;  hcy /= 4;
+
+    // Teleport N outside strong-force range
+    const ndx = particles[nIdx].x - hcx, ndy = particles[nIdx].y - hcy;
+    const ndist = Math.sqrt(ndx * ndx + ndy * ndy);
+    const nnx = ndist > 0.01 ? ndx / ndist : 1;
+    const nny = ndist > 0.01 ? ndy / ndist : 0;
+    const safeDist = strongCutoff() * 1.15 + PARTICLE_RADIUS;
+    particles[nIdx].x = hcx + nnx * safeDist;
+    particles[nIdx].y = hcy + nny * safeDist;
+
+  } else if (isNT) {
+    const tStart = (lSize === 3) ? 0 : lSize;
+    const tEnd   = (lSize === 3) ? lSize : n;
+    const nIdx   = (lSize === 1) ? 0 : lSize;
+
+    snapTGeometry(tStart, tEnd);
+
+    let tcx = 0, tcy = 0;
+    for (let i = tStart; i < tEnd; i++) { tcx += particles[i].x; tcy += particles[i].y; }
+    tcx /= 3;  tcy /= 3;
+
+    const ndx = particles[nIdx].x - tcx, ndy = particles[nIdx].y - tcy;
+    const ndist = Math.sqrt(ndx * ndx + ndy * ndy);
+    const nnx = ndist > 0.01 ? ndx / ndist : 1;
+    const nny = ndist > 0.01 ? ndy / ndist : 0;
+    const safeDist = strongCutoff() * 1.15 + PARTICLE_RADIUS;
+    particles[nIdx].x = tcx + nnx * safeDist;
+    particles[nIdx].y = tcy + nny * safeDist;
+
+  } else {
+    // P+P or N+N: separate to just outside strong-force range
+    let lcx = 0, lcy = 0, rcx = 0, rcy = 0;
+    for (let i = 0;     i < lSize; i++) { lcx += particles[i].x; lcy += particles[i].y; }
+    for (let i = lSize; i < n;     i++) { rcx += particles[i].x; rcy += particles[i].y; }
+    lcx /= lSize;  lcy /= lSize;
+    rcx /= rSize;  rcy /= rSize;
+    const edx = rcx - lcx, edy = rcy - lcy;
+    const edist = Math.sqrt(edx * edx + edy * edy);
+    const enx = edx / edist, eny = edy / edist;
+    const safeSep = Math.max(edist, strongCutoff() * 1.1 + PARTICLE_RADIUS * 2);
+    const emx = (lcx + rcx) / 2, emy = (lcy + rcy) / 2;
+    particles[0].x = emx - enx * safeSep / 2;  particles[0].y = emy - eny * safeSep / 2;
+    particles[lSize].x = emx + enx * safeSep / 2;  particles[lSize].y = emy + eny * safeSep / 2;
+  }
+
+  // ── SIE at target positions (≈ intra-cluster SIE only) ──────
+  const targetSIE = computeEnergy().sie;
+
+  // ── Save target positions, then restore start positions ─────
+  escapeAnimTargetPos = particles.map(p => ({ x: p.x, y: p.y }));
+  for (let i = 0; i < n; i++) {
+    particles[i].x = escapeAnimStartPos[i].x;
+    particles[i].y = escapeAnimStartPos[i].y;
+  }
+
+  // ── Compute escape velocities ────────────────────────────────
+  // Positions have been restored; velocities still reflect collision-end
+  // physics. Save them as the lerp start. Pick a random scatter direction
+  // and save that as the lerp target. The escapeAnim phase will smoothly
+  // rotate cluster velocities from collision-end to escape over 5 frames,
+  // so there is no abrupt mid-flight turn even though the angle is random.
+
+  // Cluster CM velocities at end of collision (lerp start)
+  let lvx = 0, lvy = 0, rvx = 0, rvy = 0;
+  for (let i = 0;     i < lSize; i++) { lvx += particles[i].vx; lvy += particles[i].vy; }
+  for (let i = lSize; i < n;     i++) { rvx += particles[i].vx; rvy += particles[i].vy; }
+  lvx /= lSize;  lvy /= lSize;
+  rvx /= rSize;  rvy /= rSize;
+  escapeAnimStartVel = { lv: { vx: lvx, vy: lvy }, rv: { vx: rvx, vy: rvy } };
+
+  // System CM velocity (conserved)
+  const cmvx = (lSize * lvx + rSize * rvx) / n;
+  const cmvy = (lSize * lvy + rSize * rvy) / n;
+
+  // CM-frame KE budget: use the initial KE directly so exit KE = entry KE.
+  // Using initialTotal − targetSIE would be wrong for He-4 (which has internal
+  // EIE from its proton pair) — that EIE would end up added to escape KE.
+  const targetCmKE = Math.max(0, initialKE);
+  const vl = Math.sqrt(2 * targetCmKE * rSize / (lSize * n));
+
+  // Random scatter direction: backscatter ±30° for P+P/N+N, ±90° otherwise
+  let slcx = 0, slcy = 0, srcx = 0, srcy = 0;
+  for (let i = 0;     i < lSize; i++) { slcx += escapeAnimStartPos[i].x; slcy += escapeAnimStartPos[i].y; }
+  for (let i = lSize; i < n;     i++) { srcx += escapeAnimStartPos[i].x; srcy += escapeAnimStartPos[i].y; }
+  slcx /= lSize;  slcy /= lSize;
+  srcx /= rSize;  srcy /= rSize;
+  const sdx = srcx - slcx, sdy = srcy - slcy;
+  const sdist = Math.sqrt(sdx * sdx + sdy * sdy);
+  const snx = sdist > 0.01 ? sdx / sdist : 1;
+  const sny = sdist > 0.01 ? sdy / sdist : 0;
+  const backAngle = Math.atan2(-sny, -snx);
+  const scatterRange = (lSize === 1 && rSize === 1) ? Math.PI / 6 : Math.PI / 2;
+  const theta = backAngle + (Math.random() - 0.5) * 2 * scatterRange;
+  const cosT = Math.cos(theta), sinT = Math.sin(theta);
+
+  const newLvx = cmvx + vl * cosT;
+  const newLvy = cmvy + vl * sinT;
+  const newRvx = cmvx - (lSize / rSize) * vl * cosT;
+  const newRvy = cmvy - (lSize / rSize) * vl * sinT;
+
+  // Save target velocities for the lerp; do NOT apply them yet —
+  // escapeAnim will interpolate from start → target each frame.
+  escapeAnimTargetVel = { lv: { vx: newLvx, vy: newLvy }, rv: { vx: newRvx, vy: newRvy } };
+}
+
+// ============================================================
+//  CATEGORY 2 ESCAPE
+//
+//  Fusion reactions: products carry 5× the initial CM KE,
+//  sourced from reduced SIE when nucleons rebind into a more
+//  tightly bound nucleus.
+//
+//  Products are always: He4+N (D-T), He3+N or T+P (D-D),
+//  He4+2N (T-T).  Particles are physically rearranged into the
+//  product order so the existing two-cluster escape anim works
+//  unchanged: cluster 0..leftClusterSize-1 = heavy product,
+//  the rest = light product(s).
+// ============================================================
+
+// Shared velocity setup for all Cat-2 reactions.
+// Called after escapeAnimStartPos and particles[] are in their
+// new (post-rearrange/type-change) order, positions restored
+// to collision-end, leftClusterSize updated to newLSize.
+function applyCategory2Velocities(newLSize, newRSize) {
+  const n = newLSize + newRSize;
+
+  // System CM velocity (momentum conserved)
+  let totVx = 0, totVy = 0;
+  for (let i = 0; i < n; i++) { totVx += particles[i].vx; totVy += particles[i].vy; }
+  const cmvx = totVx / n, cmvy = totVy / n;
+
+  // CM velocities of the two product clusters at collision-end (lerp start)
+  let lvx = 0, lvy = 0, rvx = 0, rvy = 0;
+  for (let i = 0;        i < newLSize; i++) { lvx += particles[i].vx; lvy += particles[i].vy; }
+  for (let i = newLSize; i < n;        i++) { rvx += particles[i].vx; rvy += particles[i].vy; }
+  lvx /= newLSize;  lvy /= newLSize;
+  rvx /= newRSize;  rvy /= newRSize;
+  escapeAnimStartVel = { lv: { vx: lvx, vy: lvy }, rv: { vx: rvx, vy: rvy } };
+
+  // 5× initial KE in the CM frame
+  const targetCmKE = 5 * Math.max(0, initialKE);
+  // v_left in CM frame so that KE = ½ newLSize v_l² + ½ newRSize v_r²
+  // with momentum conservation → v_r = -(newLSize/newRSize) v_l
+  const vl = Math.sqrt(2 * targetCmKE * newRSize / (newLSize * n));
+
+  // Random scatter: uniform over all angles (full 2π, not just backscatter)
+  const theta = Math.random() * 2 * Math.PI;
+  const cosT = Math.cos(theta), sinT = Math.sin(theta);
+
+  const newLvx = cmvx + vl * cosT;
+  const newLvy = cmvy + vl * sinT;
+  const newRvx = cmvx - (newLSize / newRSize) * vl * cosT;
+  const newRvy = cmvy - (newLSize / newRSize) * vl * sinT;
+
+  escapeAnimTargetVel = { lv: { vx: newLvx, vy: newLvy }, rv: { vx: newRvx, vy: newRvy } };
+}
+
+// Helper: teleport a single particle (idx) outside He/T cluster CM
+function teleportOutside(idx, clusterStart, clusterEnd) {
+  let ccx = 0, ccy = 0;
+  const sz = clusterEnd - clusterStart;
+  for (let i = clusterStart; i < clusterEnd; i++) { ccx += particles[i].x; ccy += particles[i].y; }
+  ccx /= sz; ccy /= sz;
+  const dx = particles[idx].x - ccx, dy = particles[idx].y - ccy;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  const nx = dist > 0.01 ? dx/dist : 1;
+  const ny = dist > 0.01 ? dy/dist : 0;
+  const safeDist = strongCutoff() * 1.15 + PARTICLE_RADIUS;
+  particles[idx].x = ccx + nx * safeDist;
+  particles[idx].y = ccy + ny * safeDist;
+}
+
+// D+T → He4 + N
+function fireDTEscape() {
+  // d+t: [D_p, D_n, T_p, T_n, T_n] = [p,n,p,n,n] → He4=[0-3], N=[4] ✓
+  // t+d: [T_p, T_n, T_n, D_p, D_n] = [p,n,n,p,n]
+  //   → reorder to [T_p, T_n, D_p, D_n, T_n2] = [p,n,p,n,n]
+  if (leftChoice === 't') {
+    particles = [particles[0], particles[1], particles[3], particles[4], particles[2]];
+  }
+  leftClusterSize = 4;
+  escapeAnimStartPos = particles.map(p => ({ x: p.x, y: p.y }));
+
+  snapHe4Geometry(0, 4);
+  teleportOutside(4, 0, 4);
+
+  escapeAnimTargetPos = particles.map(p => ({ x: p.x, y: p.y }));
+  for (let i = 0; i < 5; i++) { particles[i].x = escapeAnimStartPos[i].x; particles[i].y = escapeAnimStartPos[i].y; }
+  applyCategory2Velocities(4, 1);
+}
+
+// D+D → He3 + N  (2p+1n heavy, 1n light)
+function fireDDtoHe3N() {
+  // [D1_p, D1_n, D2_p, D2_n] = [p,n,p,n]
+  // He3=[0,1,2]=[p,n,p]=2p+1n ✓,  N=[3]=n ✓
+  leftClusterSize = 3;
+  escapeAnimStartPos = particles.map(p => ({ x: p.x, y: p.y }));
+
+  snapHe3Geometry(0, 3);
+  teleportOutside(3, 0, 3);
+
+  escapeAnimTargetPos = particles.map(p => ({ x: p.x, y: p.y }));
+  for (let i = 0; i < 4; i++) { particles[i].x = escapeAnimStartPos[i].x; particles[i].y = escapeAnimStartPos[i].y; }
+  applyCategory2Velocities(3, 1);
+}
+
+// D+D → T + P  (1p+2n heavy, 1p light)
+function fireDDtoTP() {
+  // [D1_p, D1_n, D2_p, D2_n] = [p,n,p,n]
+  // Swap types so T=[0-2]=[p,n,n] and P=[3]=p
+  particles[2].type = 'neutron';
+  particles[3].type = 'proton';
+  leftClusterSize = 3;
+  escapeAnimStartPos = particles.map(p => ({ x: p.x, y: p.y }));
+
+  snapTGeometry(0, 3);
+  teleportOutside(3, 0, 3);
+
+  escapeAnimTargetPos = particles.map(p => ({ x: p.x, y: p.y }));
+  for (let i = 0; i < 4; i++) { particles[i].x = escapeAnimStartPos[i].x; particles[i].y = escapeAnimStartPos[i].y; }
+  applyCategory2Velocities(3, 1);
+}
+
+// T+T → He4 + 2N
+function fireTTEscape() {
+  // [T1_p, T1_n, T1_n, T2_p, T2_n, T2_n] = [p,n,n,p,n,n]
+  // He4=[0-3]=[p,n,n,p]=2p+2n ✓,  N1=[4]=n, N2=[5]=n ✓
+  leftClusterSize = 4;
+  escapeAnimStartPos = particles.map(p => ({ x: p.x, y: p.y }));
+
+  snapHe4Geometry(0, 4);
+
+  let hcx = 0, hcy = 0;
+  for (let i = 0; i < 4; i++) { hcx += particles[i].x; hcy += particles[i].y; }
+  hcx /= 4; hcy /= 4;
+
+  // Direction from He4 toward the neutron pair's current midpoint
+  const nmx = (particles[4].x + particles[5].x) / 2 - hcx;
+  const nmy = (particles[4].y + particles[5].y) / 2 - hcy;
+  const nmd = Math.sqrt(nmx*nmx + nmy*nmy);
+  const nnx = nmd > 0.01 ? nmx/nmd : 1;
+  const nny = nmd > 0.01 ? nmy/nmd : 0;
+  const perpX = -nny, perpY = nnx;
+
+  const safeDist = strongCutoff() * 1.15 + PARTICLE_RADIUS;
+  // Spread neutrons perpendicular by >strongCutoff so they're out of each other's range
+  const spread = strongCutoff() * 1.3 + PARTICLE_RADIUS;
+
+  particles[4].x = hcx + nnx * safeDist + perpX * spread;
+  particles[4].y = hcy + nny * safeDist + perpY * spread;
+  particles[5].x = hcx + nnx * safeDist - perpX * spread;
+  particles[5].y = hcy + nny * safeDist - perpY * spread;
+
+  escapeAnimTargetPos = particles.map(p => ({ x: p.x, y: p.y }));
+  for (let i = 0; i < 6; i++) { particles[i].x = escapeAnimStartPos[i].x; particles[i].y = escapeAnimStartPos[i].y; }
+  applyCategory2Velocities(4, 2);
+}
+
+function fireCategory2Escape() {
+  const l = leftChoice, r = rightChoice;
+  if ((l==='d' && r==='t') || (l==='t' && r==='d')) {
+    fireDTEscape();
+  } else if (l==='d' && r==='d') {
+    if (Math.random() < 0.5) fireDDtoHe3N(); else fireDDtoTP();
+  } else if (l==='t' && r==='t') {
+    fireTTEscape();
+  }
+}
+
+// ============================================================
+//  CATEGORY 3 ESCAPE  —  fusion + gamma emission
+//
+//  All reactant nucleons form a single product nucleus.
+//  A gamma "particle" (type:'gamma') is added flying the
+//  opposite direction at high speed.  Gamma is excluded from
+//  computeEnergy() so the energy bar total drops, showing
+//  the energy carried away by the photon.
+//  Product KE ≈ initialKE  (same budget as Cat1).
+// ============================================================
+function fireCategory3Escape() {
+  const n = particles.length; // all nucleons become the product
+  const l = leftChoice, r = rightChoice;
+
+  // 1. Snap product to geometry
+  if      (n === 4) snapHe4Geometry(0, n);              // P+T → He4
+  else if ((l==='n'&&r==='d')||(l==='d'&&r==='n')) snapTGeometry(0, n);   // N+D → T
+  else if ((l==='p'&&r==='d')||(l==='d'&&r==='p')) snapHe3Geometry(0, n); // P+D → He3
+  // P+N → D: 2 particles, no snap needed
+
+  // 2. Product CM after snap
+  let pcx = 0, pcy = 0;
+  for (let i = 0; i < n; i++) { pcx += particles[i].x; pcy += particles[i].y; }
+  pcx /= n; pcy /= n;
+
+  // 3. Target positions = snapped product geometry
+  escapeAnimStartPos = particles.map(p => ({ x: p.x, y: p.y })); // snapped = start (already close after collision)
+  escapeAnimTargetPos = particles.map(p => ({ x: p.x, y: p.y }));
+  // Note: start == target for nucleons means positions don't lerp (they're already snapped).
+  // The escape-anim smoothly transitions only velocities.
+
+  // 4. System CM velocity
+  let totVx = 0, totVy = 0;
+  for (let i = 0; i < n; i++) { totVx += particles[i].vx; totVy += particles[i].vy; }
+  const cmvx = totVx / n, cmvy = totVy / n;
+
+  // 5. Product cluster CM velocity at collision-end (lerp start)
+  let lvx = 0, lvy = 0;
+  for (let i = 0; i < n; i++) { lvx += particles[i].vx; lvy += particles[i].vy; }
+  lvx /= n; lvy /= n;
+
+  // 6. Product final velocity: KE ≈ initialKE, random direction
+  const vp    = Math.sqrt(2 * Math.max(0, initialKE) / n);
+  const theta = Math.random() * 2 * Math.PI;
+  const pVxFinal = cmvx + vp * Math.cos(theta);
+  const pVyFinal = cmvy + vp * Math.sin(theta);
+
+  // 7. Gamma: opposite direction in CM frame, high speed (visually represents light)
+  const gammaSpeedCM = Math.max(vp * 6, 5.0);
+  const gammaVxFinal = cmvx - gammaSpeedCM * Math.cos(theta);
+  const gammaVyFinal = cmvy - gammaSpeedCM * Math.sin(theta);
+
+  // 8. Add gamma particle at product CM
+  particles.push({ x: pcx, y: pcy, vx: gammaVxFinal, vy: gammaVyFinal, type: 'gamma' });
+  escapeAnimStartPos.push({ x: pcx, y: pcy });
+  escapeAnimTargetPos.push({ x: pcx, y: pcy });
+
+  leftClusterSize = n; // right "cluster" = gamma only
+
+  // 9. Velocity lerp: product lerps from collision-end CM vel → final; gamma is immediate
+  escapeAnimStartVel  = { lv: { vx: lvx,         vy: lvy         }, rv: { vx: gammaVxFinal, vy: gammaVyFinal } };
+  escapeAnimTargetVel = { lv: { vx: pVxFinal,    vy: pVyFinal    }, rv: { vx: gammaVxFinal, vy: gammaVyFinal } };
+
+  // 10. Update energy baseline to reflect that gamma took energy away.
+  //     Compute product total at its snapped geometry + final velocity.
+  const savedVel = particles.slice(0, n).map(p => ({ vx: p.vx, vy: p.vy }));
+  for (let i = 0; i < n; i++) { particles[i].vx = pVxFinal; particles[i].vy = pVyFinal; }
+  const productE = computeEnergy();
+  initialTotal = productE.total;
+  for (let i = 0; i < n; i++) { particles[i].vx = savedVel[i].vx; particles[i].vy = savedVel[i].vy; }
+}
+
+// ============================================================
+//  COLORMAPS
+// ============================================================
+function buildColorstops(stops, out) {
+  for (let i = 0; i < 256; i++) {
+    const t  = i / 255;
+    let s0 = stops[0], s1 = stops[1];
+    for (let s = 0; s < stops.length - 1; s++) {
+      if (t >= stops[s].t && t <= stops[s + 1].t) { s0 = stops[s]; s1 = stops[s + 1]; break; }
+    }
+    const f   = (t - s0.t) / (s1.t - s0.t);
+    const idx = i * 4;
+    out[idx]     = s0.r + (s1.r - s0.r) * f;
+    out[idx + 1] = s0.g + (s1.g - s0.g) * f;
+    out[idx + 2] = s0.b + (s1.b - s0.b) * f;
+    out[idx + 3] = s0.a + (s1.a - s0.a) * f;
+  }
+}
+
+const COLORMAP = new Uint8Array(256 * 4);
+buildColorstops([
+  { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0   },
+  { t: 0.12, r: 10,  g: 35,  b: 170, a: 140 },
+  { t: 0.4,  r: 25,  g: 85,  b: 235, a: 210 },
+  { t: 0.7,  r: 70,  g: 165, b: 255, a: 245 },
+  { t: 1.0,  r: 210, g: 238, b: 255, a: 255 },
+], COLORMAP);
+
+const STRONG_COLORMAP = new Uint8Array(256 * 4);
+buildColorstops([
+  { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0   },
+  { t: 0.12, r: 160, g: 45,  b: 0,   a: 140 },
+  { t: 0.4,  r: 240, g: 110, b: 10,  a: 210 },
+  { t: 0.7,  r: 255, g: 185, b: 70,  a: 245 },
+  { t: 1.0,  r: 255, g: 238, b: 210, a: 255 },
+], STRONG_COLORMAP);
+
+// ============================================================
+//  EIE HEATMAP  (Coulomb field, proton-proton pairs)
+// ============================================================
+function drawHeatmap() {
+  const protonList = particles.filter(p => p.type === 'proton');
+  if (protonList.length < 2) return;
+
+  const refEnergy = coulombStrength / (PARTICLE_RADIUS * 2);
+  const logRef    = Math.log(2);
+  const pairs     = [];
+  for (let i = 0; i < protonList.length; i++) {
+    for (let j = i + 1; j < protonList.length; j++) {
+      const a = protonList[i], b = protonList[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 0.01) continue;
+      const energy   = coulombStrength / dist;
+      const sigma    = Math.max(3.5, 28 / Math.sqrt(dist));
+      const distFade = Math.exp(-dist / 350);
+      const mag      = Math.min(1, Math.log(1 + energy / refEnergy) / logRef) * distFade;
+      const cullSq   = 16 * (sigma * 2) * (sigma * 2);
+      pairs.push({ ax: a.x, ay: a.y, ux: dx / dist, uy: dy / dist, dist, sigma, mag, cullSq });
+    }
+  }
+
+  const fullW = canvas.width, fullH = canvas.height;
+  const scale = 0.25;
+  const w = Math.ceil(fullW * scale), h = Math.ceil(fullH * scale);
+  const invScale = 1 / scale;
+  const cxH = fullW / 2, cyH = fullH / 2;
+  const zoomScale = 1.5;
+  const midX = cameraSiteX || canvas.width  / 2;
+  const midY = cameraSiteY || canvas.height / 2;
+
+  if (hmCanvas.width !== w || hmCanvas.height !== h) { hmCanvas.width = w; hmCanvas.height = h; }
+  const imageData = hmCtx.createImageData(w, h);
+  const data      = imageData.data;
+
+  for (let py = 0; py < h; py++) {
+    const worldY = midY + (py * invScale - cyH) / zoomScale;
+    for (let px = 0; px < w; px++) {
+      const worldX = midX + (px * invScale - cxH) / zoomScale;
+      let total = 0;
+      for (const p of pairs) {
+        const rx   = worldX - p.ax, ry = worldY - p.ay;
+        const para = rx * p.ux + ry * p.uy;
+        const rampPx  = 8;
+        const e1   = Math.max(0, Math.min(1, para / rampPx));
+        const e2   = Math.max(0, Math.min(1, (p.dist - para) / rampPx));
+        const endFade = e1 * e2;
+        if (endFade <= 0) continue;
+        const perpSq = Math.max(0, rx * rx + ry * ry - para * para);
+        if (perpSq > p.cullSq) continue;
+        const t      = para / p.dist;
+        const sigmaT = p.sigma * (1 + Math.sin(Math.PI * t));
+        total += p.mag * Math.exp(-perpSq / (2 * sigmaT * sigmaT)) * endFade;
+      }
+      if (total > 0.002) {
+        const magnitude = Math.min(1, total * 3.0);
+        const ci  = (magnitude * 255) | 0;
+        const di  = (py * w + px) * 4;
+        const ci4 = ci * 4;
+        data[di]     = COLORMAP[ci4];
+        data[di + 1] = COLORMAP[ci4 + 1];
+        data[di + 2] = COLORMAP[ci4 + 2];
+        data[di + 3] = COLORMAP[ci4 + 3];
+      }
+    }
+  }
+  hmCtx.putImageData(imageData, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(hmCanvas, 0, 0, fullW, fullH);
+}
+
+// ============================================================
+//  SIE HEATMAP  (strong nuclear field, all nucleon pairs)
+// ============================================================
+function drawStrongHeatmap() {
+  const n = particles.length;
+  if (n < 2) return;
+
+  const cutoff     = strongCutoff();
+  const eqDist     = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
+  const span       = cutoff - eqDist;
+  if (span <= 0) return;
+  const maxBinding = strongForceStrength * span / 2;
+
+  const pairs = [];
+  for (let i = 0; i < n; i++) {
+    if (particles[i].type === 'gamma') continue;
+    for (let j = i + 1; j < n; j++) {
+      if (particles[j].type === 'gamma') continue;
+      const a = particles[i], b = particles[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist === 0 || dist >= cutoff) continue;
+      const dr     = dist - eqDist;
+      const energy = strongForceStrength / (2 * span) * (dr * dr - span * span);
+      const mag    = Math.min(1, Math.abs(energy) / maxBinding);
+      const sigma  = Math.max(0.375, 0.0875 * dist);
+      const spread = 1.6;
+      const cullSq = 16 * (sigma * spread * 3) * (sigma * spread * 3);
+      pairs.push({ ax: a.x, ay: a.y, ux: dx / dist, uy: dy / dist, dist, sigma, mag, spread, cullSq });
+    }
+  }
+  if (pairs.length === 0) return;
+
+  const fullW = canvas.width, fullH = canvas.height;
+  const scale = 0.25;
+  const w = Math.ceil(fullW * scale), h = Math.ceil(fullH * scale);
+  const invScale = 1 / scale;
+  const cxH = fullW / 2, cyH = fullH / 2;
+  const zoomScale = 1.5;
+  const midX = cameraSiteX || canvas.width  / 2;
+  const midY = cameraSiteY || canvas.height / 2;
+
+  if (hmCanvas.width !== w || hmCanvas.height !== h) { hmCanvas.width = w; hmCanvas.height = h; }
+  const imageData = hmCtx.createImageData(w, h);
+  const data      = imageData.data;
+
+  for (let py = 0; py < h; py++) {
+    const worldY = midY + (py * invScale - cyH) / zoomScale;
+    for (let px = 0; px < w; px++) {
+      const worldX = midX + (px * invScale - cxH) / zoomScale;
+      let total = 0;
+      for (const p of pairs) {
+        const rx     = worldX - p.ax, ry = worldY - p.ay;
+        const para   = rx * p.ux + ry * p.uy;
+        const margin = (p.spread - 1) / 2 * p.dist;
+        const extDist  = p.dist * p.spread;
+        const paraExt  = para + margin;
+        const rampPx   = 8;
+        const e1       = Math.max(0, Math.min(1, paraExt / rampPx));
+        const e2       = Math.max(0, Math.min(1, (extDist - paraExt) / rampPx));
+        const endFade  = e1 * e2;
+        if (endFade <= 0) continue;
+        const perpSq   = Math.max(0, rx * rx + ry * ry - para * para);
+        if (perpSq > p.cullSq) continue;
+        const t        = paraExt / extDist;
+        const sigmaT   = p.sigma * p.spread * (1 + 2 * Math.sin(Math.PI * t));
+        total = Math.max(total, p.mag * Math.exp(-perpSq / (2 * sigmaT * sigmaT)) * endFade);
+      }
+      if (total > 0.002) {
+        const magnitude = Math.min(1, total * 3.0);
+        const ci  = (magnitude * 255) | 0;
+        const di  = (py * w + px) * 4;
+        const ci4 = ci * 4;
+        data[di]     = STRONG_COLORMAP[ci4];
+        data[di + 1] = STRONG_COLORMAP[ci4 + 1];
+        data[di + 2] = STRONG_COLORMAP[ci4 + 2];
+        data[di + 3] = STRONG_COLORMAP[ci4 + 3];
+      }
+    }
+  }
+  hmCtx.putImageData(imageData, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(hmCanvas, 0, 0, fullW, fullH);
+}
+
+// ============================================================
+//  BAR CHART
+//
+//  SIE is DERIVED from initialTotal to guarantee the Total bar
+//  stays perfectly flat throughout all phases:
+//    displaySIE = initialTotal − KE − EIE
+//
+//  This means KE and EIE are computed from actual physics; SIE
+//  is whatever is needed to make the total add up.  During
+//  approach / collision they all genuinely vary; the total
+//  stays constant by construction.
+// ============================================================
+function drawBarChart() {
+  if (particles.length === 0) return;
+  const e = computeEnergy();
+
+  const W  = 320;
+  const H  = canvas.height;
+  const gx = canvas.width - W;
+  const gy = 0;
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(10,10,26,0.92)';
+  ctx.fillRect(gx, gy, W, H);
+  ctx.strokeStyle = '#2a2a4a';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx, gy + H); ctx.stroke();
+
+  const displayKE  = e.ke;
+  const displayEIE = e.eie;
+  // Derived SIE — makes total bar always flat at initialTotal
+  const displaySIE = initialTotal - displayKE - displayEIE + sieOffset;
+  const totalVal   = initialTotal + sieOffset;
+
+  const bars = splitIE
+    ? [
+        { label: 'KE',  value: Math.max(0, displayKE),  color: '#f87171' },
+        { label: 'EIE', value: displayEIE,               color: '#818cf8' },
+        { label: 'SIE', value: displaySIE,               color: '#fb923c' },
+        { label: 'Tot', value: totalVal,                  color: '#22c55e' },
+      ]
+    : [
+        { label: 'KE',  value: Math.max(0, displayKE),  color: '#f87171' },
+        { label: 'IE',  value: displayEIE + displaySIE,  color: '#818cf8' },
+        { label: 'Tot', value: totalVal,                  color: '#22c55e' },
+      ];
+
+  const pad      = 12;
+  const labelH   = 14;
+  const controlH = 30;
+  const barW     = (W - pad * 2) / bars.length;
+  const chartH   = H - labelH - controlH - pad;
+  const baseline = gy + H - labelH - controlH;
+  const maxVal   = barYRange;
+
+  ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+
+  bars.forEach((bar, i) => {
+    const barPx = Math.max(0, (bar.value / maxVal) * chartH);
+    const x  = gx + pad + i * barW + barW * 0.1;
+    const bw = barW * 0.8;
+    ctx.fillStyle   = bar.color;
+    ctx.globalAlpha = 0.85;
+    if (bar.value >= 0) {
+      ctx.fillRect(x, baseline - barPx, bw, barPx);
+    } else {
+      ctx.fillRect(x, baseline, bw, -barPx);
+    }
+    ctx.globalAlpha = 1.0;
+    ctx.fillStyle = bar.color;
+    const labelY = Math.max(gy + 12, baseline - barPx - 4);
+    ctx.fillText(bar.value.toFixed(1), x + bw / 2, labelY);
+    ctx.fillStyle = '#9ca3af';
+    ctx.fillText(bar.label, x + bw / 2, baseline + 11);
+  });
+
+  // Zero line
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(gx, baseline); ctx.lineTo(gx + W, baseline); ctx.stroke();
+
+  // Y-axis max
+  ctx.fillStyle = '#4b5563'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText(barYRange, gx + 4, gy + 11);
+
+  // Phase label
+  const phaseColors  = { approach: '#6b7280', collision: '#fbbf24', escapeAnim: '#6ee7b7', escape: '#6ee7b7' };
+  let phaseLabel = { approach: 'Approaching', collision: 'Collision', escapeAnim: 'Escaping', escape: 'Escaping' }[collisionPhase] || '';
+  if (collisionPhase === 'approach' && isCoulombOnly()) phaseLabel = 'Coulomb Scattering';
+  ctx.fillStyle = phaseColors[collisionPhase] || '#9ca3af';
+  ctx.font      = 'bold 13px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(phaseLabel, gx + W / 2, gy + 24);
+
+  ctx.restore();
+}
+
+// ============================================================
+//  DRAW
+// ============================================================
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const midX      = cameraSiteX || canvas.width  / 2;
+  const midY      = cameraSiteY || canvas.height / 2;
+  const zoomScale = 1.5;
+  const cx        = canvas.width  / 2;
+  const cy        = canvas.height / 2;
+
+  if (showField && particles.length >= 2) {
+    drawHeatmap();
+    drawStrongHeatmap();
+  }
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(zoomScale, zoomScale);
+  ctx.translate(-midX, -midY);
+
+  for (const p of particles) {
+    if (p.type === 'gamma') {
+      // Gamma ray: bright yellow star burst
+      const r  = PARTICLE_RADIUS * 0.75;
+      const r2 = r * 0.55;
+      const gGlow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 3);
+      gGlow.addColorStop(0,   'rgba(255,255,100,0.7)');
+      gGlow.addColorStop(0.4, 'rgba(255,220,0,0.3)');
+      gGlow.addColorStop(1,   'rgba(255,200,0,0)');
+      ctx.fillStyle = gGlow;
+      ctx.beginPath(); ctx.arc(p.x, p.y, r * 3, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#ffff44'; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.95;
+      ctx.beginPath();
+      for (let k = 0; k < 16; k++) {
+        const a    = k * Math.PI / 8 - Math.PI / 2;
+        const rad  = k % 2 === 0 ? r : r2;
+        if (k === 0) ctx.moveTo(p.x + Math.cos(a) * rad, p.y + Math.sin(a) * rad);
+        else         ctx.lineTo(p.x + Math.cos(a) * rad, p.y + Math.sin(a) * rad);
+      }
+      ctx.closePath(); ctx.stroke();
+      // γ label
+      ctx.fillStyle = '#ffff88'; ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('γ', p.x, p.y + 1);
+      ctx.globalAlpha = 1.0;
+      continue;
+    }
+
+    const isProton = p.type === 'proton';
+    const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, PARTICLE_RADIUS * 2.5);
+    if (isProton) {
+      gradient.addColorStop(0, 'rgba(255, 80, 80, 0.4)');
+      gradient.addColorStop(1, 'rgba(255, 80, 80, 0)');
+    } else {
+      gradient.addColorStop(0, 'rgba(160, 160, 200, 0.3)');
+      gradient.addColorStop(1, 'rgba(160, 160, 200, 0)');
+    }
+    ctx.fillStyle = gradient;
+    ctx.beginPath(); ctx.arc(p.x, p.y, PARTICLE_RADIUS * 2.5, 0, Math.PI * 2); ctx.fill();
+
+    const g = ctx.createRadialGradient(p.x - 3, p.y - 3, 1, p.x, p.y, PARTICLE_RADIUS);
+    if (isProton) {
+      g.addColorStop(0, '#ff9999'); g.addColorStop(0.7, '#ff4444'); g.addColorStop(1, '#cc2222');
+    } else {
+      g.addColorStop(0, '#ccccdd'); g.addColorStop(0.7, '#8888aa'); g.addColorStop(1, '#666688');
+    }
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(p.x, p.y, PARTICLE_RADIUS, 0, Math.PI * 2); ctx.fill();
+
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(isProton ? '+' : 'n', p.x, p.y + 1);
+  }
+
+  ctx.restore();
+  drawBarChart();
+}
+
+// ============================================================
+//  RENDER HISTORICAL FRAME  (scrubber)
+// ============================================================
+function renderFrame(idx) {
+  const frame = particleHistory[idx];
+  if (!frame) return;
+  const liveP = particles, livePhase = collisionPhase;
+  const liveCamX = cameraSiteX, liveCamY = cameraSiteY;
+  particles      = frame.p;
+  collisionPhase = frame.collisionPhase || 'approach';
+  if (frame.camX !== undefined) { cameraSiteX = frame.camX; cameraSiteY = frame.camY; }
+  draw();
+  particles      = liveP;
+  collisionPhase = livePhase;
+  cameraSiteX    = liveCamX;  cameraSiteY = liveCamY;
+}
+
+// ============================================================
+//  LAYOUT / RESIZE
+// ============================================================
+function resize() {
+  const toolbarH = document.getElementById('toolbar').offsetHeight;
+  const scrubH   = document.getElementById('scrubBar').offsetHeight;
+  canvas.width   = window.innerWidth;
+  canvas.height  = window.innerHeight - toolbarH - scrubH;
+  if (!running) draw();
+}
+window.addEventListener('resize', resize);
+setTimeout(resize, 0);
+
+// ============================================================
+//  RESET & SETUP
+// ============================================================
+let hasRunOnce = false;
+
+function resetState() {
+  collisionPhase   = 'approach';
+  collisionFrames  = 0;
+  escapeAnimFrame  = 0;
+  escapeAnimStartPos  = null;
+  escapeAnimTargetPos = null;
+  escapeAnimStartVel  = null;
+  escapeAnimTargetVel = null;
+  particleHistory  = [];
+  scrubFrame       = -1;
+  timeSlider.value    = 0;
+  timeSlider.max      = 0;
+  timeSlider.disabled = true;
+  timeLabelEl.textContent = '–';
+}
+
+function resetAndSetup() {
+  running = false;
+  cancelAnimationFrame(animId);
+  goBtn.textContent = 'Go';
+  goBtn.classList.remove('running');
+  resetState();
+  snapshot = null;
+  replayBtn.disabled = true;
+  initialTotal = 0;
+  initialKE    = 0;
+
+  // Coulomb-only combos: cap approach speed so clusters never reach strong range.
+  if (isCoulombOnly()) {
+    const maxV = maxSafeCoulombSpeed();
+    if (approachSpeed > maxV) {
+      approachSpeed = parseFloat(maxV.toFixed(2));
+      const sl = document.getElementById('v9SpeedSlider');
+      sl.value = approachSpeed;
+      document.getElementById('v9SpeedVal').textContent = approachSpeed.toFixed(2);
+    }
+  }
+
+  setupScenario();
+  draw();
+}
+
+// ============================================================
+//  GO BUTTON
+// ============================================================
+goBtn.addEventListener('click', () => {
+  if (running) {
+    running = false;
+    goBtn.textContent = 'New';
+    goBtn.classList.remove('running');
+    cancelAnimationFrame(animId);
+  } else {
+    if (hasRunOnce) resetAndSetup();
+    else if (particles.length === 0) setupScenario();
+    hasRunOnce = true;
+    running    = true;
+    goBtn.textContent = 'Stop';
+    goBtn.classList.add('running');
+    takeSnapshot();
+    loop();
+  }
+});
+
+// ============================================================
+//  REPLAY
+// ============================================================
+replayBtn.addEventListener('click', () => {
+  if (!snapshot) return;
+  running = false;
+  cancelAnimationFrame(animId);
+  goBtn.textContent = 'Go';
+  goBtn.classList.remove('running');
+  resetState();
+  restoreSnapshot();
+  const eSnap  = computeEnergy();
+  initialTotal = eSnap.total;
+  initialKE    = eSnap.ke;
+  updateCamera();
+  draw();
+  running = true;
+  goBtn.textContent = 'Stop';
+  goBtn.classList.add('running');
+  loop();
+});
+
+// ============================================================
+//  TIME SCRUBBER
+// ============================================================
+timeSlider.addEventListener('input', () => {
+  const val = parseInt(timeSlider.value);
+  if (val >= particleHistory.length - 1) {
+    scrubFrame = -1;
+    timeLabelEl.textContent = `${particleHistory.length}`;
+  } else {
+    scrubFrame = val;
+    timeLabelEl.textContent = `${val + 1} / ${particleHistory.length}`;
+    if (!running) renderFrame(val);
+  }
+});
+
+// ============================================================
+//  CONTROLS
+// ============================================================
+document.getElementById('fieldToggle').addEventListener('change', function() {
+  showField = this.checked;
+  if (!running) draw();
+});
+document.getElementById('barYRangeSlider').addEventListener('input', function() {
+  barYRange = parseInt(this.value);
+  if (!running) { if (scrubFrame >= 0) renderFrame(scrubFrame); else draw(); }
+});
+document.getElementById('splitIEToggle').addEventListener('change', function() {
+  splitIE = this.checked;
+  if (!running) draw();
+});
+document.getElementById('sieOffsetSlider').addEventListener('input', function() {
+  sieOffset = parseInt(this.value);
+  document.getElementById('sieOffsetVal').textContent = sieOffset;
+  if (!running) draw();
+});
+document.getElementById('v9ElecSlider').addEventListener('input', function() {
+  coulombStrength = parseFloat(this.value);
+  document.getElementById('v9ElecVal').textContent = coulombStrength;
+  if (!running) draw();
+});
+document.getElementById('v9SpeedSlider').addEventListener('input', function() {
+  approachSpeed = parseFloat(this.value);
+  document.getElementById('v9SpeedVal').textContent = approachSpeed.toFixed(2);
+});
+document.getElementById('leftChoice').addEventListener('change', function() {
+  leftChoice = this.value; resetAndSetup();
+});
+document.getElementById('rightChoice').addEventListener('change', function() {
+  rightChoice = this.value; resetAndSetup();
+});
+
+// ============================================================
+//  ANIMATION LOOP
+// ============================================================
+function loop() {
+  if (!running) return;
+
+  if (scrubFrame >= 0) {
+    timeLabelEl.textContent = `${scrubFrame + 1} / ${particleHistory.length}`;
+    renderFrame(scrubFrame);
+    animId = requestAnimationFrame(loop);
+    return;
+  }
+
+  // ── ESCAPE ANIMATION  (lerp positions + cluster velocities) ───
+  if (collisionPhase === 'escapeAnim') {
+    escapeAnimFrame++;
+    const t    = escapeAnimFrame / ESCAPE_ANIM_FRAMES;
+    const ease = t * t * (3 - 2 * t); // smoothstep
+    const n    = particles.length;
+    const lSz  = leftClusterSize;
+
+    // Lerp positions toward snapped/teleported geometry
+    for (let i = 0; i < n; i++) {
+      const s   = escapeAnimStartPos[i];
+      const tgt = escapeAnimTargetPos[i];
+      particles[i].x = s.x + (tgt.x - s.x) * ease;
+      particles[i].y = s.y + (tgt.y - s.y) * ease;
+    }
+
+    // Lerp cluster velocities: smoothly rotates direction from collision-end
+    // heading toward the random escape angle — no abrupt mid-flight turn.
+    const sl = escapeAnimStartVel.lv,  tl = escapeAnimTargetVel.lv;
+    const sr = escapeAnimStartVel.rv,  tr = escapeAnimTargetVel.rv;
+    const lerpLvx = sl.vx + (tl.vx - sl.vx) * ease;
+    const lerpLvy = sl.vy + (tl.vy - sl.vy) * ease;
+    const lerpRvx = sr.vx + (tr.vx - sr.vx) * ease;
+    const lerpRvy = sr.vy + (tr.vy - sr.vy) * ease;
+    for (let i = 0;    i < lSz; i++) { particles[i].vx = lerpLvx; particles[i].vy = lerpLvy; }
+    for (let i = lSz;  i < n;   i++) { particles[i].vx = lerpRvx; particles[i].vy = lerpRvy; }
+
+    updateCamera();
+    if (escapeAnimFrame >= ESCAPE_ANIM_FRAMES) {
+      // Snap to exact final state
+      for (let i = 0; i < n; i++) {
+        particles[i].x = escapeAnimTargetPos[i].x;
+        particles[i].y = escapeAnimTargetPos[i].y;
+      }
+      for (let i = 0;    i < lSz; i++) { particles[i].vx = escapeAnimTargetVel.lv.vx; particles[i].vy = escapeAnimTargetVel.lv.vy; }
+      for (let i = lSz;  i < n;   i++) { particles[i].vx = escapeAnimTargetVel.rv.vx; particles[i].vy = escapeAnimTargetVel.rv.vy; }
+      collisionPhase = 'escape';
+    }
+
+  // ── ESCAPE  (coast: no forces, camera tracks midpoint) ────────
+  } else if (collisionPhase === 'escape') {
+    for (const p of particles) {
+      p.x += p.vx * FRAME_SPEED;
+      p.y += p.vy * FRAME_SPEED;
+    }
+    updateCamera();
+
+    // Auto-stop when all particles are off-screen
+    const zoomScale = 1.5;
+    const cx = canvas.width / 2, cy = canvas.height / 2;
+    const margin = PARTICLE_RADIUS * zoomScale * 2;
+    const allGone = particles.every(p => {
+      const sx = cx + (p.x - cameraSiteX) * zoomScale;
+      const sy = cy + (p.y - cameraSiteY) * zoomScale;
+      return sx < -margin || sx > canvas.width + margin ||
+             sy < -margin || sy > canvas.height + margin;
+    });
+    if (allGone) {
+      running = false;
+      goBtn.textContent = 'New';
+      goBtn.classList.remove('running');
+      draw();
+      return;
+    }
+
+  // ── COLLISION  (free physics for up to COLLISION_FRAMES) ──────
+  } else if (collisionPhase === 'collision') {
+    step(FRAME_SPEED);
+    collisionFrames++;
+    updateCamera();
+
+    // P+P and N+N are single particles: the meaningful collision event
+    // is the bounce itself, which happens in a few frames. Don't wait
+    // for COLLISION_FRAMES — fire escape as soon as they start separating.
+    // (Only applies to Category 1 single-particle pairs.)
+    const n2 = particles.length, lSz2 = leftClusterSize;
+    let fireEscape = (collisionFrames >= COLLISION_FRAMES);
+    if (!fireEscape && isCategory1() && lSz2 === 1 && n2 - lSz2 === 1) {
+      const dx = particles[1].x - particles[0].x;
+      const dy = particles[1].y - particles[0].y;
+      const d  = Math.sqrt(dx * dx + dy * dy);
+      if (d > 0.01) {
+        const relV = (particles[1].vx - particles[0].vx) * (dx / d) +
+                     (particles[1].vy - particles[0].vy) * (dy / d);
+        if (relV >= 0) fireEscape = true;
+      }
+    }
+
+    if (fireEscape) {
+      if      (isCategory1()) fireCategory1Escape();
+      else if (isCategory2()) fireCategory2Escape();
+      else if (isCategory3()) fireCategory3Escape();
+      escapeAnimFrame = 0;
+      collisionPhase  = 'escapeAnim';
+    }
+
+  // ── APPROACH  (rigid-cluster, stop when centroids reverse) ────
+  } else {
+    step(FRAME_SPEED);
+    lockClusterVelocities();
+    const { lcx, lcy, rcx, rcy } = updateCamera();
+
+    const cdx = rcx - lcx, cdy = rcy - lcy;
+    const cdist = Math.sqrt(cdx * cdx + cdy * cdy);
+    if (cdist > 0.01) {
+      const n = particles.length, lSize = leftClusterSize, rSize = n - lSize;
+      let lvx = 0, lvy = 0, rvx = 0, rvy = 0;
+      for (let i = 0;     i < lSize; i++) { lvx += particles[i].vx; lvy += particles[i].vy; }
+      for (let i = lSize; i < n;     i++) { rvx += particles[i].vx; rvy += particles[i].vy; }
+      lvx /= lSize;  lvy /= lSize;
+      rvx /= rSize;  rvy /= rSize;
+      const relV = (rvx - lvx) * (cdx / cdist) + (rvy - lvy) * (cdy / cdist);
+      if (relV >= 0) {
+        if (isCoulombOnly()) {
+          // Coulomb-only: no nuclear collision.  Wait until clusters are well
+          // separated (Coulomb negligible) then coast freely in escape phase.
+          if (cdist > strongCutoff() * 2.5) {
+            collisionPhase = 'escape';
+          }
+        } else {
+          collisionPhase  = 'collision';
+          collisionFrames = 0;
+        }
+      }
+    }
+  }
+
+  // ── Record history ─────────────────────────────────────────
+  particleHistory.push({
+    p: particles.map(p => ({ ...p })),
+    collisionPhase,
+    camX: cameraSiteX, camY: cameraSiteY,
+  });
+  if (particleHistory.length > MAX_HISTORY) particleHistory.shift();
+
+  timeSlider.disabled = false;
+  timeSlider.max      = particleHistory.length - 1;
+  timeSlider.value    = timeSlider.max;
+  timeLabelEl.textContent = `${particleHistory.length}`;
+
+  draw();
+  animId = requestAnimationFrame(loop);
+}
+
+// ============================================================
+//  INITIAL RENDER
+// ============================================================
+setupScenario();
+draw();
+</script>
+</body>
+</html>
