@@ -185,8 +185,8 @@
   </label>
 
   <label class="toggle-label" style="gap:6px;">
-    <span style="color:#fb923c;font-size:12px;">SIE offset: <span id="sieOffsetVal">0</span></span>
-    <input type="range" id="sieOffsetSlider" min="0" max="1000" step="1" value="0" style="width:80px;accent-color:#fb923c;">
+    <span style="color:#fb923c;font-size:12px;">SIE offset:</span>
+    <input type="number" id="sieOffsetInput" value="0" step="1" style="width:60px;background:#1a1a2e;color:#fb923c;border:1px solid #fb923c55;border-radius:4px;padding:2px 4px;font-size:12px;">
   </label>
 
   <div style="display:flex;flex-direction:column;gap:4px;">
@@ -247,6 +247,11 @@ const COLLISION_FRAMES    = 30;    // max frames of collision phase
 const ESCAPE_ANIM_FRAMES  = 5;     // frames to lerp into escape geometry
 const FRAME_SPEED         = 1.5;   // dt per frame
 
+// Photon capture (Cat3)
+const PHOTON_SPEED    = 18;        // px per frame
+const PHOTON_MAX_AGE  = 90;        // frames until fully faded
+const PN_JIGGLE_FRAMES = 25;       // P+N scripted jiggle before photon fires
+
 // ============================================================
 //  MUTABLE PARAMETERS  (slider-controlled)
 // ============================================================
@@ -274,6 +279,14 @@ let scrubFrame = -1;
 // ============================================================
 let initialTotal = 0;
 let initialKE    = 0;   // CM-frame KE at sim start — escape KE must match this exactly
+let collisionDisplayKE = null;  // frozen KE for collision phase display; null outside collision
+
+// Photon capture state
+let photon             = null;   // { x, y, vx, vy, age, maxAge }
+let photonCaptureFired = false;
+let pnJiggleFrame      = 0;
+let pnBound            = false;
+let photonEscapeFrames = 0;
 
 // ============================================================
 //  PHASE STATE
@@ -598,8 +611,7 @@ function updateCamera() {
 //  KE in CM frame (mass = 1 per nucleon), plus pairwise EIE/SIE.
 // ============================================================
 function computeEnergy() {
-  // Gamma particles carry energy out of the system and are excluded from all accounting.
-  const phys = particles.filter(p => p.type !== 'gamma');
+  const phys = particles;
   const n = phys.length;
   if (n === 0) return { ke: 0, eie: 0, sie: 0, total: 0 };
   let cmvx = 0, cmvy = 0;
@@ -963,75 +975,101 @@ function fireCategory2Escape() {
 }
 
 // ============================================================
-//  CATEGORY 3 ESCAPE  —  fusion + gamma emission
+//  CATEGORY 3 ESCAPE  —  photon capture (purple ribbon γ)
 //
-//  All reactant nucleons form a single product nucleus.
-//  A gamma "particle" (type:'gamma') is added flying the
-//  opposite direction at high speed.  Gamma is excluded from
-//  computeEnergy() so the energy bar total drops, showing
-//  the energy carried away by the photon.
-//  Product KE ≈ initialKE  (same budget as Cat1).
+//  Returns the CLUSTER_DEFS entry for the product nucleus.
 // ============================================================
-function fireCategory3Escape() {
-  const n = particles.length; // all nucleons become the product
+function getProductDef() {
   const l = leftChoice, r = rightChoice;
+  if ((l==='p'&&r==='n') || (l==='n'&&r==='p')) return CLUSTER_DEFS.d;
+  if ((l==='p'&&r==='d') || (l==='d'&&r==='p')) return [
+    { type:'proton',  x:-10, y:-6 },
+    { type:'proton',  x: 10, y:-6 },
+    { type:'neutron', x:   0, y:12 },
+  ];
+  if ((l==='n'&&r==='d') || (l==='d'&&r==='n')) return CLUSTER_DEFS.t;
+  if ((l==='p'&&r==='t') || (l==='t'&&r==='p')) return CLUSTER_DEFS.he;
+  return CLUSTER_DEFS.d; // fallback
+}
 
-  // 1. Snap product to geometry
-  if      (n === 4) snapHe4Geometry(0, n);              // P+T → He4
-  else if ((l==='n'&&r==='d')||(l==='d'&&r==='n')) snapTGeometry(0, n);   // N+D → T
-  else if ((l==='p'&&r==='d')||(l==='d'&&r==='p')) snapHe3Geometry(0, n); // P+D → He3
-  // P+N → D: 2 particles, no snap needed
+function firePhotonCapture() {
+  photonCaptureFired = true;
 
-  // 2. Product CM after snap
-  let pcx = 0, pcy = 0;
-  for (let i = 0; i < n; i++) { pcx += particles[i].x; pcy += particles[i].y; }
-  pcx /= n; pcy /= n;
+  const n = particles.length;
+  let sumVx = 0, sumVy = 0, sumX = 0, sumY = 0;
+  for (const p of particles) { sumVx += p.vx; sumVy += p.vy; sumX += p.x; sumY += p.y; }
+  const cmvx = sumVx / n, cmvy = sumVy / n;
+  const pcx = sumX / n, pcy = sumY / n;
 
-  // 3. Target positions = snapped product geometry
-  escapeAnimStartPos = particles.map(p => ({ x: p.x, y: p.y })); // snapped = start (already close after collision)
-  escapeAnimTargetPos = particles.map(p => ({ x: p.x, y: p.y }));
-  // Note: start == target for nucleons means positions don't lerp (they're already snapped).
-  // The escape-anim smoothly transitions only velocities.
-
-  // 4. System CM velocity
-  let totVx = 0, totVy = 0;
-  for (let i = 0; i < n; i++) { totVx += particles[i].vx; totVy += particles[i].vy; }
-  const cmvx = totVx / n, cmvy = totVy / n;
-
-  // 5. Product cluster CM velocity at collision-end (lerp start)
-  let lvx = 0, lvy = 0;
-  for (let i = 0; i < n; i++) { lvx += particles[i].vx; lvy += particles[i].vy; }
-  lvx /= n; lvy /= n;
-
-  // 6. Product final velocity: KE ≈ initialKE, random direction
-  const vp    = Math.sqrt(2 * Math.max(0, initialKE) / n);
+  // Photon fires in a random direction; nucleus recoils opposite.
   const theta = Math.random() * 2 * Math.PI;
-  const pVxFinal = cmvx + vp * Math.cos(theta);
-  const pVyFinal = cmvy + vp * Math.sin(theta);
+  const pnx = Math.cos(theta), pny = Math.sin(theta);
+  const pvx = cmvx - pnx * approachSpeed;
+  const pvy = cmvy - pny * approachSpeed;
 
-  // 7. Gamma: opposite direction in CM frame, high speed (visually represents light)
-  const gammaSpeedCM = Math.max(vp * 6, 5.0);
-  const gammaVxFinal = cmvx - gammaSpeedCM * Math.cos(theta);
-  const gammaVyFinal = cmvy - gammaSpeedCM * Math.sin(theta);
+  // Snap positions to product geometry centered on system CM
+  const productDef = getProductDef();
+  const sortedIdx = [...Array(n).keys()].sort((a, b) =>
+    (particles[a].type === 'proton' ? 0 : 1) - (particles[b].type === 'proton' ? 0 : 1));
+  const sortedDef = [...productDef].sort((a, b) =>
+    (a.type === 'proton' ? 0 : 1) - (b.type === 'proton' ? 0 : 1));
+  let defCx = 0, defCy = 0;
+  for (const d of sortedDef) { defCx += d.x; defCy += d.y; }
+  defCx /= n; defCy /= n;
 
-  // 8. Add gamma particle at product CM
-  particles.push({ x: pcx, y: pcy, vx: gammaVxFinal, vy: gammaVyFinal, type: 'gamma' });
-  escapeAnimStartPos.push({ x: pcx, y: pcy });
-  escapeAnimTargetPos.push({ x: pcx, y: pcy });
+  for (let i = 0; i < n; i++) {
+    const pi = sortedIdx[i];
+    particles[pi].x  = pcx + (sortedDef[i].x - defCx);
+    particles[pi].y  = pcy + (sortedDef[i].y - defCy);
+    particles[pi].vx = pvx;
+    particles[pi].vy = pvy;
+  }
 
-  leftClusterSize = n; // right "cluster" = gamma only
+  photon = { x: pcx, y: pcy, vx: pnx * PHOTON_SPEED, vy: pny * PHOTON_SPEED,
+             age: 0, maxAge: PHOTON_MAX_AGE };
 
-  // 9. Velocity lerp: product lerps from collision-end CM vel → final; gamma is immediate
-  escapeAnimStartVel  = { lv: { vx: lvx,         vy: lvy         }, rv: { vx: gammaVxFinal, vy: gammaVyFinal } };
-  escapeAnimTargetVel = { lv: { vx: pVxFinal,    vy: pVyFinal    }, rv: { vx: gammaVxFinal, vy: gammaVyFinal } };
-
-  // 10. Update energy baseline to reflect that gamma took energy away.
-  //     Compute product total at its snapped geometry + final velocity.
-  const savedVel = particles.slice(0, n).map(p => ({ vx: p.vx, vy: p.vy }));
-  for (let i = 0; i < n; i++) { particles[i].vx = pVxFinal; particles[i].vy = pVyFinal; }
+  // Update energy baseline to reflect photon carried energy away.
+  const savedVel = particles.map(p => ({ vx: p.vx, vy: p.vy }));
+  for (let i = 0; i < n; i++) { particles[i].vx = pvx; particles[i].vy = pvy; }
   const productE = computeEnergy();
   initialTotal = productE.total;
   for (let i = 0; i < n; i++) { particles[i].vx = savedVel[i].vx; particles[i].vy = savedVel[i].vy; }
+}
+
+// ============================================================
+//  PHOTON RENDERING  —  purple ribbon trail + radial glow
+// ============================================================
+function drawPhoton() {
+  if (!photon) return;
+  const fade = Math.max(0, 1 - photon.age / photon.maxAge);
+  const sp = Math.sqrt(photon.vx * photon.vx + photon.vy * photon.vy);
+  if (sp < 0.01) return;
+  const nx = photon.vx / sp, ny = photon.vy / sp;
+  const trailLen = 50;
+  const tailX = photon.x - nx * trailLen;
+  const tailY = photon.y - ny * trailLen;
+
+  const trail = ctx.createLinearGradient(tailX, tailY, photon.x, photon.y);
+  trail.addColorStop(0,    `rgba(120,0,220,0)`);
+  trail.addColorStop(0.45, `rgba(155,30,255,${(fade * 0.45).toFixed(3)})`);
+  trail.addColorStop(1,    `rgba(220,100,255,${fade.toFixed(3)})`);
+  ctx.strokeStyle = trail;
+  ctx.lineWidth = 11 * fade;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(tailX, tailY);
+  ctx.lineTo(photon.x, photon.y);
+  ctx.stroke();
+
+  const glow = ctx.createRadialGradient(photon.x, photon.y, 0, photon.x, photon.y, 22);
+  glow.addColorStop(0,    `rgba(255,230,255,${fade.toFixed(3)})`);
+  glow.addColorStop(0.35, `rgba(210,65,255,${(fade * 0.9).toFixed(3)})`);
+  glow.addColorStop(1,    `rgba(100,0,180,0)`);
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(photon.x, photon.y, 22, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.lineCap = 'butt';
 }
 
 // ============================================================
@@ -1260,7 +1298,10 @@ function drawBarChart() {
   ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx, gy + H); ctx.stroke();
 
-  const displayKE  = e.ke;
+  // During collision: freeze KE at the spike value captured at fusion onset.
+  // During escape: show actual physics KE (set by escape functions).
+  const displayKE  = (collisionPhase === 'collision' && collisionDisplayKE !== null)
+                     ? collisionDisplayKE : e.ke;
   const displayEIE = e.eie;
   // Derived SIE — makes total bar always flat at initialTotal
   const displaySIE = initialTotal - displayKE - displayEIE + sieOffset;
@@ -1350,34 +1391,9 @@ function draw() {
   ctx.scale(zoomScale, zoomScale);
   ctx.translate(-midX, -midY);
 
-  for (const p of particles) {
-    if (p.type === 'gamma') {
-      // Gamma ray: bright yellow star burst
-      const r  = PARTICLE_RADIUS * 0.75;
-      const r2 = r * 0.55;
-      const gGlow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 3);
-      gGlow.addColorStop(0,   'rgba(255,255,100,0.7)');
-      gGlow.addColorStop(0.4, 'rgba(255,220,0,0.3)');
-      gGlow.addColorStop(1,   'rgba(255,200,0,0)');
-      ctx.fillStyle = gGlow;
-      ctx.beginPath(); ctx.arc(p.x, p.y, r * 3, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#ffff44'; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.95;
-      ctx.beginPath();
-      for (let k = 0; k < 16; k++) {
-        const a    = k * Math.PI / 8 - Math.PI / 2;
-        const rad  = k % 2 === 0 ? r : r2;
-        if (k === 0) ctx.moveTo(p.x + Math.cos(a) * rad, p.y + Math.sin(a) * rad);
-        else         ctx.lineTo(p.x + Math.cos(a) * rad, p.y + Math.sin(a) * rad);
-      }
-      ctx.closePath(); ctx.stroke();
-      // γ label
-      ctx.fillStyle = '#ffff88'; ctx.font = 'bold 11px sans-serif';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('γ', p.x, p.y + 1);
-      ctx.globalAlpha = 1.0;
-      continue;
-    }
+  drawPhoton();
 
+  for (const p of particles) {
     const isProton = p.type === 'proton';
     const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, PARTICLE_RADIUS * 2.5);
     if (isProton) {
@@ -1414,15 +1430,21 @@ function draw() {
 function renderFrame(idx) {
   const frame = particleHistory[idx];
   if (!frame) return;
-  const liveP = particles, livePhase = collisionPhase;
-  const liveCamX = cameraSiteX, liveCamY = cameraSiteY;
-  particles      = frame.p;
-  collisionPhase = frame.collisionPhase || 'approach';
+  const liveP      = particles, livePhase = collisionPhase;
+  const liveCDKE   = collisionDisplayKE;
+  const liveCamX   = cameraSiteX, liveCamY = cameraSiteY;
+  const livePhoton = photon;
+  particles          = frame.p;
+  collisionPhase     = frame.collisionPhase || 'approach';
+  collisionDisplayKE = frame.collisionDisplayKE ?? null;
+  photon             = frame.photon || null;
   if (frame.camX !== undefined) { cameraSiteX = frame.camX; cameraSiteY = frame.camY; }
   draw();
-  particles      = liveP;
-  collisionPhase = livePhase;
-  cameraSiteX    = liveCamX;  cameraSiteY = liveCamY;
+  particles          = liveP;
+  collisionPhase     = livePhase;
+  collisionDisplayKE = liveCDKE;
+  photon             = livePhoton;
+  cameraSiteX        = liveCamX;  cameraSiteY = liveCamY;
 }
 
 // ============================================================
@@ -1444,13 +1466,19 @@ setTimeout(resize, 0);
 let hasRunOnce = false;
 
 function resetState() {
-  collisionPhase   = 'approach';
-  collisionFrames  = 0;
-  escapeAnimFrame  = 0;
+  collisionPhase     = 'approach';
+  collisionFrames    = 0;
+  collisionDisplayKE = null;
+  escapeAnimFrame    = 0;
   escapeAnimStartPos  = null;
   escapeAnimTargetPos = null;
   escapeAnimStartVel  = null;
   escapeAnimTargetVel = null;
+  photon             = null;
+  photonCaptureFired = false;
+  pnJiggleFrame      = 0;
+  pnBound            = false;
+  photonEscapeFrames = 0;
   particleHistory  = [];
   scrubFrame       = -1;
   timeSlider.value    = 0;
@@ -1558,9 +1586,8 @@ document.getElementById('splitIEToggle').addEventListener('change', function() {
   splitIE = this.checked;
   if (!running) draw();
 });
-document.getElementById('sieOffsetSlider').addEventListener('input', function() {
-  sieOffset = parseInt(this.value);
-  document.getElementById('sieOffsetVal').textContent = sieOffset;
+document.getElementById('sieOffsetInput').addEventListener('input', function() {
+  sieOffset = parseFloat(this.value) || 0;
   if (!running) draw();
 });
 document.getElementById('v9ElecSlider').addEventListener('input', function() {
@@ -1680,12 +1707,39 @@ function loop() {
       }
     }
 
-    if (fireEscape) {
-      if      (isCategory1()) fireCategory1Escape();
-      else if (isCategory2()) fireCategory2Escape();
-      else if (isCategory3()) fireCategory3Escape();
-      escapeAnimFrame = 0;
-      collisionPhase  = 'escapeAnim';
+    // ── Cat3 (P+N): scripted jiggle before photon fires ──────────
+    const isPN = (leftChoice==='p'&&rightChoice==='n') || (leftChoice==='n'&&rightChoice==='p');
+    if (isCategory3() && isPN && !photonCaptureFired) {
+      pnJiggleFrame++;
+      const cmx  = (particles[0].x + particles[1].x) / 2;
+      const cmy  = (particles[0].y + particles[1].y) / 2;
+      const cmvx2 = (particles[0].vx + particles[1].vx) / 2;
+      const cmvy2 = (particles[0].vy + particles[1].vy) / 2;
+      const pIdx = particles[0].type === 'proton' ? 0 : 1;
+      const nIdx = 1 - pIdx;
+      const minSep = PARTICLE_RADIUS * 2, maxSep = PARTICLE_RADIUS * 4;
+      const midSep = (minSep + maxSep) / 2;
+      const amp    = (maxSep - minSep) / 2;
+      const halfSep = (midSep + amp * Math.sin(pnJiggleFrame * 1.8)) / 2;
+      const ax = Math.SQRT1_2, ay = Math.SQRT1_2;
+      particles[pIdx].x = cmx - ax * halfSep;  particles[pIdx].y = cmy - ay * halfSep;
+      particles[nIdx].x = cmx + ax * halfSep;  particles[nIdx].y = cmy + ay * halfSep;
+      particles[0].vx = cmvx2; particles[0].vy = cmvy2;
+      particles[1].vx = cmvx2; particles[1].vy = cmvy2;
+      if (pnJiggleFrame >= PN_JIGGLE_FRAMES) {
+        firePhotonCapture();
+        collisionPhase     = 'escape';
+        collisionDisplayKE = null;
+      }
+    } else if (fireEscape) {
+      if      (isCategory1()) { fireCategory1Escape(); escapeAnimFrame = 0; collisionPhase = 'escapeAnim'; }
+      else if (isCategory2()) { fireCategory2Escape(); escapeAnimFrame = 0; collisionPhase = 'escapeAnim'; }
+      else if (isCategory3()) {
+        // Non-P+N Cat3: fire photon capture immediately
+        if (!photonCaptureFired) firePhotonCapture();
+        collisionPhase = 'escape';
+      }
+      collisionDisplayKE = null;  // unfreeze
     }
 
   // ── APPROACH  (rigid-cluster, stop when centroids reverse) ────
@@ -1712,10 +1766,36 @@ function loop() {
             collisionPhase = 'escape';
           }
         } else {
-          collisionPhase  = 'collision';
-          collisionFrames = 0;
+          collisionPhase     = 'collision';
+          collisionFrames    = 0;
+          // P+N: mark as bound immediately so scripted jiggle can start.
+          const isPN2 = (leftChoice==='p'&&rightChoice==='n') || (leftChoice==='n'&&rightChoice==='p');
+          if (isPN2) { pnBound = true; pnJiggleFrame = 0; }
+          // Freeze KE at the spike value: max of initial KE and actual physics KE at fusion moment.
+          // The strong-force binding drops SIE and converts it to KE — capture that spike here.
+          collisionDisplayKE = Math.max(initialKE, computeEnergy().ke);
         }
       }
+    }
+  }
+
+  // ── Advance photon every live frame ──────────────────────────
+  if (photon) {
+    photon.x += photon.vx;
+    photon.y += photon.vy;
+    photon.age++;
+    if (photon.age > photon.maxAge) photon = null;
+  }
+
+  // ── Auto-stop for photon-capture reactions ────────────────────
+  if (collisionPhase === 'escape' && photonCaptureFired && !photon) {
+    photonEscapeFrames++;
+    if (photonEscapeFrames > 90) {
+      running = false;
+      goBtn.textContent = 'New';
+      goBtn.classList.remove('running');
+      draw();
+      return;
     }
   }
 
@@ -1723,6 +1803,8 @@ function loop() {
   particleHistory.push({
     p: particles.map(p => ({ ...p })),
     collisionPhase,
+    collisionDisplayKE,
+    photon: photon ? { ...photon } : null,
     camX: cameraSiteX, camY: cameraSiteY,
   });
   if (particleHistory.length > MAX_HISTORY) particleHistory.shift();
