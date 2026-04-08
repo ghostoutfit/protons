@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zn-80 Nucleus — v10</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a1a;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  #tabBar {
+    display: flex;
+    background: #0d0d22;
+    border-bottom: 1px solid #2a2a4a;
+    flex-shrink: 0;
+  }
+  .tab-btn {
+    padding: 8px 22px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #6b7280;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .tab-btn:hover { color: #c0c0e0; }
+  .tab-btn.active { color: #a5b4fc; border-bottom-color: #6366f1; }
+  #staticControls, #animControls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 8px 20px;
+    background: #12122a;
+    border-bottom: 1px solid #2a2a4a;
+    flex-shrink: 0;
+  }
+  #staticControls h1 {
+    font-size: 15px;
+    font-weight: 600;
+    color: #f87171;
+    white-space: nowrap;
+    margin-right: 6px;
+  }
+  .toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #9ca3af;
+    cursor: pointer;
+    user-select: none;
+  }
+  .toggle-label input[type=checkbox] { accent-color: #6366f1; width: 15px; height: 15px; cursor: pointer; }
+  #animControls { gap: 12px; }
+  #animControls .scrub-label { font-size: 12px; color: #6b7280; white-space: nowrap; }
+  #animSlider { flex: 1; accent-color: #6366f1; }
+  #animPct { font-size: 12px; color: #6b7280; min-width: 4em; text-align: right; font-variant-numeric: tabular-nums; }
+  #playBtn {
+    padding: 4px 14px; font-size: 12px; font-weight: 500;
+    background: #1e1e40; color: #a5b4fc; border: 1px solid #4444aa;
+    border-radius: 4px; cursor: pointer;
+  }
+  #playBtn:hover { background: #2a2a55; }
+  #goBtn {
+    padding: 5px 18px; font-size: 13px; font-weight: 600;
+    background: #22c55e; color: #fff; border: none;
+    border-radius: 5px; cursor: pointer; transition: background 0.15s;
+  }
+  #goBtn:hover { background: #16a34a; }
+  #goBtn.reset { background: #ef4444; }
+  #goBtn.reset:hover { background: #dc2626; }
+  #canvasWrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  canvas { display: block; flex: 1; min-height: 0; }
+  #staticScrubBar {
+    display: none;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 20px;
+    background: #0e0e22;
+    border-top: 1px solid #2a2a4a;
+    flex-shrink: 0;
+  }
+  #staticScrubBar.visible { display: flex; }
+  #staticScrubBar .scrub-label { font-size: 12px; color: #6b7280; white-space: nowrap; }
+  #staticSlider { flex: 1; accent-color: #6366f1; }
+  #staticPct { font-size: 12px; color: #6b7280; min-width: 4em; text-align: right; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div id="tabBar">
+  <button class="tab-btn"        id="tabStatic">Static View</button>
+  <button class="tab-btn active" id="tabFission">Fission Animation</button>
+</div>
+<div id="staticControls" style="display:none">
+  <button id="goBtn">Go</button>
+  <label class="toggle-label" style="gap:6px;">
+    Speed <span id="neutronSpeedVal">1.0×</span>
+    <input type="range" id="neutronSpeed" min="0.2" max="4.0" step="0.1" value="1.0"
+           style="width:72px;accent-color:#6366f1;">
+  </label>
+  <label class="toggle-label">
+    <input type="checkbox" id="showElectric">
+    <span style="color:#7dd3fc">Electric field</span>
+  </label>
+  <label class="toggle-label">
+    <input type="checkbox" id="showOutline">
+    <span>Outline</span>
+  </label>
+</div>
+<div id="animControls">
+  <span class="scrub-label">Fission progress</span>
+  <button id="playBtn">&#9654; Play</button>
+  <input type="range" id="animSlider" min="0" max="1000" value="0">
+  <span id="animPct">0%</span>
+  <label class="toggle-label" style="margin-left:12px">
+    <input type="checkbox" id="animShowElectric" checked>
+    <span style="color:#7dd3fc">Electric field</span>
+  </label>
+  <label class="toggle-label">
+    <input type="checkbox" id="animShowOutline">
+    <span>Outline</span>
+  </label>
+  <label class="toggle-label" style="margin-left:12px">
+    <input type="checkbox" id="slowMo">
+    <span>Slow mo</span>
+  </label>
+</div>
+<div id="canvasWrap">
+  <canvas id="canvas"></canvas>
+  <div id="staticScrubBar">
+    <span class="scrub-label">Fission progress</span>
+    <input type="range" id="staticSlider" min="0" max="1000" value="0">
+    <span id="staticPct">0%</span>
+  </div>
+</div>
+
+<script>
+// ─── Constants ────────────────────────────────────────────────────────────────
+const PARTICLE_RADIUS     = 10;
+const coulombStrength     = 150;
+const strongForceStrength = 4;
+const strongForceRange    = 2.0;
+const equilibriumRatio    = 0.35;
+
+const ZOOM = 2.0;
+// [nProtons, nNeutrons]: parent nucleus + two fission products (0.6 / 0.4 split)
+const NUCLEUS_CONFIGS = [
+  [78, 172],  // parent  — 250 total, 1:2.2 ratio
+  [47, 103],  // product — 150 total (0.6×)
+  [31,  69],  // product — 100 total (0.4×)
+];
+let nuclei = [];
+
+function strongCutoff() { return PARTICLE_RADIUS * 2 * strongForceRange; }
+
+// ─── Canvas ───────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx    = canvas.getContext('2d');
+
+// ─── Heatmap buffers (v8 style) ───────────────────────────────────────────────
+const hmCanvas    = document.createElement('canvas');
+const hmCtx       = hmCanvas.getContext('2d');
+const hmComposite = document.createElement('canvas');
+const hmcCtx      = hmComposite.getContext('2d');
+
+let hmW = 0, hmH = 0;
+let hmDataElec = null;
+let hmImgElec  = null;
+let heatmapDirty = true;
+let sphereR = 0;   // world-space sphere radius, set in generateParticles
+
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight - canvas.getBoundingClientRect().top;
+  heatmapDirty  = true;
+}
+resize();
+window.addEventListener('resize', () => {
+  resize();
+  if (neutronRAF2) { cancelAnimationFrame(neutronRAF2); neutronRAF2 = null; }
+  neutronState = 'idle';
+  animParent = null; animProd1 = null; animProd2 = null; animMap = [];
+  initAnimation();
+  heatmapDirty = true;
+  if (currentTab === 'static') drawStaticFrame();
+  else drawAnimFrame(currentAnimT());
+});
+
+function ensureHmBuffers(w, h) {
+  if (hmW === w && hmH === h) return;
+  hmW = w; hmH = h;
+  hmCanvas.width    = w; hmCanvas.height = h;
+  hmDataElec = new Uint8ClampedArray(w * h * 4);
+  hmImgElec  = new ImageData(hmDataElec, w, h);
+}
+
+// ─── Colormaps (v8 style) ─────────────────────────────────────────────────────
+function buildColorstops(stops, out) {
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    let s0 = stops[0], s1 = stops[1];
+    for (let s = 0; s < stops.length - 1; s++) {
+      if (t >= stops[s].t && t <= stops[s+1].t) { s0 = stops[s]; s1 = stops[s+1]; break; }
+    }
+    const f   = (s1.t === s0.t) ? 0 : (t - s0.t) / (s1.t - s0.t);
+    const idx = i * 4;
+    out[idx]   = s0.r + (s1.r - s0.r) * f;
+    out[idx+1] = s0.g + (s1.g - s0.g) * f;
+    out[idx+2] = s0.b + (s1.b - s0.b) * f;
+    out[idx+3] = s0.a + (s1.a - s0.a) * f;
+  }
+}
+
+const COLORMAP = new Uint8Array(256 * 4);
+buildColorstops([
+  { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0   },
+  { t: 0.12, r: 10,  g: 35,  b: 170, a: 140 },
+  { t: 0.4,  r: 25,  g: 85,  b: 235, a: 210 },
+  { t: 0.7,  r: 70,  g: 165, b: 255, a: 245 },
+  { t: 1.0,  r: 210, g: 238, b: 255, a: 255 },
+], COLORMAP);
+
+
+// ─── Particle generation — 3D sphere packing ─────────────────────────────────
+// Returns { particles, sphereR, cx, cy }
+function generateNucleus(nProtons, nNeutrons, cx, cy) {
+  const nTotal = nProtons + nNeutrons;
+
+  const packFrac = 0.62;
+  const vol      = nTotal * (4/3 * Math.PI * PARTICLE_RADIUS ** 3) / packFrac;
+  const sphereR  = Math.cbrt(vol * 3 / (4 * Math.PI)) * 1.05;
+
+  const minDist   = PARTICLE_RADIUS * 2.08;
+  const minDistSq = minDist * minDist;
+
+  // Rejection-sample uniform points inside the sphere
+  const pts = [];
+  for (let i = 0; i < nTotal; i++) {
+    let placed = false;
+    for (let attempt = 0; attempt < 8000; attempt++) {
+      const r   = sphereR * Math.cbrt(Math.random());
+      const th  = Math.acos(2 * Math.random() - 1);
+      const phi = 2 * Math.PI * Math.random();
+      const lx  = r * Math.sin(th) * Math.cos(phi);
+      const ly  = r * Math.sin(th) * Math.sin(phi);
+      const lz  = r * Math.cos(th);
+      let ok = true;
+      for (const p of pts) {
+        const dx = p.lx-lx, dy = p.ly-ly, dz = p.lz-lz;
+        if (dx*dx + dy*dy + dz*dz < minDistSq) { ok = false; break; }
+      }
+      if (ok) { pts.push({ lx, ly, lz }); placed = true; break; }
+    }
+    if (!placed) pts.push({ lx: 0, ly: 0, lz: 0 });
+  }
+
+  // 3D adjacency graph for proton-avoidance
+  const adjThresh2 = (PARTICLE_RADIUS * 2.9) ** 2;
+  const adj = Array.from({ length: nTotal }, () => []);
+  for (let i = 0; i < nTotal; i++) {
+    for (let j = i+1; j < nTotal; j++) {
+      const dx = pts[i].lx-pts[j].lx, dy = pts[i].ly-pts[j].ly, dz = pts[i].lz-pts[j].lz;
+      if (dx*dx + dy*dy + dz*dz < adjThresh2) { adj[i].push(j); adj[j].push(i); }
+    }
+  }
+
+  // Greedy proton placement — fewest proton neighbors first
+  const types         = new Array(nTotal).fill('neutron');
+  const protonNbCount = new Array(nTotal).fill(0);
+  const order         = Array.from({ length: nTotal }, (_, i) => i).sort(() => Math.random() - 0.5);
+  let placed = 0;
+  for (let priority = 0; priority <= 6 && placed < nProtons; priority++) {
+    for (const i of order) {
+      if (placed >= nProtons) break;
+      if (types[i] === 'proton' || protonNbCount[i] !== priority) continue;
+      types[i] = 'proton';
+      placed++;
+      for (const nb of adj[i]) protonNbCount[nb]++;
+    }
+  }
+
+  const particles = pts.map((p, i) => ({
+    x: cx + p.lx, y: cy + p.ly, z: p.lz, type: types[i],
+  }));
+
+  return { particles, sphereR, cx, cy };
+}
+
+// ─── Electric field heatmap — v8 pixel-ribbon algorithm ──────────────────────
+// zoom: canvas zoom factor (ZOOM for static tab, 1 for animation tab)
+// sampleFrac: fraction of protons to use (1 = all, 0.5 = random 50%)
+function drawElectricHeatmap(particleList, zoom = ZOOM, sampleFrac = 1.0, sigmaScale = 1.0) {
+  const fullW = canvas.width, fullH = canvas.height;
+
+  if (!heatmapDirty &&
+      hmComposite.width === fullW && hmComposite.height === fullH) {
+    ctx.drawImage(hmComposite, 0, 0);
+    return;
+  }
+
+  const scale    = 0.25;
+  const w        = Math.ceil(fullW * scale);
+  const h        = Math.ceil(fullH * scale);
+  const invScale = 1 / scale;
+  const cxH = fullW / 2, cyH = fullH / 2;
+
+  // Filter to on-screen protons, then optionally subsample
+  let protons = particleList.filter(p =>
+    p.type === 'proton' &&
+    p.x > -50 && p.x < fullW + 50 && p.y > -50 && p.y < fullH + 50
+  );
+  if (sampleFrac < 1.0) {
+    protons = protons.filter((_, i) => i % Math.round(1 / sampleFrac) === 0);
+  }
+
+  const refEnergy = coulombStrength / (PARTICLE_RADIUS * 2);
+  const logRef    = Math.log(2);
+  const elecPairs = [];
+  for (let i = 0; i < protons.length; i++) {
+    for (let j = i+1; j < protons.length; j++) {
+      const a = protons[i], b = protons[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < 0.01) continue;
+      const energy   = coulombStrength / dist;
+      const sigma    = Math.max(3.5, 28 / Math.sqrt(dist)) * sigmaScale;  // v8 values
+      const distFade = Math.exp(-dist / 350);
+      const mag      = Math.min(1, Math.log(1 + energy / refEnergy) / logRef) * distFade;
+      const cullSq   = 16 * (sigma*2) * (sigma*2);
+      elecPairs.push({ ax: a.x, ay: a.y, ux: dx/dist, uy: dy/dist, dist, sigma, mag, cullSq });
+    }
+  }
+  if (elecPairs.length === 0) return;
+
+  ensureHmBuffers(w, h);
+  hmDataElec.fill(0);
+
+  for (let py = 0; py < h; py++) {
+    const worldY = (py * invScale - cyH) / zoom + cyH;
+    for (let px = 0; px < w; px++) {
+      const worldX = (px * invScale - cxH) / zoom + cxH;
+      let total = 0;
+      for (let k = 0; k < elecPairs.length; k++) {
+        const p    = elecPairs[k];
+        const rx   = worldX - p.ax, ry = worldY - p.ay;
+        const para = rx*p.ux + ry*p.uy;
+        const e1   = para > 0 ? Math.min(1, para/8) : 0;
+        const e2   = para < p.dist ? Math.min(1, (p.dist-para)/8) : 0;
+        const ef   = e1 * e2;
+        if (ef <= 0) continue;
+        const perpSq = Math.max(0, rx*rx + ry*ry - para*para);
+        if (perpSq > p.cullSq) continue;
+        const t      = para / p.dist;
+        const sigmaT = p.sigma * (1 + Math.sin(Math.PI * t));
+        total += p.mag * Math.exp(-perpSq / (2*sigmaT*sigmaT)) * ef;
+      }
+      if (total > 0.002) {
+        const ci = Math.min(255, (total * 3.0 * 255)|0);
+        const c4 = ci * 4;
+        const di = (py * w + px) * 4;
+        hmDataElec[di]   = COLORMAP[c4];   hmDataElec[di+1] = COLORMAP[c4+1];
+        hmDataElec[di+2] = COLORMAP[c4+2]; hmDataElec[di+3] = COLORMAP[c4+3];
+      }
+    }
+  }
+
+  if (hmComposite.width !== fullW || hmComposite.height !== fullH) {
+    hmComposite.width = fullW; hmComposite.height = fullH;
+  }
+  hmcCtx.clearRect(0, 0, fullW, fullH);
+  hmcCtx.imageSmoothingEnabled = true;
+  hmcCtx.imageSmoothingQuality = 'high';
+  hmCtx.putImageData(hmImgElec, 0, 0);
+  hmcCtx.drawImage(hmCanvas, 0, 0, fullW, fullH);
+  ctx.drawImage(hmComposite, 0, 0);
+  heatmapDirty = false;
+}
+
+// ─── Cloud outline — evenly-spaced scallop circles on a ring ─────────────────
+// Draws a single closed path: N circles of radius R placed around a ring at
+// sphereR from (cx,cy). Consecutive circles overlap; we trace each circle's
+// outer arc (the bit facing away from centre) and chain them into one loop.
+
+function outerIntersection(c1, c2, R, ncx, ncy) {
+  // Returns the intersection point of two equal circles (radius R) that is
+  // farther from the nucleus centre (ncx, ncy).
+  const dx = c2.x - c1.x, dy = c2.y - c1.y;
+  const d  = Math.sqrt(dx * dx + dy * dy);
+  const h  = Math.sqrt(Math.max(0, R * R - (d / 2) * (d / 2)));
+  const mx = (c1.x + c2.x) / 2, my = (c1.y + c2.y) / 2;
+  const px = -dy / d * h,  py =  dx / d * h;
+  const p1 = { x: mx + px, y: my + py };
+  const p2 = { x: mx - px, y: my - py };
+  const d1 = (p1.x - ncx) ** 2 + (p1.y - ncy) ** 2;
+  const d2 = (p2.x - ncx) ** 2 + (p2.y - ncy) ** 2;
+  return d1 > d2 ? p1 : p2;
+}
+
+function drawCloudOutline(cx, cy, sphereR) {
+  const R = PARTICLE_RADIUS;
+  // Pack circles tightly around the ring — spacing ≈ 1.5R gives good overlap
+  const N = Math.max(6, Math.round(2 * Math.PI * sphereR / (R * 1.5)));
+
+  const centers = Array.from({ length: N }, (_, k) => {
+    const a = k * 2 * Math.PI / N;
+    return { x: cx + sphereR * Math.cos(a), y: cy + sphereR * Math.sin(a) };
+  });
+
+  // For each circle k: find outer intersections with neighbours → arc endpoints
+  const arcs = centers.map((c, k) => {
+    const prev = centers[(k - 1 + N) % N];
+    const next = centers[(k + 1)     % N];
+    const sp   = outerIntersection(c, prev, R, cx, cy);
+    const ep   = outerIntersection(c, next, R, cx, cy);
+    return {
+      cx: c.x, cy: c.y,
+      startAngle: Math.atan2(sp.y - c.y, sp.x - c.x),
+      endAngle:   Math.atan2(ep.y - c.y, ep.x - c.x),
+    };
+  });
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(100,180,255,0.7)';
+  ctx.shadowBlur  = 14;
+  ctx.strokeStyle = 'rgba(140,200,255,0.9)';
+  ctx.lineWidth   = 2.5;
+  ctx.beginPath();
+
+  // Kick off at the start of arc 0
+  ctx.moveTo(arcs[0].cx + R * Math.cos(arcs[0].startAngle),
+             arcs[0].cy + R * Math.sin(arcs[0].startAngle));
+
+  for (const arc of arcs) {
+    // Outer scallop arc — counterclockwise (true) traces the outward bump
+    ctx.arc(arc.cx, arc.cy, R, arc.startAngle, arc.endAngle, false);
+  }
+
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ─── Fission outline — union-of-two-circles scalloped boundary ───────────────
+// Samples N points along the outer boundary of two overlapping circles, places
+// scallop circles there, and chains them into one closed mitosis-shaped path.
+// When circles separate it switches to two independent cloud outlines.
+
+function sampleUnionBoundary(cx1, cy1, r1, cx2, cy2, r2) {
+  const R = PARTICLE_RADIUS;
+  const ddx = cx2 - cx1, ddy = cy2 - cy1;
+  const d = Math.sqrt(ddx * ddx + ddy * ddy);
+  const frame = Math.atan2(ddy, ddx);  // axis from c1 → c2
+
+  // Degenerate: circles nearly identical — treat as single blob
+  if (d < 1) {
+    const avgR = (r1 + r2) / 2;
+    const N = Math.max(6, Math.round(2 * Math.PI * avgR / (R * 1.5)));
+    return Array.from({ length: N }, (_, k) => {
+      const a = k * 2 * Math.PI / N;
+      return { x: cx1 + avgR * Math.cos(a), y: cy1 + avgR * Math.sin(a),
+               refCx: cx1, refCy: cy1 };
+    });
+  }
+
+  // Intersection geometry in rotated frame (c1 at origin, c2 along +x at distance d)
+  const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d);
+  const h = Math.sqrt(Math.max(0, r1 * r1 - a * a));
+  if (h < 1) return null;
+
+  const r1bot = Math.atan2(-h, a); const r1top = Math.atan2(h, a);
+  let span1 = r1top - r1bot; if (span1 <= 0) span1 += 2 * Math.PI;
+
+  const r2top = Math.atan2(h, a - d); const r2bot = Math.atan2(-h, a - d);
+  let span2 = r2bot - r2top; if (span2 <= 0) span2 += 2 * Math.PI;
+
+  const len1 = span1 * r1, len2 = span2 * r2;
+  const n1 = Math.max(3, Math.round(len1 / (R * 1.5)));
+  const n2 = Math.max(3, Math.round(len2 / (R * 1.5)));
+
+  const pts = [];
+  for (let k = 0; k < n1; k++) {
+    const wa = frame + r1bot + (k / n1) * span1;
+    pts.push({ x: cx1 + r1 * Math.cos(wa), y: cy1 + r1 * Math.sin(wa), refCx: cx1, refCy: cy1 });
+  }
+  for (let k = 0; k < n2; k++) {
+    const wa = frame + r2top + (k / n2) * span2;
+    pts.push({ x: cx2 + r2 * Math.cos(wa), y: cy2 + r2 * Math.sin(wa), refCx: cx2, refCy: cy2 });
+  }
+  return pts;
+}
+
+function drawFissionOutline(cx1, cy1, r1, cx2, cy2, r2) {
+  const R = PARTICLE_RADIUS;
+  const d = Math.sqrt((cx2-cx1)**2 + (cy2-cy1)**2);
+
+  // Circles fully separated — draw two independent clouds
+  if (d >= r1 + r2) {
+    drawCloudOutline(cx1, cy1, r1);
+    drawCloudOutline(cx2, cy2, r2);
+    return;
+  }
+
+  const pts = sampleUnionBoundary(cx1, cy1, r1, cx2, cy2, r2);
+  if (!pts) { drawCloudOutline(cx1, cy1, r1); drawCloudOutline(cx2, cy2, r2); return; }
+  const N = pts.length;
+
+  // Build scallop arcs — outer intersection uses each point's parent circle centre
+  const arcs = pts.map((c, k) => {
+    const prev = pts[(k - 1 + N) % N];
+    const next = pts[(k + 1)     % N];
+    const sp   = outerIntersection(c, prev, R, c.refCx, c.refCy);
+    const ep   = outerIntersection(c, next, R, c.refCx, c.refCy);
+    return {
+      cx: c.x, cy: c.y,
+      startAngle: Math.atan2(sp.y - c.y, sp.x - c.x),
+      endAngle:   Math.atan2(ep.y - c.y, ep.x - c.x),
+    };
+  });
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(100,180,255,0.7)';
+  ctx.shadowBlur  = 14;
+  ctx.strokeStyle = 'rgba(140,200,255,0.9)';
+  ctx.lineWidth   = 2.5;
+  ctx.beginPath();
+
+  ctx.moveTo(arcs[0].cx + R * Math.cos(arcs[0].startAngle),
+             arcs[0].cy + R * Math.sin(arcs[0].startAngle));
+  for (const arc of arcs) {
+    ctx.arc(arc.cx, arc.cy, R, arc.startAngle, arc.endAngle, false);
+  }
+
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ─── Particle drawing — depth-sorted, depth-shaded ───────────────────────────
+function drawParticles(nucleus) {
+  const { particles } = nucleus;
+  const sorted = particles.slice().sort((a, b) => a.z - b.z);
+
+  ctx.save();
+  for (const p of sorted) {
+    const r        = PARTICLE_RADIUS;
+    const isProton = p.type === 'proton';
+    ctx.globalAlpha = 1.0;
+    const hx = p.x - r * 0.3, hy = p.y - r * 0.3;
+    const g  = ctx.createRadialGradient(hx, hy, r * 0.08, p.x, p.y, r);
+    if (isProton) {
+      g.addColorStop(0, '#ff9999'); g.addColorStop(0.7, '#ff4444'); g.addColorStop(1, '#cc2222');
+    } else {
+      g.addColorStop(0, '#ccccdd'); g.addColorStop(0.7, '#8888aa'); g.addColorStop(1, '#666688');
+    }
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
+    if (r > 6) {
+      ctx.fillStyle = '#fff';
+      ctx.font = `bold ${Math.round(r * 1.15)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(isProton ? '+' : 'n', p.x, p.y + 1);
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+// ─── Static tab — neutron state machine ───────────────────────────────────────
+let neutronState    = 'idle';  // 'idle' | 'flying' | 'fission' | 'done'
+let neutronX        = 0;
+let neutronY        = 0;
+let neutronLast     = 0;
+let neutronRAF2     = null;
+let staticFissStart = 0;
+let staticFissT     = 0;
+let staticFissAngle = 0;   // random fission angle (±90° from horizontal)
+let staticNeutronIX = 0;   // impact point (where neutron sticks)
+let staticNeutronIY = 0;
+
+function drawNeutronParticle(x, y) {
+  const R = PARTICLE_RADIUS;
+  const grad = ctx.createRadialGradient(x - R*0.3, y - R*0.3, R*0.1, x, y, R);
+  grad.addColorStop(0, '#d4d4e8');
+  grad.addColorStop(1, '#4a4a6a');
+  ctx.beginPath();
+  ctx.arc(x, y, R, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+}
+
+function drawStuckNeutron(t) {
+  const amp = PARTICLE_RADIUS * 0.55;
+  const nx = staticNeutronIX + amp * (Math.sin(t*157+1.73)*0.45 + Math.sin(t*241+3.07)*0.35 + Math.sin(t*389+5.31)*0.20);
+  const ny = staticNeutronIY + amp * (Math.sin(t*179+2.39)*0.45 + Math.sin(t*263+4.13)*0.35 + Math.sin(t*421+6.71)*0.20);
+  drawNeutronParticle(nx, ny);
+}
+
+function drawStaticFrame() {
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (!animParent) return;
+
+  if (neutronState === 'fission' || neutronState === 'done') {
+    drawAnimFrame(staticFissT, 'showElectric', 'showOutline', staticFissAngle);
+    if (staticFissT <= PH2_END) drawStuckNeutron(staticFissT);
+    return;
+  }
+
+  // idle or flying: show static parent nucleus
+  const showElec      = document.getElementById('showElectric').checked;
+  const showOutlineOn = document.getElementById('showOutline').checked;
+  if (showElec) drawElectricHeatmap(animParent.particles, 1, 0.5);
+  if (showOutlineOn) drawCloudOutline(animParent.cx, animParent.cy, animParent.sphereR);
+  else               drawParticleList(animParent.particles);
+
+  if (neutronState === 'flying') drawNeutronParticle(neutronX, neutronY);
+}
+
+function neutronTick(now) {
+  if (currentTab !== 'static' || neutronState !== 'flying') return;
+  const dt    = neutronLast ? now - neutronLast : 16;
+  neutronLast = now;
+  const speed = parseFloat(document.getElementById('neutronSpeed').value);
+  neutronX   += speed * 0.25 * dt;
+
+  if (neutronX + PARTICLE_RADIUS >= animParent.cx - animParent.sphereR) {
+    // Snap neutron to surface; pick random fission angle; start jiggle immediately
+    staticNeutronIX = animParent.cx - animParent.sphereR * 0.85;
+    staticNeutronIY = animParent.cy;
+    staticFissAngle = (Math.random() - 0.5) * Math.PI;  // ±90° from horizontal
+    neutronState    = 'fission';
+    staticFissStart = now;
+    staticFissT     = PH1_END;  // skip still phase — enter jiggle immediately
+    document.getElementById('goBtn').textContent = 'Reset';
+    document.getElementById('staticScrubBar').classList.add('visible');
+    document.getElementById('staticSlider').value = 0;
+    document.getElementById('staticPct').textContent = '0%';
+    neutronRAF2 = requestAnimationFrame(staticFissionTick);
+    return;
+  }
+
+  drawStaticFrame();
+  neutronRAF2 = requestAnimationFrame(neutronTick);
+}
+
+function staticFissionTick(now) {
+  if (currentTab !== 'static' || neutronState !== 'fission') return;
+  const elapsed = now - staticFissStart;
+  const range   = ANIM_T_END - PH1_END;
+  staticFissT   = PH1_END + Math.min(1, elapsed / NORMAL_DURATION) * range;
+  const frac    = (staticFissT - PH1_END) / range;
+  document.getElementById('staticSlider').value = Math.round(frac * 1000);
+  document.getElementById('staticPct').textContent = Math.round(frac * 100) + '%';
+  drawAnimFrame(staticFissT, 'showElectric', 'showOutline', staticFissAngle);
+  if (staticFissT <= PH2_END) drawStuckNeutron(staticFissT);
+  if (staticFissT < ANIM_T_END) {
+    neutronRAF2 = requestAnimationFrame(staticFissionTick);
+  } else {
+    neutronState = 'done';
+    document.getElementById('goBtn').textContent = 'Go';
+    document.getElementById('goBtn').classList.remove('reset');
+  }
+}
+
+// ─── Animation state ──────────────────────────────────────────────────────────
+let animParent       = null;
+let animProd1        = null;
+let animProd2        = null;
+let repulsionCurve   = null;   // pre-computed Coulomb trajectory for phase 3
+let animMap    = [];
+let animPlaying  = false;
+let animRAF      = null;
+let animStartTime = 0;
+
+// Phase boundaries (t = 0..1)
+const PH1_END = 0.30;    // still ends
+const PH2_END = 0.375;   // shake ends (25% of old 0.30-wide shake = 0.075 wide)
+// phase 3: 0.375 → 1.0  (separation)
+
+// Visible window: slider covers only this sub-range of t
+// Phase 3 shoot clears screen at sepT≈0.15 → t ≈ 0.375 + 0.15*(1-0.375) ≈ 0.469
+const ANIM_T_START = 0.27;   // just before still→shake transition
+const ANIM_T_END   = 0.47;   // just after products clear screen
+const ANIM_RANGE   = ANIM_T_END - ANIM_T_START;
+
+// Normal playback: ~2s for the visible window. Slow-mo: 10× that.
+const NORMAL_DURATION = 2000;   // ms
+const SLOWMO_DURATION = NORMAL_DURATION * 10;  // 20 000 ms
+
+function currentDuration() {
+  return document.getElementById('slowMo').checked ? SLOWMO_DURATION : NORMAL_DURATION;
+}
+
+// slider fraction [0,1] ↔ animT [ANIM_T_START, ANIM_T_END]
+function sliderFracToAnimT(frac) { return ANIM_T_START + frac * ANIM_RANGE; }
+function animTToSliderFrac(animT) { return (animT - ANIM_T_START) / ANIM_RANGE; }
+
+function animTFromElapsed(ms) {
+  return sliderFracToAnimT(Math.min(1, ms / currentDuration()));
+}
+function elapsedFromAnimT(animT) {
+  return animTToSliderFrac(animT) * currentDuration();
+}
+
+// Coulomb repulsion trajectory: F ∝ Z1·Z2/r², integrated from rest at contact.
+// Gives fast initial burst settling to ~constant velocity — physically accurate.
+function precomputeRepulsionCurve(steps = 600) {
+  const Z1 = 47, Z2 = 31;
+  const mu = (150 * 100) / (150 + 100);  // reduced mass ≈ 60
+  const C  = Z1 * Z2;                     // 1457
+  let r = 1.0, v = 0.0;
+  const totalT = 10.0;
+  const dt = totalT / steps;
+  const rv = [r];
+  for (let i = 0; i < steps; i++) {
+    v += (C / (mu * r * r)) * dt;
+    r += v * dt;
+    rv.push(r);
+  }
+  const r0 = rv[0], rEnd = rv[steps];
+  return rv.map(x => (x - r0) / (rEnd - r0));
+}
+
+function initAnimation() {
+  const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2;
+
+  animParent = generateNucleus(78, 172, cx, cy);
+  animProd1  = generateNucleus(47, 103, W * 0.25, cy);
+  animProd2        = generateNucleus(31,  69, W * 0.75, cy);
+  repulsionCurve   = precomputeRepulsionCurve();
+
+  // Separate parent protons and neutrons by x-position so each product
+  // gets the right p:n ratio (no clustering of one type on one side).
+  const byX = (type) => animParent.particles
+    .map((p, i) => ({ i, x: p.x }))
+    .filter(({i}) => animParent.particles[i].type === type)
+    .sort((a, b) => a.x - b.x);
+
+  const parentP = byX('proton');    // 78, sorted left→right
+  const parentN = byX('neutron');   // 172, sorted left→right
+
+  const toIdx = (prod, type) => prod.particles
+    .map((p, i) => ({ i, x: p.x }))
+    .filter(({i}) => prod.particles[i].type === type)
+    .sort((a, b) => a.x - b.x)
+    .map(({i}) => i);
+
+  const p1P = toIdx(animProd1, 'proton');   // 47 targets
+  const p1N = toIdx(animProd1, 'neutron');  // 103 targets
+  const p2P = toIdx(animProd2, 'proton');   // 31 targets
+  const p2N = toIdx(animProd2, 'neutron');  // 69 targets
+
+  animMap = [];
+  // Left 47 protons → prod1, right 31 → prod2
+  for (let k = 0; k < 47; k++) animMap.push({ fromIdx: parentP[k].i,      prod: 1, toIdx: p1P[k] });
+  for (let k = 0; k < 31; k++) animMap.push({ fromIdx: parentP[47+k].i,   prod: 2, toIdx: p2P[k] });
+  // Left 103 neutrons → prod1, right 69 → prod2
+  for (let k = 0; k < 103; k++) animMap.push({ fromIdx: parentN[k].i,     prod: 1, toIdx: p1N[k] });
+  for (let k = 0; k < 69;  k++) animMap.push({ fromIdx: parentN[103+k].i, prod: 2, toIdx: p2N[k] });
+}
+
+function drawParticleList(pts) {
+  const R = PARTICLE_RADIUS;
+  const sorted = pts.slice().sort((a, b) => a.z - b.z);
+  for (const p of sorted) {
+    const isProton = p.type === 'proton';
+    const hx = p.x - R*0.3, hy = p.y - R*0.3;
+    const g = ctx.createRadialGradient(hx, hy, R*0.08, p.x, p.y, R);
+    if (isProton) { g.addColorStop(0,'#ff9999'); g.addColorStop(0.7,'#ff4444'); g.addColorStop(1,'#cc2222'); }
+    else          { g.addColorStop(0,'#ccccdd'); g.addColorStop(0.7,'#8888aa'); g.addColorStop(1,'#666688'); }
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${Math.round(R*1.15)}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(isProton ? '+' : 'n', p.x, p.y + 1);
+  }
+}
+
+function drawAnimFrame(t, elecId = 'animShowElectric', outlineId = 'animShowOutline', fissAngle = 0) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2;
+  const showElec    = document.getElementById(elecId).checked;
+  const showOutline = document.getElementById(outlineId).checked;
+
+  // ── Phase 1: still — heatmap cached ─────────────────────────────────────────
+  if (t <= PH1_END) {
+    if (showElec) drawElectricHeatmap(animParent.particles, 1, 0.5);
+    if (showOutline) drawCloudOutline(animParent.cx, animParent.cy, animParent.sphereR);
+    else             drawParticleList(animParent.particles);
+    return;
+  }
+
+  // ── Phase 2: shake — recompute heatmap with shaken positions ─────────────────
+  if (t <= PH2_END) {
+    const amp    = PARTICLE_RADIUS * 0.55;
+    const shaken = animParent.particles.map((p, i) => {
+      const dx = amp * (Math.sin(t * 157 + i * 1.73) * 0.45
+                      + Math.sin(t * 241 + i * 3.07) * 0.35
+                      + Math.sin(t * 389 + i * 5.31) * 0.20);
+      const dy = amp * (Math.sin(t * 179 + i * 2.39) * 0.45
+                      + Math.sin(t * 263 + i * 4.13) * 0.35
+                      + Math.sin(t * 421 + i * 6.71) * 0.20);
+      return { ...p, x: p.x + dx, y: p.y + dy };
+    });
+    if (showElec) { heatmapDirty = true; drawElectricHeatmap(shaken, 1, 0.5, 0.45); }
+    if (showOutline) {
+      const jx = amp * 0.4 * Math.sin(t * 180);
+      const jy = amp * 0.4 * Math.cos(t * 150);
+      ctx.save(); ctx.translate(jx, jy);
+      drawCloudOutline(animParent.cx, animParent.cy, animParent.sphereR);
+      ctx.restore();
+    } else {
+      drawParticleList(shaken);
+    }
+    return;
+  }
+
+  // ── Phase 3: rapid separation ───────────────────────────────────────────────
+  // Single unified trajectory: each particle goes straight from parent position
+  // to its off-screen destination. No separate rearrange/shoot — eliminating the
+  // velocity discontinuity that caused the 62% slowdown.
+  const sepT = (t - PH2_END) / (1.0 - PH2_END);  // 0→1
+
+  const shootT    = Math.min(1, sepT / 0.075);
+  const shootEase = shootT * shootT;  // constant acceleration throughout
+
+  // Rearrange into product shape smoothly over the first 10% of sepT,
+  // independent of the shoot — so clusters form before flying apart.
+  const rearT    = Math.min(1, sepT / 0.10);
+  const rearEase = rearT * rearT * (3 - 2 * rearT);  // smoothstep
+
+  // Off-screen destinations — rotated by fissAngle (0 = horizontal)
+  const cosA  = Math.cos(fissAngle), sinA = Math.sin(fissAngle);
+  const base1 = animProd1.cx + animProd1.sphereR + PARTICLE_RADIUS + 30;
+  const base2 = W - animProd2.cx + animProd2.sphereR + PARTICLE_RADIUS + 30;
+  const shoot1dx = -cosA * base1, shoot1dy = -sinA * base1;
+  const shoot2dx =  cosA * base2, shoot2dy =  sinA * base2;
+
+  const pos1 = [], pos2 = [];
+  for (const m of animMap) {
+    const from   = animParent.particles[m.fromIdx];
+    const to     = m.prod === 1 ? animProd1.particles[m.toIdx] : animProd2.particles[m.toIdx];
+    const sdx    = m.prod === 1 ? shoot1dx : shoot2dx;
+    const sdy    = m.prod === 1 ? shoot1dy : shoot2dy;
+    // Rearrange into product cluster shape, then add shoot offset
+    let x = from.x + (to.x - from.x) * rearEase + sdx * shootEase;
+    let y = from.y + (to.y - from.y) * rearEase + sdy * shootEase;
+    // Residual jiggle: fade from full shake amplitude to zero as sepT goes 0→0.15
+    const residualAmp = PARTICLE_RADIUS * 0.55 * Math.max(0, 1 - sepT / 0.15);
+    if (residualAmp > 0) {
+      const i = m.fromIdx;
+      x += residualAmp * (Math.sin(t * 157 + i * 1.73) * 0.45
+                        + Math.sin(t * 241 + i * 3.07) * 0.35
+                        + Math.sin(t * 389 + i * 5.31) * 0.20);
+      y += residualAmp * (Math.sin(t * 179 + i * 2.39) * 0.45
+                        + Math.sin(t * 263 + i * 4.13) * 0.35
+                        + Math.sin(t * 421 + i * 6.71) * 0.20);
+    }
+    (m.prod === 1 ? pos1 : pos2).push({ x, y, z: from.z, type: from.type });
+  }
+
+  if (showElec) { heatmapDirty = true; drawElectricHeatmap([...pos1, ...pos2], 1, 0.5); }
+  // Outline centres: rearrange toward product position (rearEase) + shoot offset (shootEase)
+  // Radii shrink with rearEase so the daughter blobs visibly form before flying off
+  const grp1cx = cx + (animProd1.cx - cx) * rearEase + shoot1dx * shootEase;
+  const grp1cy = cy                                  + shoot1dy * shootEase;
+  const grp2cx = cx + (animProd2.cx - cx) * rearEase + shoot2dx * shootEase;
+  const grp2cy = cy                                  + shoot2dy * shootEase;
+  const sR1    = animParent.sphereR + (animProd1.sphereR - animParent.sphereR) * rearEase;
+  const sR2    = animParent.sphereR + (animProd2.sphereR - animParent.sphereR) * rearEase;
+
+  if (showOutline) {
+    drawFissionOutline(grp1cx, grp1cy, sR1, grp2cx, grp2cy, sR2);
+  } else {
+    drawParticleList([...pos1, ...pos2]);
+  }
+}
+
+function animTick(now) {
+  const elapsed = now - animStartTime;
+  const t = Math.min(animTFromElapsed(elapsed), ANIM_T_END);
+  const frac = animTToSliderFrac(t);
+  document.getElementById('animSlider').value = Math.round(frac * 1000);
+  document.getElementById('animPct').textContent = Math.round(frac * 100) + '%';
+  drawAnimFrame(t);
+  if (t < ANIM_T_END) {
+    animRAF = requestAnimationFrame(animTick);
+  } else {
+    animPlaying = false;
+    document.getElementById('playBtn').textContent = '↺ Replay';
+  }
+}
+
+// ─── Tab switching ────────────────────────────────────────────────────────────
+let currentTab = 'fission';
+
+document.getElementById('tabStatic').addEventListener('click', () => {
+  currentTab = 'static';
+  document.getElementById('tabStatic').classList.add('active');
+  document.getElementById('tabFission').classList.remove('active');
+  document.getElementById('staticControls').style.display = '';
+  document.getElementById('animControls').style.display = 'none';
+  if (animRAF) { cancelAnimationFrame(animRAF); animRAF = null; animPlaying = false; }
+  if (!animParent) initAnimation();
+  heatmapDirty = true;
+  drawStaticFrame();
+});
+
+document.getElementById('tabFission').addEventListener('click', () => {
+  currentTab = 'fission';
+  document.getElementById('tabFission').classList.add('active');
+  document.getElementById('tabStatic').classList.remove('active');
+  document.getElementById('animControls').style.display = '';
+  document.getElementById('staticControls').style.display = 'none';
+  if (!animParent) initAnimation();
+  heatmapDirty = true;
+  const frac0 = parseInt(document.getElementById('animSlider').value) / 1000;
+  drawAnimFrame(sliderFracToAnimT(frac0));
+});
+
+document.getElementById('playBtn').addEventListener('click', () => {
+  if (animPlaying) {
+    cancelAnimationFrame(animRAF); animRAF = null; animPlaying = false;
+    document.getElementById('playBtn').textContent = '▶ Play';
+    return;
+  }
+  const sliderFrac = parseInt(document.getElementById('animSlider').value) / 1000;
+  const currentT   = sliderFracToAnimT(sliderFrac);
+  // Restart from beginning if at (or past) end
+  const resumeElapsed = currentT >= ANIM_T_END ? 0 : elapsedFromAnimT(currentT);
+  animStartTime = performance.now() - resumeElapsed;
+  animPlaying = true;
+  document.getElementById('playBtn').textContent = '⏸ Pause';
+  animRAF = requestAnimationFrame(animTick);
+});
+
+document.getElementById('animSlider').addEventListener('input', function() {
+  if (animPlaying) { cancelAnimationFrame(animRAF); animRAF = null; animPlaying = false; document.getElementById('playBtn').textContent = '▶ Play'; }
+  const frac = parseInt(this.value) / 1000;
+  document.getElementById('animPct').textContent = Math.round(frac * 100) + '%';
+  if (animParent) drawAnimFrame(sliderFracToAnimT(frac));
+});
+
+// ─── Go button / speed slider / static scrub bar ──────────────────────────────
+document.getElementById('goBtn').addEventListener('click', () => {
+  if (neutronState !== 'idle') {
+    if (neutronRAF2) { cancelAnimationFrame(neutronRAF2); neutronRAF2 = null; }
+    neutronState = 'idle';
+    neutronLast  = 0;
+    document.getElementById('goBtn').textContent = 'Go';
+    document.getElementById('goBtn').classList.remove('reset');
+    document.getElementById('staticScrubBar').classList.remove('visible');
+    heatmapDirty = true;
+    drawStaticFrame();
+    return;
+  }
+  neutronState = 'flying';
+  neutronX     = -PARTICLE_RADIUS - 5;
+  neutronY     = animParent.cy;
+  neutronLast  = 0;
+  document.getElementById('goBtn').classList.add('reset');
+  document.getElementById('goBtn').textContent = 'Reset';
+  neutronRAF2  = requestAnimationFrame(neutronTick);
+});
+
+document.getElementById('neutronSpeed').addEventListener('input', function () {
+  document.getElementById('neutronSpeedVal').textContent = parseFloat(this.value).toFixed(1) + '×';
+});
+
+document.getElementById('staticSlider').addEventListener('input', function () {
+  if (neutronRAF2) { cancelAnimationFrame(neutronRAF2); neutronRAF2 = null; }
+  if (neutronState === 'fission') neutronState = 'done';
+  const frac  = parseInt(this.value) / 1000;
+  const range = ANIM_T_END - PH1_END;
+  staticFissT = PH1_END + frac * range;
+  document.getElementById('staticPct').textContent = Math.round(frac * 100) + '%';
+  drawAnimFrame(staticFissT, 'showElectric', 'showOutline', staticFissAngle);
+  if (staticFissT <= PH2_END) drawStuckNeutron(staticFissT);
+});
+
+// ─── Checkbox listeners ───────────────────────────────────────────────────────
+document.getElementById('showOutline').addEventListener('change',   () => { if (currentTab === 'static') drawStaticFrame(); });
+document.getElementById('showElectric').addEventListener('change',  () => { if (currentTab === 'static') { heatmapDirty = true; drawStaticFrame(); } });
+function currentAnimT() { return sliderFracToAnimT(parseInt(document.getElementById('animSlider').value) / 1000); }
+document.getElementById('animShowElectric').addEventListener('change', () => { if (currentTab === 'fission') { heatmapDirty = true; drawAnimFrame(currentAnimT()); } });
+document.getElementById('animShowOutline').addEventListener('change',  () => { if (currentTab === 'fission') drawAnimFrame(currentAnimT()); });
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+initAnimation();
+// Start on static tab
+currentTab = 'static';
+document.getElementById('tabStatic').classList.add('active');
+document.getElementById('tabFission').classList.remove('active');
+document.getElementById('staticControls').style.display = '';
+document.getElementById('animControls').style.display = 'none';
+drawStaticFrame();
+</script>
+</body>
+</html>
