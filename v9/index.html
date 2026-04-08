@@ -210,7 +210,7 @@
 
   <div id="barBottomControls">
     <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:#9ca3af;cursor:pointer;">
-      <input type="checkbox" id="splitIEToggle" checked style="accent-color:#fb923c;">
+      <input type="checkbox" id="splitIEToggle" style="accent-color:#fb923c;">
       Split IE → <span style="color:#818cf8">EIE</span>&nbsp;+&nbsp;<span style="color:#fb923c">SIE</span>
     </label>
   </div>
@@ -253,6 +253,51 @@ const PHOTON_MAX_AGE  = 90;        // frames until fully faded
 const PN_JIGGLE_FRAMES = 25;       // P+N scripted jiggle before photon fires
 
 // ============================================================
+//  ENERGY TABLE  (values at approachSpeed = 2.0; scale by (speed/2)²)
+//  immediateKE: displayed KE at collision onset
+//  keOut:       displayed KE during escape
+//  gammaKE:     energy carried away by photon (Cat 3 only)
+//  sieOffset:   SIE bar visual offset, set at input selection
+// ============================================================
+const COMBO_TABLE = {
+  // Cat 1 — elastic, no binding
+  'n+n':   { sieOffset: 100, immediateKE: 54, keOut:  4, gammaKE:  0 },
+  'n+he':  { sieOffset: 100, immediateKE: 60, keOut: 10, gammaKE:  0 },
+  'he+n':  { sieOffset: 100, immediateKE: 60, keOut: 10, gammaKE:  0 },
+  'n+t':   { sieOffset: 100, immediateKE: 58, keOut:  8, gammaKE:  0 },
+  't+n':   { sieOffset: 100, immediateKE: 58, keOut:  8, gammaKE:  0 },
+  // Cat 2 — productive fusion (KE Out = immediateKE − 2)
+  't+d':   { sieOffset: 250, immediateKE: 70, keOut: 68, gammaKE:  0 },
+  'd+t':   { sieOffset: 250, immediateKE: 70, keOut: 68, gammaKE:  0 },
+  'd+d':   { sieOffset: 150, immediateKE: 20, keOut: 18, gammaKE:  0 },
+  't+t':   { sieOffset: 150, immediateKE: 37, keOut: 35, gammaKE:  0 },
+  // Cat 3 — gamma emission
+  'p+n':   { sieOffset: 100, immediateKE: 54, keOut:  4, gammaKE: 50 },
+  'n+p':   { sieOffset: 100, immediateKE: 54, keOut:  4, gammaKE: 50 },
+  'p+d':   { sieOffset: 100, immediateKE: 56, keOut:  6, gammaKE: 50 },
+  'd+p':   { sieOffset: 100, immediateKE: 56, keOut:  6, gammaKE: 50 },
+  'p+t':   { sieOffset: 100, immediateKE: 58, keOut:  8, gammaKE: 50 },
+  't+p':   { sieOffset: 100, immediateKE: 58, keOut:  8, gammaKE: 50 },
+  'n+d':   { sieOffset: 100, immediateKE: 56, keOut:  6, gammaKE: 50 },
+  'd+n':   { sieOffset: 100, immediateKE: 56, keOut:  6, gammaKE: 50 },
+  // Cat 4 — Coulomb only, never collide
+  'p+p':   { sieOffset: 100, immediateKE:  0, keOut:  0, gammaKE:  0 },
+  'p+he':  { sieOffset: 150, immediateKE:  0, keOut:  0, gammaKE:  0 },
+  'he+p':  { sieOffset: 150, immediateKE:  0, keOut:  0, gammaKE:  0 },
+  'd+he':  { sieOffset: 150, immediateKE:  0, keOut:  0, gammaKE:  0 },
+  'he+d':  { sieOffset: 150, immediateKE:  0, keOut:  0, gammaKE:  0 },
+  't+he':  { sieOffset: 150, immediateKE:  0, keOut:  0, gammaKE:  0 },
+  'he+t':  { sieOffset: 150, immediateKE:  0, keOut:  0, gammaKE:  0 },
+};
+
+function getComboEntry() {
+  return COMBO_TABLE[leftChoice + '+' + rightChoice] || null;
+}
+
+// KE values in the table are at speed 2.0; scale by (speed/2)²
+function speedScale() { return (approachSpeed / 2.0) ** 2; }
+
+// ============================================================
 //  MUTABLE PARAMETERS  (slider-controlled)
 // ============================================================
 let coulombStrength = 150;
@@ -279,7 +324,10 @@ let scrubFrame = -1;
 // ============================================================
 let initialTotal = 0;
 let initialKE    = 0;   // CM-frame KE at sim start — escape KE must match this exactly
-let collisionDisplayKE = null;  // frozen KE for collision phase display; null outside collision
+let collisionDisplayKE  = null;  // explicit KE override for bar chart; null = show actual physics
+let collisionDisplayEIE = null;  // frozen EIE for collision phase; null = show actual physics
+let collisionPeakKE     = 0;     // KE at collision onset (for fallback when no table entry)
+let gammaCarriedEnergy  = 0;     // energy carried away by photon; subtracts from displayed total
 
 // Photon capture state
 let photon             = null;   // { x, y, vx, vy, age, maxAge }
@@ -308,7 +356,7 @@ let cameraSiteX = 0, cameraSiteY = 0;
 // ============================================================
 let showField = true;
 let barYRange = 50;
-let splitIE   = true;
+let splitIE   = false;
 let sieOffset = 0;
 
 // ============================================================
@@ -461,6 +509,10 @@ function maxSafeCoulombSpeed() {
 //  SETUP
 // ============================================================
 function setupScenario() {
+  // Apply SIE offset from energy table for this combo
+  const setupEntry = getComboEntry();
+  if (setupEntry) sieOffset = setupEntry.sieOffset;
+
   const cx  = canvas.width  / 2;
   const cy  = canvas.height / 2;
   const sep = 155;
@@ -589,20 +641,24 @@ function lockClusterVelocities() {
 function updateCamera() {
   const n = particles.length, lSize = leftClusterSize;
   let lcx = 0, lcy = 0, rcx = 0, rcy = 0, lCnt = 0, rCnt = 0;
-  for (let i = 0;     i < lSize; i++) {
-    if (particles[i].type === 'gamma') continue;
-    lcx += particles[i].x; lcy += particles[i].y; lCnt++;
-  }
-  for (let i = lSize; i < n; i++) {
-    if (particles[i].type === 'gamma') continue;
-    rcx += particles[i].x; rcy += particles[i].y; rCnt++;
-  }
+  for (let i = 0; i < lSize; i++) { lcx += particles[i].x; lcy += particles[i].y; lCnt++; }
+  for (let i = lSize; i < n; i++) { rcx += particles[i].x; rcy += particles[i].y; rCnt++; }
   if (lCnt > 0) { lcx /= lCnt; lcy /= lCnt; }
-  // If right cluster is all gamma (Cat3), camera tracks product only
   if (rCnt > 0) { rcx /= rCnt; rcy /= rCnt; }
-  else          { rcx = lcx; rcy = lcy; }
-  cameraSiteX = (lcx + rcx) / 2;
-  cameraSiteY = (lcy + rcy) / 2;
+  else          { rcx = lcx;   rcy = lcy;   }
+
+  // After photon capture fires, use photon (while alive) as the second camera anchor
+  // so the camera tracks the midpoint between nucleus and photon.
+  if (photonCaptureFired) {
+    const px = photon ? photon.x : rcx;
+    const py = photon ? photon.y : rcy;
+    // Camera midpoint between nucleus CM (lcx/lcy) and photon position
+    cameraSiteX = (lcx + px) / 2;
+    cameraSiteY = (lcy + py) / 2;
+  } else {
+    cameraSiteX = (lcx + rcx) / 2;
+    cameraSiteY = (lcy + rcy) / 2;
+  }
   return { lcx, lcy, rcx, rcy };
 }
 
@@ -828,7 +884,7 @@ function fireCategory1Escape() {
 // Called after escapeAnimStartPos and particles[] are in their
 // new (post-rearrange/type-change) order, positions restored
 // to collision-end, leftClusterSize updated to newLSize.
-function applyCategory2Velocities(newLSize, newRSize) {
+function applyCategory2Velocities(newLSize, newRSize, overrideTargetKE = null) {
   const n = newLSize + newRSize;
 
   // System CM velocity (momentum conserved)
@@ -844,8 +900,8 @@ function applyCategory2Velocities(newLSize, newRSize) {
   rvx /= newRSize;  rvy /= newRSize;
   escapeAnimStartVel = { lv: { vx: lvx, vy: lvy }, rv: { vx: rvx, vy: rvy } };
 
-  // 5× initial KE in the CM frame
-  const targetCmKE = 5 * Math.max(0, initialKE);
+  // Default: 5× initial KE in CM frame. D+T uses collisionPeakKE budget (tiny reduction).
+  const targetCmKE = overrideTargetKE !== null ? overrideTargetKE : 5 * Math.max(0, initialKE);
   // v_left in CM frame so that KE = ½ newLSize v_l² + ½ newRSize v_r²
   // with momentum conservation → v_r = -(newLSize/newRSize) v_l
   const vl = Math.sqrt(2 * targetCmKE * newRSize / (newLSize * n));
@@ -878,7 +934,7 @@ function teleportOutside(idx, clusterStart, clusterEnd) {
 }
 
 // D+T → He4 + N
-function fireDTEscape() {
+function fireDTEscape(targetKE = null) {
   // d+t: [D_p, D_n, T_p, T_n, T_n] = [p,n,p,n,n] → He4=[0-3], N=[4] ✓
   // t+d: [T_p, T_n, T_n, D_p, D_n] = [p,n,n,p,n]
   //   → reorder to [T_p, T_n, D_p, D_n, T_n2] = [p,n,p,n,n]
@@ -893,11 +949,11 @@ function fireDTEscape() {
 
   escapeAnimTargetPos = particles.map(p => ({ x: p.x, y: p.y }));
   for (let i = 0; i < 5; i++) { particles[i].x = escapeAnimStartPos[i].x; particles[i].y = escapeAnimStartPos[i].y; }
-  applyCategory2Velocities(4, 1);
+  applyCategory2Velocities(4, 1, targetKE);
 }
 
 // D+D → He3 + N  (2p+1n heavy, 1n light)
-function fireDDtoHe3N() {
+function fireDDtoHe3N(targetKE = null) {
   // [D1_p, D1_n, D2_p, D2_n] = [p,n,p,n]
   // He3=[0,1,2]=[p,n,p]=2p+1n ✓,  N=[3]=n ✓
   leftClusterSize = 3;
@@ -908,11 +964,11 @@ function fireDDtoHe3N() {
 
   escapeAnimTargetPos = particles.map(p => ({ x: p.x, y: p.y }));
   for (let i = 0; i < 4; i++) { particles[i].x = escapeAnimStartPos[i].x; particles[i].y = escapeAnimStartPos[i].y; }
-  applyCategory2Velocities(3, 1);
+  applyCategory2Velocities(3, 1, targetKE);
 }
 
 // D+D → T + P  (1p+2n heavy, 1p light)
-function fireDDtoTP() {
+function fireDDtoTP(targetKE = null) {
   // [D1_p, D1_n, D2_p, D2_n] = [p,n,p,n]
   // Swap types so T=[0-2]=[p,n,n] and P=[3]=p
   particles[2].type = 'neutron';
@@ -925,11 +981,13 @@ function fireDDtoTP() {
 
   escapeAnimTargetPos = particles.map(p => ({ x: p.x, y: p.y }));
   for (let i = 0; i < 4; i++) { particles[i].x = escapeAnimStartPos[i].x; particles[i].y = escapeAnimStartPos[i].y; }
-  applyCategory2Velocities(3, 1);
+  applyCategory2Velocities(3, 1, targetKE);
+  // T and P are both charged — unfreeze EIE so it shows actual decreasing Coulomb
+  collisionDisplayEIE = null;
 }
 
 // T+T → He4 + 2N
-function fireTTEscape() {
+function fireTTEscape(targetKE = null) {
   // [T1_p, T1_n, T1_n, T2_p, T2_n, T2_n] = [p,n,n,p,n,n]
   // He4=[0-3]=[p,n,n,p]=2p+2n ✓,  N1=[4]=n, N2=[5]=n ✓
   leftClusterSize = 4;
@@ -960,17 +1018,19 @@ function fireTTEscape() {
 
   escapeAnimTargetPos = particles.map(p => ({ x: p.x, y: p.y }));
   for (let i = 0; i < 6; i++) { particles[i].x = escapeAnimStartPos[i].x; particles[i].y = escapeAnimStartPos[i].y; }
-  applyCategory2Velocities(4, 2);
+  applyCategory2Velocities(4, 2, targetKE);
 }
 
 function fireCategory2Escape() {
+  const cat2Entry = getComboEntry();
+  const cat2KE    = cat2Entry ? cat2Entry.keOut * speedScale() : null;
   const l = leftChoice, r = rightChoice;
   if ((l==='d' && r==='t') || (l==='t' && r==='d')) {
-    fireDTEscape();
+    fireDTEscape(cat2KE);
   } else if (l==='d' && r==='d') {
-    if (Math.random() < 0.5) fireDDtoHe3N(); else fireDDtoTP();
+    if (Math.random() < 0.5) fireDDtoHe3N(cat2KE); else fireDDtoTP(cat2KE);
   } else if (l==='t' && r==='t') {
-    fireTTEscape();
+    fireTTEscape(cat2KE);
   }
 }
 
@@ -1028,12 +1088,9 @@ function firePhotonCapture() {
   photon = { x: pcx, y: pcy, vx: pnx * PHOTON_SPEED, vy: pny * PHOTON_SPEED,
              age: 0, maxAge: PHOTON_MAX_AGE };
 
-  // Update energy baseline to reflect photon carried energy away.
-  const savedVel = particles.map(p => ({ vx: p.vx, vy: p.vy }));
-  for (let i = 0; i < n; i++) { particles[i].vx = pvx; particles[i].vy = pvy; }
-  const productE = computeEnergy();
-  initialTotal = productE.total;
-  for (let i = 0; i < n; i++) { particles[i].vx = savedVel[i].vx; particles[i].vy = savedVel[i].vy; }
+  // Record gamma energy from table — total bar drops by this amount.
+  const pcEntry = getComboEntry();
+  gammaCarriedEnergy = pcEntry ? pcEntry.gammaKE * speedScale() : 50 * speedScale();
 }
 
 // ============================================================
@@ -1298,14 +1355,15 @@ function drawBarChart() {
   ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx, gy + H); ctx.stroke();
 
-  // During collision: freeze KE at the spike value captured at fusion onset.
-  // During escape: show actual physics KE (set by escape functions).
-  const displayKE  = (collisionPhase === 'collision' && collisionDisplayKE !== null)
-                     ? collisionDisplayKE : e.ke;
-  const displayEIE = e.eie;
-  // Derived SIE — makes total bar always flat at initialTotal
-  const displaySIE = initialTotal - displayKE - displayEIE + sieOffset;
-  const totalVal   = initialTotal + sieOffset;
+  // collisionDisplayKE: explicit KE from energy table, active from collision onset through escape.
+  // null during approach (and Cat4) → falls back to actual physics KE.
+  const displayKE  = collisionDisplayKE !== null ? collisionDisplayKE : e.ke;
+  // EIE frozen at collision onset; thaws after escape starts.
+  const displayEIE = (collisionPhase === 'collision' && collisionDisplayEIE !== null)
+                     ? collisionDisplayEIE : e.eie;
+  // Total drops by gammaCarriedEnergy when photon is emitted (Cat 3).
+  const totalVal   = initialTotal + sieOffset - gammaCarriedEnergy;
+  const displaySIE = totalVal - displayKE - displayEIE;
 
   const bars = splitIE
     ? [
@@ -1430,21 +1488,30 @@ function draw() {
 function renderFrame(idx) {
   const frame = particleHistory[idx];
   if (!frame) return;
-  const liveP      = particles, livePhase = collisionPhase;
-  const liveCDKE   = collisionDisplayKE;
-  const liveCamX   = cameraSiteX, liveCamY = cameraSiteY;
-  const livePhoton = photon;
-  particles          = frame.p;
-  collisionPhase     = frame.collisionPhase || 'approach';
-  collisionDisplayKE = frame.collisionDisplayKE ?? null;
-  photon             = frame.photon || null;
+  const liveP       = particles, livePhase = collisionPhase;
+  const liveCDKE    = collisionDisplayKE;
+  const liveCDEIE   = collisionDisplayEIE;
+  const liveCF      = collisionFrames;
+  const liveGCE     = gammaCarriedEnergy;
+  const liveCamX    = cameraSiteX, liveCamY = cameraSiteY;
+  const livePhoton  = photon;
+  particles           = frame.p;
+  collisionPhase      = frame.collisionPhase || 'approach';
+  collisionFrames     = frame.collisionFrames ?? 999;
+  collisionDisplayKE  = frame.collisionDisplayKE ?? null;
+  collisionDisplayEIE = frame.collisionDisplayEIE ?? null;
+  gammaCarriedEnergy  = frame.gammaCarriedEnergy  ?? 0;
+  photon              = frame.photon || null;
   if (frame.camX !== undefined) { cameraSiteX = frame.camX; cameraSiteY = frame.camY; }
   draw();
-  particles          = liveP;
-  collisionPhase     = livePhase;
-  collisionDisplayKE = liveCDKE;
-  photon             = livePhoton;
-  cameraSiteX        = liveCamX;  cameraSiteY = liveCamY;
+  particles           = liveP;
+  collisionPhase      = livePhase;
+  collisionFrames     = liveCF;
+  collisionDisplayKE  = liveCDKE;
+  collisionDisplayEIE = liveCDEIE;
+  gammaCarriedEnergy  = liveGCE;
+  photon              = livePhoton;
+  cameraSiteX         = liveCamX;  cameraSiteY = liveCamY;
 }
 
 // ============================================================
@@ -1468,7 +1535,10 @@ let hasRunOnce = false;
 function resetState() {
   collisionPhase     = 'approach';
   collisionFrames    = 0;
-  collisionDisplayKE = null;
+  collisionDisplayKE  = null;
+  collisionDisplayEIE = null;
+  collisionPeakKE     = 0;
+  gammaCarriedEnergy  = 0;
   escapeAnimFrame    = 0;
   escapeAnimStartPos  = null;
   escapeAnimTargetPos = null;
@@ -1497,17 +1567,6 @@ function resetAndSetup() {
   replayBtn.disabled = true;
   initialTotal = 0;
   initialKE    = 0;
-
-  // Coulomb-only combos: cap approach speed so clusters never reach strong range.
-  if (isCoulombOnly()) {
-    const maxV = maxSafeCoulombSpeed();
-    if (approachSpeed > maxV) {
-      approachSpeed = parseFloat(maxV.toFixed(2));
-      const sl = document.getElementById('v9SpeedSlider');
-      sl.value = approachSpeed;
-      document.getElementById('v9SpeedVal').textContent = approachSpeed.toFixed(2);
-    }
-  }
 
   setupScenario();
   draw();
@@ -1728,18 +1787,30 @@ function loop() {
       particles[1].vx = cmvx2; particles[1].vy = cmvy2;
       if (pnJiggleFrame >= PN_JIGGLE_FRAMES) {
         firePhotonCapture();
-        collisionPhase     = 'escape';
-        collisionDisplayKE = null;
+        collisionPhase = 'escape';
+        // Switch display KE to keOut (nucleus keeps ~initialKE; gamma carries the rest)
+        const pnEscEntry = getComboEntry();
+        const pnScale    = speedScale();
+        collisionDisplayKE = pnEscEntry ? pnEscEntry.keOut * pnScale : initialKE;
+        // EIE stays frozen — single charged product, no inter-cluster Coulomb drop
       }
     } else if (fireEscape) {
-      if      (isCategory1()) { fireCategory1Escape(); escapeAnimFrame = 0; collisionPhase = 'escapeAnim'; }
-      else if (isCategory2()) { fireCategory2Escape(); escapeAnimFrame = 0; collisionPhase = 'escapeAnim'; }
-      else if (isCategory3()) {
-        // Non-P+N Cat3: fire photon capture immediately
+      const escEntry = getComboEntry();
+      const escScale = speedScale();
+      if (isCategory1()) {
+        fireCategory1Escape(); escapeAnimFrame = 0; collisionPhase = 'escapeAnim';
+        collisionDisplayKE = escEntry ? escEntry.keOut * escScale : initialKE;
+        // EIE stays frozen — N is neutral, no inter-cluster Coulomb
+      } else if (isCategory2()) {
+        fireCategory2Escape(); escapeAnimFrame = 0; collisionPhase = 'escapeAnim';
+        collisionDisplayKE = escEntry ? escEntry.keOut * escScale : collisionPeakKE * 0.88;
+        // EIE unfreeze handled inside fireDDtoTP() only (only charged-charged product pair)
+      } else if (isCategory3()) {
         if (!photonCaptureFired) firePhotonCapture();
         collisionPhase = 'escape';
+        collisionDisplayKE = escEntry ? escEntry.keOut * escScale : initialKE;
+        // EIE stays frozen — single charged product
       }
-      collisionDisplayKE = null;  // unfreeze
     }
 
   // ── APPROACH  (rigid-cluster, stop when centroids reverse) ────
@@ -1771,9 +1842,14 @@ function loop() {
           // P+N: mark as bound immediately so scripted jiggle can start.
           const isPN2 = (leftChoice==='p'&&rightChoice==='n') || (leftChoice==='n'&&rightChoice==='p');
           if (isPN2) { pnBound = true; pnJiggleFrame = 0; }
-          // Freeze KE at the spike value: max of initial KE and actual physics KE at fusion moment.
-          // The strong-force binding drops SIE and converts it to KE — capture that spike here.
-          collisionDisplayKE = Math.max(initialKE, computeEnergy().ke);
+          // Set display KE to table value (scaled by speed²) at collision onset.
+          const colE    = computeEnergy();
+          const colEntry = getComboEntry();
+          const scale    = speedScale();
+          collisionDisplayKE  = colEntry ? colEntry.immediateKE * scale
+                                         : Math.max(initialKE, colE.ke);
+          collisionPeakKE     = collisionDisplayKE;
+          collisionDisplayEIE = colE.eie;
         }
       }
     }
@@ -1803,7 +1879,10 @@ function loop() {
   particleHistory.push({
     p: particles.map(p => ({ ...p })),
     collisionPhase,
+    collisionFrames,
     collisionDisplayKE,
+    collisionDisplayEIE,
+    gammaCarriedEnergy,
     photon: photon ? { ...photon } : null,
     camX: cameraSiteX, camY: cameraSiteY,
   });
