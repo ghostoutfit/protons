@@ -103,8 +103,8 @@
 <div id="staticControls" style="display:none">
   <button id="goBtn">Go</button>
   <label class="toggle-label" style="gap:6px;">
-    Speed <span id="neutronSpeedVal">1.0×</span>
-    <input type="range" id="neutronSpeed" min="0.2" max="4.0" step="0.1" value="1.0"
+    Speed <span id="neutronSpeedVal">4.0×</span>
+    <input type="range" id="neutronSpeed" min="0.2" max="4.0" step="0.1" value="4.0"
            style="width:72px;accent-color:#6366f1;">
   </label>
   <label class="toggle-label">
@@ -477,10 +477,14 @@ function sampleUnionBoundary(cx1, cy1, r1, cx2, cy2, r2) {
   if (h < 1) return null;
 
   const r1bot = Math.atan2(-h, a); const r1top = Math.atan2(h, a);
-  let span1 = r1top - r1bot; if (span1 <= 0) span1 += 2 * Math.PI;
+  // Outer arc of c1 = complement of the inner arc that faces c2
+  const span1 = 2 * Math.PI - (r1top - r1bot);  // the left lobe
+  const start1 = r1top;  // start at top intersection, go CCW through π
 
   const r2top = Math.atan2(h, a - d); const r2bot = Math.atan2(-h, a - d);
-  let span2 = r2bot - r2top; if (span2 <= 0) span2 += 2 * Math.PI;
+  // Outer arc of c2 = from bottom intersection CCW through 0 to top
+  const span2 = r2top - r2bot;  // the right lobe (r2bot < 0, r2top > 0)
+  const start2 = r2bot;
 
   const len1 = span1 * r1, len2 = span2 * r2;
   const n1 = Math.max(3, Math.round(len1 / (R * 1.5)));
@@ -488,11 +492,11 @@ function sampleUnionBoundary(cx1, cy1, r1, cx2, cy2, r2) {
 
   const pts = [];
   for (let k = 0; k < n1; k++) {
-    const wa = frame + r1bot + (k / n1) * span1;
+    const wa = frame + start1 + (k / n1) * span1;
     pts.push({ x: cx1 + r1 * Math.cos(wa), y: cy1 + r1 * Math.sin(wa), refCx: cx1, refCy: cy1 });
   }
   for (let k = 0; k < n2; k++) {
-    const wa = frame + r2top + (k / n2) * span2;
+    const wa = frame + start2 + (k / n2) * span2;
     pts.push({ x: cx2 + r2 * Math.cos(wa), y: cy2 + r2 * Math.sin(wa), refCx: cx2, refCy: cy2 });
   }
   return pts;
@@ -589,40 +593,82 @@ let staticNeutronIY = 0;
 
 function drawNeutronParticle(x, y) {
   const R = PARTICLE_RADIUS;
-  const grad = ctx.createRadialGradient(x - R*0.3, y - R*0.3, R*0.1, x, y, R);
-  grad.addColorStop(0, '#d4d4e8');
-  grad.addColorStop(1, '#4a4a6a');
-  ctx.beginPath();
-  ctx.arc(x, y, R, 0, Math.PI * 2);
-  ctx.fillStyle = grad;
-  ctx.fill();
+  const hx = x - R*0.3, hy = y - R*0.3;
+  const g = ctx.createRadialGradient(hx, hy, R*0.08, x, y, R);
+  g.addColorStop(0, '#ccccdd'); g.addColorStop(0.7, '#8888aa'); g.addColorStop(1, '#666688');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${Math.round(R * 1.15)}px sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('n', x, y + 1);
 }
 
 function drawStuckNeutron(t) {
-  const amp = PARTICLE_RADIUS * 0.55;
+  const amp = PARTICLE_RADIUS * 0.275;
   const nx = staticNeutronIX + amp * (Math.sin(t*157+1.73)*0.45 + Math.sin(t*241+3.07)*0.35 + Math.sin(t*389+5.31)*0.20);
   const ny = staticNeutronIY + amp * (Math.sin(t*179+2.39)*0.45 + Math.sin(t*263+4.13)*0.35 + Math.sin(t*421+6.71)*0.20);
   drawNeutronParticle(nx, ny);
 }
 
-function drawStaticFrame() {
+// First 20% of scrub bar = neutron in flight; remaining 80% = fission animation
+const NEUTRON_FRAC = 0.2;
+
+function neutronImpactX() {
+  return animParent.cx - animParent.sphereR - PARTICLE_RADIUS;
+}
+
+// Render whatever the scrub bar at fraction frac (0..1) should show
+function drawAtScrubFrac(frac) {
+  if (!animParent) return;
   ctx.fillStyle = '#0a0a1a';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  if (!animParent) return;
+
+  if (frac < NEUTRON_FRAC) {
+    // Neutron zone — draw parent nucleus + neutron at interpolated position
+    const nf   = frac / NEUTRON_FRAC;
+    const nx   = (-PARTICLE_RADIUS - 5) + nf * (neutronImpactX() - (-PARTICLE_RADIUS - 5));
+    const showElec      = document.getElementById('showElectric').checked;
+    const showOutlineOn = document.getElementById('showOutline').checked;
+    if (showElec) drawElectricHeatmap(animParent.particles, 1, 0.5);
+    if (showOutlineOn) drawCloudOutline(animParent.cx, animParent.cy, animParent.sphereR);
+    else               drawParticleList(animParent.particles);
+    drawNeutronParticle(nx, animParent.cy);
+  } else {
+    // Fission zone — draw animation frame at corresponding animT
+    const ff = (frac - NEUTRON_FRAC) / (1 - NEUTRON_FRAC);
+    staticFissT = PH1_END + ff * (ANIM_T_END - PH1_END);
+    drawAnimFrame(staticFissT, 'showElectric', 'showOutline', staticFissAngle);
+    if (staticFissT <= PH2_END) drawStuckNeutron(staticFissT);
+  }
+}
+
+function scrubVal(frac) { return Math.round(frac * 1000); }
+function scrubPct(frac) { return Math.round(frac * 100) + '%'; }
+
+function drawStaticFrame() {
+  if (!animParent) {
+    ctx.fillStyle = '#0a0a1a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    return;
+  }
 
   if (neutronState === 'fission' || neutronState === 'done') {
+    ctx.fillStyle = '#0a0a1a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     drawAnimFrame(staticFissT, 'showElectric', 'showOutline', staticFissAngle);
     if (staticFissT <= PH2_END) drawStuckNeutron(staticFissT);
     return;
   }
 
-  // idle or flying: show static parent nucleus
+  // idle or flying: show parent nucleus (+ neutron if flying)
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
   const showElec      = document.getElementById('showElectric').checked;
   const showOutlineOn = document.getElementById('showOutline').checked;
   if (showElec) drawElectricHeatmap(animParent.particles, 1, 0.5);
   if (showOutlineOn) drawCloudOutline(animParent.cx, animParent.cy, animParent.sphereR);
   else               drawParticleList(animParent.particles);
-
   if (neutronState === 'flying') drawNeutronParticle(neutronX, neutronY);
 }
 
@@ -633,18 +679,23 @@ function neutronTick(now) {
   const speed = parseFloat(document.getElementById('neutronSpeed').value);
   neutronX   += speed * 0.25 * dt;
 
+  // Update scrub bar to show neutron position in neutron zone
+  const nf = Math.max(0, Math.min(1, (neutronX - (-PARTICLE_RADIUS - 5)) /
+                                     (neutronImpactX() - (-PARTICLE_RADIUS - 5))));
+  const frac = nf * NEUTRON_FRAC;
+  document.getElementById('staticSlider').value = scrubVal(frac);
+  document.getElementById('staticPct').textContent = scrubPct(frac);
+
   if (neutronX + PARTICLE_RADIUS >= animParent.cx - animParent.sphereR) {
-    // Snap neutron to surface; pick random fission angle; start jiggle immediately
+    // Snap neutron to surface; start jiggle immediately
     staticNeutronIX = animParent.cx - animParent.sphereR * 0.85;
     staticNeutronIY = animParent.cy;
-    staticFissAngle = (Math.random() - 0.5) * Math.PI;  // ±90° from horizontal
     neutronState    = 'fission';
     staticFissStart = now;
-    staticFissT     = PH1_END;  // skip still phase — enter jiggle immediately
-    document.getElementById('goBtn').textContent = 'Reset';
-    document.getElementById('staticScrubBar').classList.add('visible');
-    document.getElementById('staticSlider').value = 0;
-    document.getElementById('staticPct').textContent = '0%';
+    staticFissT     = PH1_END;
+    // Scrub jumps to the start of the fission zone
+    document.getElementById('staticSlider').value = scrubVal(NEUTRON_FRAC);
+    document.getElementById('staticPct').textContent = scrubPct(NEUTRON_FRAC);
     neutronRAF2 = requestAnimationFrame(staticFissionTick);
     return;
   }
@@ -658,9 +709,10 @@ function staticFissionTick(now) {
   const elapsed = now - staticFissStart;
   const range   = ANIM_T_END - PH1_END;
   staticFissT   = PH1_END + Math.min(1, elapsed / NORMAL_DURATION) * range;
-  const frac    = (staticFissT - PH1_END) / range;
-  document.getElementById('staticSlider').value = Math.round(frac * 1000);
-  document.getElementById('staticPct').textContent = Math.round(frac * 100) + '%';
+  const ff      = (staticFissT - PH1_END) / range;
+  const frac    = NEUTRON_FRAC + ff * (1 - NEUTRON_FRAC);
+  document.getElementById('staticSlider').value = scrubVal(frac);
+  document.getElementById('staticPct').textContent = scrubPct(frac);
   drawAnimFrame(staticFissT, 'showElectric', 'showOutline', staticFissAngle);
   if (staticFissT <= PH2_END) drawStuckNeutron(staticFissT);
   if (staticFissT < ANIM_T_END) {
@@ -808,7 +860,7 @@ function drawAnimFrame(t, elecId = 'animShowElectric', outlineId = 'animShowOutl
 
   // ── Phase 2: shake — recompute heatmap with shaken positions ─────────────────
   if (t <= PH2_END) {
-    const amp    = PARTICLE_RADIUS * 0.55;
+    const amp    = PARTICLE_RADIUS * 0.275;
     const shaken = animParent.particles.map((p, i) => {
       const dx = amp * (Math.sin(t * 157 + i * 1.73) * 0.45
                       + Math.sin(t * 241 + i * 3.07) * 0.35
@@ -847,8 +899,8 @@ function drawAnimFrame(t, elecId = 'animShowElectric', outlineId = 'animShowOutl
 
   // Off-screen destinations — rotated by fissAngle (0 = horizontal)
   const cosA  = Math.cos(fissAngle), sinA = Math.sin(fissAngle);
-  const base1 = animProd1.cx + animProd1.sphereR + PARTICLE_RADIUS + 30;
-  const base2 = W - animProd2.cx + animProd2.sphereR + PARTICLE_RADIUS + 30;
+  const base1 = animProd1.cx + animProd1.sphereR + PARTICLE_RADIUS + 30 + W * 0.2;
+  const base2 = W - animProd2.cx + animProd2.sphereR + PARTICLE_RADIUS + 30 + W * 0.2;
   const shoot1dx = -cosA * base1, shoot1dy = -sinA * base1;
   const shoot2dx =  cosA * base2, shoot2dy =  sinA * base2;
 
@@ -862,7 +914,7 @@ function drawAnimFrame(t, elecId = 'animShowElectric', outlineId = 'animShowOutl
     let x = from.x + (to.x - from.x) * rearEase + sdx * shootEase;
     let y = from.y + (to.y - from.y) * rearEase + sdy * shootEase;
     // Residual jiggle: fade from full shake amplitude to zero as sepT goes 0→0.15
-    const residualAmp = PARTICLE_RADIUS * 0.55 * Math.max(0, 1 - sepT / 0.15);
+    const residualAmp = PARTICLE_RADIUS * 0.275 * Math.max(0, 1 - sepT / 0.15);
     if (residualAmp > 0) {
       const i = m.fromIdx;
       x += residualAmp * (Math.sin(t * 157 + i * 1.73) * 0.45
@@ -882,8 +934,8 @@ function drawAnimFrame(t, elecId = 'animShowElectric', outlineId = 'animShowOutl
   const grp1cy = cy                                  + shoot1dy * shootEase;
   const grp2cx = cx + (animProd2.cx - cx) * rearEase + shoot2dx * shootEase;
   const grp2cy = cy                                  + shoot2dy * shootEase;
-  const sR1    = animParent.sphereR + (animProd1.sphereR - animParent.sphereR) * rearEase;
-  const sR2    = animParent.sphereR + (animProd2.sphereR - animParent.sphereR) * rearEase;
+  const sR1    = animParent.sphereR + (animProd1.sphereR * 0.7 - animParent.sphereR) * rearEase;
+  const sR2    = animParent.sphereR + (animProd2.sphereR * 0.7 - animParent.sphereR) * rearEase;
 
   if (showOutline) {
     drawFissionOutline(grp1cx, grp1cy, sR1, grp2cx, grp2cy, sR2);
@@ -970,12 +1022,16 @@ document.getElementById('goBtn').addEventListener('click', () => {
     drawStaticFrame();
     return;
   }
+  staticFissAngle = (Math.random() - 0.5) * Math.PI;  // pick angle now so scrub works
   neutronState = 'flying';
   neutronX     = -PARTICLE_RADIUS - 5;
   neutronY     = animParent.cy;
   neutronLast  = 0;
   document.getElementById('goBtn').classList.add('reset');
   document.getElementById('goBtn').textContent = 'Reset';
+  document.getElementById('staticScrubBar').classList.add('visible');
+  document.getElementById('staticSlider').value = 0;
+  document.getElementById('staticPct').textContent = '0%';
   neutronRAF2  = requestAnimationFrame(neutronTick);
 });
 
@@ -985,13 +1041,10 @@ document.getElementById('neutronSpeed').addEventListener('input', function () {
 
 document.getElementById('staticSlider').addEventListener('input', function () {
   if (neutronRAF2) { cancelAnimationFrame(neutronRAF2); neutronRAF2 = null; }
-  if (neutronState === 'fission') neutronState = 'done';
-  const frac  = parseInt(this.value) / 1000;
-  const range = ANIM_T_END - PH1_END;
-  staticFissT = PH1_END + frac * range;
-  document.getElementById('staticPct').textContent = Math.round(frac * 100) + '%';
-  drawAnimFrame(staticFissT, 'showElectric', 'showOutline', staticFissAngle);
-  if (staticFissT <= PH2_END) drawStuckNeutron(staticFissT);
+  if (neutronState === 'flying' || neutronState === 'fission') neutronState = 'done';
+  const frac = parseInt(this.value) / 1000;
+  document.getElementById('staticPct').textContent = scrubPct(frac);
+  drawAtScrubFrac(frac);
 });
 
 // ─── Checkbox listeners ───────────────────────────────────────────────────────
