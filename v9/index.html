@@ -111,14 +111,40 @@
   }
 
   #scrubBar {
-    height: 56px;
     background: #0e0e22;
     border-top: 1px solid #2a2a4a;
+    display: flex;
+    flex-direction: column;
+    padding: 6px 0 8px;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  #phaseTimeline {
+    display: none;
+    align-items: stretch;
+    height: 18px;
+    margin: 0 24px;
+    border-radius: 4px;
+    overflow: hidden;
+    gap: 0;
+  }
+  #phaseTimeline .phase-seg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    overflow: hidden;
+    white-space: nowrap;
+    min-width: 0;
+    transition: flex 0.1s;
+  }
+  #scrubControls {
     display: flex;
     align-items: center;
     padding: 0 24px;
     gap: 14px;
-    flex-shrink: 0;
   }
   #scrubBar .scrub-label { font-size: 12px; color: #6b7280; white-space: nowrap; }
   #scrubBar .scrub-time {
@@ -205,7 +231,7 @@
   <canvas id="canvas"></canvas>
 
   <div id="barYSliderWrap">
-    <input type="range" id="barYRangeSlider" min="10" max="500" step="10" value="50">
+    <input type="range" id="barYRangeSlider" min="10" max="500" step="10" value="120">
   </div>
 
   <div id="barBottomControls">
@@ -217,9 +243,16 @@
 </div>
 
 <div id="scrubBar">
-  <span class="scrub-label">Time</span>
-  <input type="range" id="timeSlider" min="0" max="0" value="0" disabled>
-  <span class="scrub-time" id="timeLabel">–</span>
+  <div id="phaseTimeline">
+    <div class="phase-seg" id="phaseSeg-approach" style="background:#374151; color:#9ca3af;">Approaching</div>
+    <div class="phase-seg" id="phaseSeg-collision" style="background:#92400e; color:#fbbf24; display:none;">Collision</div>
+    <div class="phase-seg" id="phaseSeg-escape"    style="background:#064e3b; color:#6ee7b7; display:none;">Escaping</div>
+  </div>
+  <div id="scrubControls">
+    <span class="scrub-label">Time</span>
+    <input type="range" id="timeSlider" min="0" max="0" value="0" disabled>
+    <span class="scrub-time" id="timeLabel">–</span>
+  </div>
 </div>
 
 <script>
@@ -243,14 +276,14 @@ const strongForceRange    = 2.0;   // fixed — no slider
 const equilibriumRatio    = 0.35;
 
 // Timing
-const COLLISION_FRAMES    = 30;    // max frames of collision phase
+const COLLISION_FRAMES    = 15;    // max frames of collision phase
 const ESCAPE_ANIM_FRAMES  = 5;     // frames to lerp into escape geometry
 const FRAME_SPEED         = 1.5;   // dt per frame
 
 // Photon capture (Cat3)
 const PHOTON_SPEED    = 18;        // px per frame
 const PHOTON_MAX_AGE  = 90;        // frames until fully faded
-const PN_JIGGLE_FRAMES = 25;       // P+N scripted jiggle before photon fires
+const PN_JIGGLE_FRAMES = 12;       // P+N scripted jiggle before photon fires
 
 // ============================================================
 //  ENERGY TABLE  (values at approachSpeed = 2.0; scale by (speed/2)²)
@@ -325,6 +358,10 @@ let scrubFrame = -1;
 // ============================================================
 let initialTotal = 0;
 let initialKE    = 0;   // CM-frame KE at sim start — escape KE must match this exactly
+// Phase timeline boundary frames (indices into particleHistory)
+let collisionStartFrame = -1;
+let escapeStartFrame    = -1;
+
 let collisionDisplayKE  = null;  // explicit KE override for bar chart; null = show actual physics
 let collisionDisplayEIE = null;  // frozen EIE for collision phase; null = show actual physics
 let collisionPeakKE     = 0;     // KE at collision onset (for fallback when no table entry)
@@ -356,7 +393,7 @@ let cameraSiteX = 0, cameraSiteY = 0;
 //  DISPLAY STATE
 // ============================================================
 let showField = true;
-let barYRange = 50;
+let barYRange = 120;
 let splitIE   = false;
 let sieOffset = 0;
 
@@ -1576,6 +1613,9 @@ function resetState() {
   collisionDisplayEIE = null;
   collisionPeakKE     = 0;
   gammaCarriedEnergy  = 0;
+  collisionStartFrame = -1;
+  escapeStartFrame    = -1;
+  if (typeof phaseTimeline !== 'undefined') phaseTimeline.style.display = 'none';
   escapeAnimFrame    = 0;
   escapeAnimStartPos  = null;
   escapeAnimTargetPos = null;
@@ -1651,6 +1691,43 @@ replayBtn.addEventListener('click', () => {
   goBtn.classList.add('running');
   loop();
 });
+
+// ============================================================
+//  PHASE TIMELINE
+// ============================================================
+const phaseTimeline   = document.getElementById('phaseTimeline');
+const segApproach     = document.getElementById('phaseSeg-approach');
+const segCollision    = document.getElementById('phaseSeg-collision');
+const segEscape       = document.getElementById('phaseSeg-escape');
+
+function updatePhaseTimeline() {
+  const total = particleHistory.length;
+  if (total === 0 || collisionStartFrame < 0) {
+    phaseTimeline.style.display = 'none';
+    return;
+  }
+  phaseTimeline.style.display = 'flex';
+
+  const approachFrames  = collisionStartFrame;
+  const collisionFramesCount = escapeStartFrame >= 0
+    ? escapeStartFrame - collisionStartFrame
+    : total - collisionStartFrame;
+  const escapeFramesCount = escapeStartFrame >= 0
+    ? total - escapeStartFrame
+    : 0;
+
+  const setSegment = (el, frames) => {
+    if (frames <= 0) { el.style.display = 'none'; return; }
+    el.style.display = 'flex';
+    el.style.flex    = String(frames);
+    // Hide label if segment too narrow to show it
+    el.style.fontSize = frames / total < 0.12 ? '0px' : '10px';
+  };
+
+  setSegment(segApproach,  approachFrames);
+  setSegment(segCollision, collisionFramesCount);
+  setSegment(segEscape,    escapeFramesCount);
+}
 
 // ============================================================
 //  TIME SCRUBBER
@@ -1846,7 +1923,8 @@ function loop() {
       particles[1].vx = cmvx2; particles[1].vy = cmvy2;
       if (pnJiggleFrame >= PN_JIGGLE_FRAMES) {
         firePhotonCapture();
-        collisionPhase = 'escape';
+        collisionPhase  = 'escape';
+        escapeStartFrame = particleHistory.length;
         // Switch display KE to keOut (nucleus keeps ~initialKE; gamma carries the rest)
         const pnEscEntry = getComboEntry();
         const pnScale    = speedScale();
@@ -1854,6 +1932,7 @@ function loop() {
         // EIE stays frozen — single charged product, no inter-cluster Coulomb drop
       }
     } else if (fireEscape) {
+      escapeStartFrame = particleHistory.length;
       const escEntry = getComboEntry();
       const escScale = speedScale();
       if (isCategory1()) {
@@ -1893,11 +1972,14 @@ function loop() {
           // Coulomb-only: no nuclear collision.  Wait until clusters are well
           // separated (Coulomb negligible) then coast freely in escape phase.
           if (cdist > strongCutoff() * 2.5) {
-            collisionPhase = 'escape';
+            collisionPhase      = 'escape';
+            collisionStartFrame = particleHistory.length; // whole run = approach
+            escapeStartFrame    = particleHistory.length;
           }
         } else {
-          collisionPhase     = 'collision';
-          collisionFrames    = 0;
+          collisionPhase      = 'collision';
+          collisionFrames     = 0;
+          collisionStartFrame = particleHistory.length;
           // P+N: mark as bound immediately so scripted jiggle can start.
           const isPN2 = (leftChoice==='p'&&rightChoice==='n') || (leftChoice==='n'&&rightChoice==='p');
           if (isPN2) { pnBound = true; pnJiggleFrame = 0; }
@@ -1951,6 +2033,7 @@ function loop() {
   timeSlider.max      = particleHistory.length - 1;
   timeSlider.value    = timeSlider.max;
   timeLabelEl.textContent = `${particleHistory.length}`;
+  updatePhaseTimeline();
 
   draw();
   animId = requestAnimationFrame(loop);
