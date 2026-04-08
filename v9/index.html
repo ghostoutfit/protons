@@ -270,24 +270,25 @@ const COMBO_TABLE = {
   't+d':   { sieOffset: 250, immediateKE: 70, keOut: 68, gammaKE:  0 },
   'd+t':   { sieOffset: 250, immediateKE: 70, keOut: 68, gammaKE:  0 },
   'd+d':   { sieOffset: 150, immediateKE: 20, keOut: 18, gammaKE:  0 },
-  't+t':   { sieOffset: 150, immediateKE: 37, keOut: 35, gammaKE:  0 },
+  't+t':   { sieOffset: 300, immediateKE: 37, keOut: 35, gammaKE:  0 },
   // Cat 3 — gamma emission
   'p+n':   { sieOffset: 100, immediateKE: 54, keOut:  4, gammaKE: 50 },
   'n+p':   { sieOffset: 100, immediateKE: 54, keOut:  4, gammaKE: 50 },
   'p+d':   { sieOffset: 100, immediateKE: 56, keOut:  6, gammaKE: 50 },
   'd+p':   { sieOffset: 100, immediateKE: 56, keOut:  6, gammaKE: 50 },
-  'p+t':   { sieOffset: 100, immediateKE: 58, keOut:  8, gammaKE: 50 },
-  't+p':   { sieOffset: 100, immediateKE: 58, keOut:  8, gammaKE: 50 },
+  'p+t':   { sieOffset: 150, immediateKE: 58, keOut:  8, gammaKE: 50 },
+  't+p':   { sieOffset: 150, immediateKE: 58, keOut:  8, gammaKE: 50 },
   'n+d':   { sieOffset: 100, immediateKE: 56, keOut:  6, gammaKE: 50 },
   'd+n':   { sieOffset: 100, immediateKE: 56, keOut:  6, gammaKE: 50 },
-  // Cat 4 — Coulomb only, never collide
-  'p+p':   { sieOffset: 100, immediateKE:  0, keOut:  0, gammaKE:  0 },
-  'p+he':  { sieOffset: 150, immediateKE:  0, keOut:  0, gammaKE:  0 },
-  'he+p':  { sieOffset: 150, immediateKE:  0, keOut:  0, gammaKE:  0 },
-  'd+he':  { sieOffset: 150, immediateKE:  0, keOut:  0, gammaKE:  0 },
-  'he+d':  { sieOffset: 150, immediateKE:  0, keOut:  0, gammaKE:  0 },
-  't+he':  { sieOffset: 150, immediateKE:  0, keOut:  0, gammaKE:  0 },
-  'he+t':  { sieOffset: 150, immediateKE:  0, keOut:  0, gammaKE:  0 },
+  // Cat 4 — Coulomb only, never reach strong range.
+  // KE display uses actual physics (collisionDisplayKE never set for these).
+  'p+p':   { sieOffset: 100 },
+  'p+he':  { sieOffset: 150 },
+  'he+p':  { sieOffset: 150 },
+  'd+he':  { sieOffset: 150 },
+  'he+d':  { sieOffset: 150 },
+  't+he':  { sieOffset: 150 },
+  'he+t':  { sieOffset: 150 },
 };
 
 function getComboEntry() {
@@ -509,10 +510,6 @@ function maxSafeCoulombSpeed() {
 //  SETUP
 // ============================================================
 function setupScenario() {
-  // Apply SIE offset from energy table for this combo
-  const setupEntry = getComboEntry();
-  if (setupEntry) sieOffset = setupEntry.sieOffset;
-
   const cx  = canvas.width  / 2;
   const cy  = canvas.height / 2;
   const sep = 155;
@@ -986,7 +983,7 @@ function fireDDtoTP(targetKE = null) {
   collisionDisplayEIE = null;
 }
 
-// T+T → He4 + 2N
+// T+T → He4 + 2N  (3-body, full 2D momentum conservation)
 function fireTTEscape(targetKE = null) {
   // [T1_p, T1_n, T1_n, T2_p, T2_n, T2_n] = [p,n,n,p,n,n]
   // He4=[0-3]=[p,n,n,p]=2p+2n ✓,  N1=[4]=n, N2=[5]=n ✓
@@ -999,18 +996,15 @@ function fireTTEscape(targetKE = null) {
   for (let i = 0; i < 4; i++) { hcx += particles[i].x; hcy += particles[i].y; }
   hcx /= 4; hcy /= 4;
 
-  // Direction from He4 toward the neutron pair's current midpoint
+  // Place neutrons outside strong range, spread perpendicular to each other
   const nmx = (particles[4].x + particles[5].x) / 2 - hcx;
   const nmy = (particles[4].y + particles[5].y) / 2 - hcy;
   const nmd = Math.sqrt(nmx*nmx + nmy*nmy);
   const nnx = nmd > 0.01 ? nmx/nmd : 1;
   const nny = nmd > 0.01 ? nmy/nmd : 0;
   const perpX = -nny, perpY = nnx;
-
   const safeDist = strongCutoff() * 1.15 + PARTICLE_RADIUS;
-  // Spread neutrons perpendicular by >strongCutoff so they're out of each other's range
-  const spread = strongCutoff() * 1.3 + PARTICLE_RADIUS;
-
+  const spread   = strongCutoff() * 1.3  + PARTICLE_RADIUS;
   particles[4].x = hcx + nnx * safeDist + perpX * spread;
   particles[4].y = hcy + nny * safeDist + perpY * spread;
   particles[5].x = hcx + nnx * safeDist - perpX * spread;
@@ -1018,7 +1012,50 @@ function fireTTEscape(targetKE = null) {
 
   escapeAnimTargetPos = particles.map(p => ({ x: p.x, y: p.y }));
   for (let i = 0; i < 6; i++) { particles[i].x = escapeAnimStartPos[i].x; particles[i].y = escapeAnimStartPos[i].y; }
-  applyCategory2Velocities(4, 2, targetKE);
+
+  // Record start velocities per-particle for the lerp
+  escapeAnimStartVel = { perParticle: particles.map(p => ({ vx: p.vx, vy: p.vy })) };
+
+  // ── 3-body kinematics in system CM frame ─────────────────────
+  // Total mass = 6 (each nucleon = 1); He4 mass = 4, N mass = 1 each.
+  const n = 6;
+  let totVx = 0, totVy = 0;
+  for (let i = 0; i < n; i++) { totVx += particles[i].vx; totVy += particles[i].vy; }
+  const cmvx = totVx / n, cmvy = totVy / n;
+
+  const KE_cm = targetKE !== null ? targetKE : 5 * Math.max(0, initialKE);
+
+  // He4 gets a random fraction of the CM KE. Max share is KE_cm/3 (from kinematics:
+  // He4 momentum forces neutron-pair KE_cm to be 2× He4 KE in CM, leaving KE_cm − 3×KE_He4
+  // for neutron relative motion, which must be ≥ 0).
+  const K_He4  = Math.random() * KE_cm / 3;
+  // He4 CM-frame speed: KE_He4 = ½·4·v4² = 2·v4²  →  v4 = √(K_He4/2)
+  const v4_cm  = Math.sqrt(K_He4 / 2);
+  const theta  = Math.random() * 2 * Math.PI;
+
+  // Neutron-pair CM velocity in system CM frame = −p_He4 / m_N_total = −4·v4·dir / 2
+  const v_nc_x = -2 * v4_cm * Math.cos(theta);
+  const v_nc_y = -2 * v4_cm * Math.sin(theta);
+
+  // Remaining KE goes to neutron relative motion
+  const KE_N_rel = KE_cm - 3 * K_He4;
+  // In neutron-pair CM frame each neutron has speed v_rel: ½v²+½v² = v² = KE_N_rel
+  const v_rel = Math.sqrt(Math.max(0, KE_N_rel));
+  const phi   = Math.random() * 2 * Math.PI;
+
+  // Final lab-frame velocities
+  const He4vx = cmvx + v4_cm * Math.cos(theta);
+  const He4vy = cmvy + v4_cm * Math.sin(theta);
+  const N1vx  = cmvx + v_nc_x + v_rel * Math.cos(phi);
+  const N1vy  = cmvy + v_nc_y + v_rel * Math.sin(phi);
+  const N2vx  = cmvx + v_nc_x - v_rel * Math.cos(phi);
+  const N2vy  = cmvy + v_nc_y - v_rel * Math.sin(phi);
+
+  const targetVels = [];
+  for (let i = 0; i < 4; i++) targetVels.push({ vx: He4vx, vy: He4vy });
+  targetVels.push({ vx: N1vx, vy: N1vy });
+  targetVels.push({ vx: N2vx, vy: N2vy });
+  escapeAnimTargetVel = { perParticle: targetVels };
 }
 
 function fireCategory2Escape() {
@@ -1658,11 +1695,18 @@ document.getElementById('v9SpeedSlider').addEventListener('input', function() {
   approachSpeed = parseFloat(this.value);
   document.getElementById('v9SpeedVal').textContent = approachSpeed.toFixed(2);
 });
+function applyComboSieOffset() {
+  const entry = getComboEntry();
+  if (entry) {
+    sieOffset = entry.sieOffset;
+    document.getElementById('sieOffsetInput').value = sieOffset;
+  }
+}
 document.getElementById('leftChoice').addEventListener('change', function() {
-  leftChoice = this.value; resetAndSetup();
+  leftChoice = this.value; applyComboSieOffset(); resetAndSetup();
 });
 document.getElementById('rightChoice').addEventListener('change', function() {
-  rightChoice = this.value; resetAndSetup();
+  rightChoice = this.value; applyComboSieOffset(); resetAndSetup();
 });
 
 // ============================================================
@@ -1694,16 +1738,24 @@ function loop() {
       particles[i].y = s.y + (tgt.y - s.y) * ease;
     }
 
-    // Lerp cluster velocities: smoothly rotates direction from collision-end
-    // heading toward the random escape angle — no abrupt mid-flight turn.
-    const sl = escapeAnimStartVel.lv,  tl = escapeAnimTargetVel.lv;
-    const sr = escapeAnimStartVel.rv,  tr = escapeAnimTargetVel.rv;
-    const lerpLvx = sl.vx + (tl.vx - sl.vx) * ease;
-    const lerpLvy = sl.vy + (tl.vy - sl.vy) * ease;
-    const lerpRvx = sr.vx + (tr.vx - sr.vx) * ease;
-    const lerpRvy = sr.vy + (tr.vy - sr.vy) * ease;
-    for (let i = 0;    i < lSz; i++) { particles[i].vx = lerpLvx; particles[i].vy = lerpLvy; }
-    for (let i = lSz;  i < n;   i++) { particles[i].vx = lerpRvx; particles[i].vy = lerpRvy; }
+    // Lerp velocities — per-particle mode (e.g. T+T 3-body) or cluster mode.
+    if (escapeAnimStartVel.perParticle) {
+      for (let i = 0; i < n; i++) {
+        const sv = escapeAnimStartVel.perParticle[i];
+        const tv = escapeAnimTargetVel.perParticle[i];
+        particles[i].vx = sv.vx + (tv.vx - sv.vx) * ease;
+        particles[i].vy = sv.vy + (tv.vy - sv.vy) * ease;
+      }
+    } else {
+      const sl = escapeAnimStartVel.lv,  tl = escapeAnimTargetVel.lv;
+      const sr = escapeAnimStartVel.rv,  tr = escapeAnimTargetVel.rv;
+      const lerpLvx = sl.vx + (tl.vx - sl.vx) * ease;
+      const lerpLvy = sl.vy + (tl.vy - sl.vy) * ease;
+      const lerpRvx = sr.vx + (tr.vx - sr.vx) * ease;
+      const lerpRvy = sr.vy + (tr.vy - sr.vy) * ease;
+      for (let i = 0;   i < lSz; i++) { particles[i].vx = lerpLvx; particles[i].vy = lerpLvy; }
+      for (let i = lSz; i < n;   i++) { particles[i].vx = lerpRvx; particles[i].vy = lerpRvy; }
+    }
 
     updateCamera();
     if (escapeAnimFrame >= ESCAPE_ANIM_FRAMES) {
@@ -1712,8 +1764,15 @@ function loop() {
         particles[i].x = escapeAnimTargetPos[i].x;
         particles[i].y = escapeAnimTargetPos[i].y;
       }
-      for (let i = 0;    i < lSz; i++) { particles[i].vx = escapeAnimTargetVel.lv.vx; particles[i].vy = escapeAnimTargetVel.lv.vy; }
-      for (let i = lSz;  i < n;   i++) { particles[i].vx = escapeAnimTargetVel.rv.vx; particles[i].vy = escapeAnimTargetVel.rv.vy; }
+      if (escapeAnimTargetVel.perParticle) {
+        for (let i = 0; i < n; i++) {
+          particles[i].vx = escapeAnimTargetVel.perParticle[i].vx;
+          particles[i].vy = escapeAnimTargetVel.perParticle[i].vy;
+        }
+      } else {
+        for (let i = 0;   i < lSz; i++) { particles[i].vx = escapeAnimTargetVel.lv.vx; particles[i].vy = escapeAnimTargetVel.lv.vy; }
+        for (let i = lSz; i < n;   i++) { particles[i].vx = escapeAnimTargetVel.rv.vx; particles[i].vy = escapeAnimTargetVel.rv.vy; }
+      }
       collisionPhase = 'escape';
     }
 
@@ -1900,6 +1959,7 @@ function loop() {
 // ============================================================
 //  INITIAL RENDER
 // ============================================================
+applyComboSieOffset();  // seed SIE offset box from table for initial combo
 setupScenario();
 draw();
 </script>
