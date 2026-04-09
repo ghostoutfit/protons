@@ -75,28 +75,21 @@
 
   #canvas { display: block; cursor: default; }
 
-  #barBottomControls {
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    width: 320px;
-    height: 30px;
-    background: rgba(10,10,26,0.9);
-    border-top: 1px solid #2a2a4a;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 14px;
-  }
-
   #scrubBar {
     background: #0e0e22;
     border-top: 1px solid #2a2a4a;
     display: flex;
     flex-direction: column;
-    padding: 6px 0 8px;
+    padding: 0 0 8px;
     gap: 4px;
     flex-shrink: 0;
+  }
+
+  #energyGraph {
+    display: block;
+    width: 100%;
+    height: 150px;
+    border-bottom: 1px solid #1e1e3a;
   }
   #phaseTimeline {
     display: none;
@@ -124,6 +117,7 @@
     align-items: center;
     padding: 0 24px;
     gap: 14px;
+    margin-top: 2px;
   }
   #scrubBar .scrub-label { font-size: 12px; color: #6b7280; white-space: nowrap; }
   #scrubBar .scrub-time {
@@ -208,17 +202,10 @@
 
 <div id="canvasWrap">
   <canvas id="canvas"></canvas>
-
-
-  <div id="barBottomControls">
-    <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:#9ca3af;cursor:pointer;">
-      <input type="checkbox" id="splitIEToggle" style="accent-color:#fb923c;">
-      Split IE → <span style="color:#818cf8">EIE</span>&nbsp;+&nbsp;<span style="color:#fb923c">SIE</span>
-    </label>
-  </div>
 </div>
 
 <div id="scrubBar">
+  <canvas id="energyGraph" height="150"></canvas>
   <div id="phaseTimeline">
     <div class="phase-seg" id="phaseSeg-approach" style="background:#374151; color:#9ca3af;">Approaching</div>
     <div class="phase-seg" id="phaseSeg-collision" style="background:#92400e; color:#fbbf24; display:none;">Collision</div>
@@ -228,6 +215,10 @@
     <span class="scrub-label">Time</span>
     <input type="range" id="timeSlider" min="0" max="0" value="0" disabled>
     <span class="scrub-time" id="timeLabel">–</span>
+    <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:#9ca3af;cursor:pointer;white-space:nowrap;margin-left:8px;">
+      <input type="checkbox" id="splitIEToggle" style="accent-color:#fb923c;">
+      Split IE → <span style="color:#818cf8">EIE</span>&nbsp;+&nbsp;<span style="color:#fb923c">SIE</span>
+    </label>
   </div>
 </div>
 
@@ -235,12 +226,14 @@
 // ============================================================
 //  DOM REFERENCES
 // ============================================================
-const canvas    = document.getElementById('canvas');
-const ctx       = canvas.getContext('2d');
-const goBtn     = document.getElementById('goBtn');
-const replayBtn = document.getElementById('replayBtn');
-const timeSlider   = document.getElementById('timeSlider');
-const timeLabelEl  = document.getElementById('timeLabel');
+const canvas      = document.getElementById('canvas');
+const ctx         = canvas.getContext('2d');
+const goBtn       = document.getElementById('goBtn');
+const replayBtn   = document.getElementById('replayBtn');
+const timeSlider  = document.getElementById('timeSlider');
+const timeLabelEl = document.getElementById('timeLabel');
+const energyGraph = document.getElementById('energyGraph');
+const egCtx       = energyGraph.getContext('2d');
 
 // ============================================================
 //  PHYSICS CONSTANTS
@@ -581,11 +574,10 @@ function setupScenario() {
   if (lSz === 3) snapTGeometry(0, lSz);
   if (rSz === 3) snapTGeometry(lSz, particles.length);
 
-  // Mirror the left cluster's internal x-layout around its centroid so the
-  // proton faces right (toward the right cluster).  This makes D-He and He-D
-  // symmetric: the leading particle on both sides is always the proton, so
-  // the Coulomb barrier engages immediately and neither sneaks a neutron in.
-  {
+  // For Coulomb-only combos (He + charged), mirror the left cluster's internal
+  // x-layout so its proton faces right.  This makes D-He and He-D symmetric.
+  // Not applied to fusion combos — their barrier distances are calibrated as-is.
+  if (isCoulombOnly()) {
     let lcx = 0;
     for (let i = 0; i < lSz; i++) lcx += particles[i].x;
     lcx /= lSz;
@@ -1477,7 +1469,7 @@ function drawBarChart() {
 
   const pad      = 12;
   const labelH   = 14;
-  const controlH = 30;
+  const controlH = 8;
   const barW     = (W - pad * 2) / bars.length;
   const chartH   = H - labelH - controlH - pad;
   const baseline = gy + H - labelH - controlH;
@@ -1522,6 +1514,87 @@ function drawBarChart() {
   ctx.fillText(phaseLabel, gx + W / 2, gy + 24);
 
   ctx.restore();
+}
+
+// ============================================================
+//  DISPLAY ENERGY  (same values shown in bar chart)
+// ============================================================
+function getDisplayEnergy() {
+  const e   = computeEnergy();
+  const ke  = collisionDisplayKE !== null ? collisionDisplayKE : e.ke;
+  const eie = (collisionPhase === 'collision' && collisionDisplayEIE !== null)
+              ? collisionDisplayEIE : e.eie;
+  const tot = initialTotal + sieOffset - gammaCarriedEnergy;
+  const sie = Math.max(0, tot - Math.max(0, ke) - eie);
+  const ie  = eie + sie;
+  return { ke: Math.max(0, ke), eie: Math.max(0, eie), sie, ie, tot };
+}
+
+// ============================================================
+//  ENERGY LINE GRAPH  (drawn on #energyGraph canvas)
+// ============================================================
+function drawEnergyGraph() {
+  const W = energyGraph.width, H = energyGraph.height;
+  egCtx.clearRect(0, 0, W, H);
+
+  // Background
+  egCtx.fillStyle = '#0a0a1a';
+  egCtx.fillRect(0, 0, W, H);
+
+  const n = particleHistory.length;
+  if (n < 2) return;
+
+  const maxY = barYRange;
+
+  // Faint horizontal grid lines
+  egCtx.strokeStyle = 'rgba(255,255,255,0.06)';
+  egCtx.lineWidth = 1;
+  for (let i = 1; i <= 3; i++) {
+    const y = H - (i / 4) * H;
+    egCtx.beginPath(); egCtx.moveTo(0, y); egCtx.lineTo(W, y); egCtx.stroke();
+  }
+
+  function plotLine(color, getValue) {
+    egCtx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const x = (i / (n - 1)) * W;
+      const v = Math.min(getValue(particleHistory[i]), maxY);
+      const y = H - (v / maxY) * H;
+      if (i === 0) egCtx.moveTo(x, y); else egCtx.lineTo(x, y);
+    }
+    egCtx.strokeStyle = color;
+    egCtx.lineWidth = 1.5;
+    egCtx.stroke();
+  }
+
+  // Draw back-to-front matching bar chart, respecting splitIE toggle
+  plotLine('#22c55e', f => (f.edisp || {}).tot || 0);
+  if (splitIE) {
+    plotLine('#fb923c', f => (f.edisp || {}).sie || 0);
+    plotLine('#818cf8', f => (f.edisp || {}).eie || 0);
+  } else {
+    plotLine('#818cf8', f => (f.edisp || {}).ie  || 0);
+  }
+  plotLine('#f87171', f => (f.edisp || {}).ke || 0);
+
+  // Cursor line at current scrub / live position
+  const cur = scrubFrame >= 0 ? scrubFrame : n - 1;
+  const cx  = n > 1 ? (cur / (n - 1)) * W : W;
+  egCtx.strokeStyle = 'rgba(255,255,255,0.35)';
+  egCtx.lineWidth = 1;
+  egCtx.beginPath(); egCtx.moveTo(cx, 0); egCtx.lineTo(cx, H); egCtx.stroke();
+
+  // Tiny legend (top-left)
+  const items = splitIE
+    ? [['KE','#f87171'],['EIE','#818cf8'],['SIE','#fb923c'],['Tot','#22c55e']]
+    : [['KE','#f87171'],['IE','#818cf8'],['Tot','#22c55e']];
+  egCtx.font = '10px sans-serif'; egCtx.textBaseline = 'top';
+  let lx = 8;
+  items.forEach(([label, color]) => {
+    egCtx.fillStyle = color;
+    egCtx.fillText(label, lx, 4);
+    lx += egCtx.measureText(label).width + 12;
+  });
 }
 
 // ============================================================
@@ -1577,6 +1650,7 @@ function draw() {
 
   ctx.restore();
   drawBarChart();
+  drawEnergyGraph();
 }
 
 // ============================================================
@@ -1617,8 +1691,9 @@ function renderFrame(idx) {
 function resize() {
   const toolbarH = document.getElementById('toolbar').offsetHeight;
   const scrubH   = document.getElementById('scrubBar').offsetHeight;
-  canvas.width   = window.innerWidth;
-  canvas.height  = window.innerHeight - toolbarH - scrubH;
+  canvas.width        = window.innerWidth;
+  canvas.height       = window.innerHeight - toolbarH - scrubH;
+  energyGraph.width   = window.innerWidth;
   if (!running) draw();
 }
 window.addEventListener('resize', resize);
@@ -2058,6 +2133,7 @@ function loop() {
     gammaCarriedEnergy,
     photon: photon ? { ...photon } : null,
     camX: cameraSiteX, camY: cameraSiteY,
+    edisp: getDisplayEnergy(),
   });
   if (particleHistory.length > MAX_HISTORY) particleHistory.shift();
 
