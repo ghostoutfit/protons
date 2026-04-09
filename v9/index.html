@@ -143,8 +143,10 @@
     flex-shrink: 0;
     border-left: 1px solid #2a2a4a;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 4px;
   }
 
   #portrait-overlay {
@@ -243,6 +245,7 @@
       <input type="checkbox" id="splitIEToggle" style="accent-color:#fb923c;">
       Split IE → <span style="color:#818cf8">EIE</span>&nbsp;+&nbsp;<span style="color:#fb923c">SIE</span>
     </label>
+    <button id="fullTimelineBtn" style="margin-top:6px;padding:3px 10px;font-size:11px;background:#1e293b;color:#94a3b8;border:1px solid #334155;border-radius:4px;cursor:pointer;">Full Timeline</button>
   </div>
 </div>
 
@@ -341,6 +344,13 @@ let animId    = null;
 const MAX_HISTORY = 4000;
 let particleHistory = [];
 let scrubFrame = -1;
+
+// Graph zoom (frame indices; null end = full history)
+let graphZoomStart = 0;
+let graphZoomEnd   = null;
+// Drag-to-zoom state on energyGraph canvas
+let egDragStartPx  = null;
+let egDragCurPx    = null;
 
 // ============================================================
 //  ENERGY BASELINE
@@ -1570,7 +1580,21 @@ function drawEnergyGraph() {
   const n = particleHistory.length;
   if (n < 2) return;
 
-  const maxY = barYRange;
+  // Zoom window (frame indices)
+  const zStart = Math.max(0, graphZoomStart);
+  const zEnd   = Math.min(n - 1, graphZoomEnd ?? n - 1);
+  const zLen   = zEnd - zStart;
+  if (zLen < 1) return;
+
+  // Autoscale Y over visible window
+  let maxY = 0;
+  for (let i = zStart; i <= zEnd; i++) {
+    const d = particleHistory[i].edisp || {};
+    const topVal = Math.max(d.tot || 0, d.ke || 0, d.ie || 0, d.eie || 0, d.sie || 0);
+    if (topVal > maxY) maxY = topVal;
+  }
+  if (maxY <= 0) maxY = 1;
+  maxY *= 1.1; // 10% headroom
 
   // Faint horizontal grid lines
   egCtx.strokeStyle = 'rgba(255,255,255,0.06)';
@@ -1582,11 +1606,11 @@ function drawEnergyGraph() {
 
   function plotLine(color, getValue) {
     egCtx.beginPath();
-    for (let i = 0; i < n; i++) {
-      const x = (i / (n - 1)) * W;
-      const v = Math.min(getValue(particleHistory[i]), maxY);
+    for (let i = zStart; i <= zEnd; i++) {
+      const x = ((i - zStart) / zLen) * W;
+      const v = getValue(particleHistory[i]);
       const y = H - (v / maxY) * H;
-      if (i === 0) egCtx.moveTo(x, y); else egCtx.lineTo(x, y);
+      if (i === zStart) egCtx.moveTo(x, y); else egCtx.lineTo(x, y);
     }
     egCtx.strokeStyle = color;
     egCtx.lineWidth = 1.5;
@@ -1603,12 +1627,25 @@ function drawEnergyGraph() {
   }
   plotLine('#f87171', f => (f.edisp || {}).ke || 0);
 
+  // Drag-to-zoom selection overlay
+  if (egDragStartPx !== null && egDragCurPx !== null) {
+    const x0 = Math.min(egDragStartPx, egDragCurPx);
+    const x1 = Math.max(egDragStartPx, egDragCurPx);
+    egCtx.fillStyle = 'rgba(99,102,241,0.18)';
+    egCtx.fillRect(x0, 0, x1 - x0, H);
+    egCtx.strokeStyle = 'rgba(99,102,241,0.7)';
+    egCtx.lineWidth = 1;
+    egCtx.strokeRect(x0, 0, x1 - x0, H);
+  }
+
   // Cursor line at current scrub / live position
   const cur = scrubFrame >= 0 ? scrubFrame : n - 1;
-  const cx  = n > 1 ? (cur / (n - 1)) * W : W;
-  egCtx.strokeStyle = 'rgba(255,255,255,0.35)';
-  egCtx.lineWidth = 1;
-  egCtx.beginPath(); egCtx.moveTo(cx, 0); egCtx.lineTo(cx, H); egCtx.stroke();
+  const cx  = zLen > 0 ? ((cur - zStart) / zLen) * W : W;
+  if (cur >= zStart && cur <= zEnd) {
+    egCtx.strokeStyle = 'rgba(255,255,255,0.35)';
+    egCtx.lineWidth = 1;
+    egCtx.beginPath(); egCtx.moveTo(cx, 0); egCtx.lineTo(cx, H); egCtx.stroke();
+  }
 
   // Tiny legend (top-left)
   const items = splitIE
@@ -1753,6 +1790,11 @@ function resetState() {
   coulombScatterEscape = false;
   particleHistory  = [];
   scrubFrame       = -1;
+  graphZoomStart   = 0;
+  graphZoomEnd     = null;
+  egDragStartPx    = null;
+  egDragCurPx      = null;
+  timeSlider.min      = 0;
   timeSlider.value    = 0;
   timeSlider.max      = 0;
   timeSlider.disabled = true;
@@ -1833,26 +1875,102 @@ function updatePhaseTimeline() {
   }
   phaseTimeline.style.display = 'flex';
 
-  const approachFrames  = collisionStartFrame;
-  const collisionFramesCount = escapeStartFrame >= 0
-    ? escapeStartFrame - collisionStartFrame
-    : total - collisionStartFrame;
-  const escapeFramesCount = escapeStartFrame >= 0
-    ? total - escapeStartFrame
-    : 0;
+  // Full phase boundaries
+  const approachEnd   = collisionStartFrame;                         // [0, approachEnd)
+  const collisionEnd  = escapeStartFrame >= 0 ? escapeStartFrame : total; // [approachEnd, collisionEnd)
+  const escapeEnd     = total;                                        // [collisionEnd, escapeEnd)
+
+  // Zoom window
+  const zStart = graphZoomStart;
+  const zEnd   = (graphZoomEnd ?? (total - 1)) + 1; // exclusive
+
+  // Visible frames for each phase within zoom window
+  const clamp = (a, b) => Math.max(0, Math.min(b, zEnd) - Math.max(a, zStart));
+  const visApproach   = clamp(0,          approachEnd);
+  const visCollision  = clamp(approachEnd, collisionEnd);
+  const visEscape     = clamp(collisionEnd, escapeEnd);
+  const visTotal      = visApproach + visCollision + visEscape;
 
   const setSegment = (el, frames) => {
     if (frames <= 0) { el.style.display = 'none'; return; }
     el.style.display = 'flex';
     el.style.flex    = String(frames);
-    // Hide label if segment too narrow to show it
-    el.style.fontSize = frames / total < 0.12 ? '0px' : '10px';
+    el.style.fontSize = frames / visTotal < 0.12 ? '0px' : '10px';
   };
 
-  setSegment(segApproach,  approachFrames);
-  setSegment(segCollision, collisionFramesCount);
-  setSegment(segEscape,    escapeFramesCount);
+  setSegment(segApproach,  visApproach);
+  setSegment(segCollision, visCollision);
+  setSegment(segEscape,    visEscape);
 }
+
+// ============================================================
+//  GRAPH ZOOM HELPERS
+// ============================================================
+function applyGraphZoom(start, end) {
+  const n = particleHistory.length;
+  graphZoomStart = Math.max(0, start);
+  graphZoomEnd   = (end === null || end >= n - 1) ? null : Math.min(n - 1, end);
+  const zEnd = graphZoomEnd ?? (n - 1);
+  timeSlider.min = graphZoomStart;
+  timeSlider.max = zEnd;
+  // Clamp scrubFrame into visible window
+  if (scrubFrame >= 0) {
+    scrubFrame = Math.max(graphZoomStart, Math.min(zEnd, scrubFrame));
+    timeSlider.value = scrubFrame;
+  } else {
+    timeSlider.value = zEnd;
+  }
+  updatePhaseTimeline();
+  if (!running) draw();
+}
+
+function resetGraphZoom() {
+  graphZoomStart = 0;
+  graphZoomEnd   = null;
+  const n = particleHistory.length;
+  timeSlider.min = 0;
+  timeSlider.max = Math.max(0, n - 1);
+  timeSlider.value = scrubFrame >= 0 ? scrubFrame : Math.max(0, n - 1);
+  updatePhaseTimeline();
+  if (!running) draw();
+}
+
+// Drag-to-zoom events on energyGraph
+energyGraph.addEventListener('mousedown', e => {
+  if (!particleHistory.length) return;
+  egDragStartPx = e.offsetX;
+  egDragCurPx   = e.offsetX;
+  e.preventDefault();
+});
+energyGraph.addEventListener('mousemove', e => {
+  if (egDragStartPx === null) return;
+  egDragCurPx = e.offsetX;
+  if (!running) draw();
+});
+energyGraph.addEventListener('mouseup', e => {
+  if (egDragStartPx === null) return;
+  const x0 = Math.min(egDragStartPx, e.offsetX);
+  const x1 = Math.max(egDragStartPx, e.offsetX);
+  egDragStartPx = null;
+  egDragCurPx   = null;
+  const W = energyGraph.width;
+  const n = particleHistory.length;
+  if (n < 2 || x1 - x0 < 4) { if (!running) draw(); return; } // too small = ignore
+  // Map pixel range to frame indices within current zoom
+  const zStart = graphZoomStart;
+  const zEnd   = graphZoomEnd ?? (n - 1);
+  const zLen   = zEnd - zStart;
+  const fStart = Math.round(zStart + (x0 / W) * zLen);
+  const fEnd   = Math.round(zStart + (x1 / W) * zLen);
+  if (fEnd - fStart < 2) { if (!running) draw(); return; }
+  applyGraphZoom(fStart, fEnd);
+});
+energyGraph.addEventListener('mouseleave', e => {
+  if (egDragStartPx !== null) {
+    egDragStartPx = null; egDragCurPx = null;
+    if (!running) draw();
+  }
+});
 
 // ============================================================
 //  TIME SCRUBBER
@@ -1879,6 +1997,9 @@ document.getElementById('fieldToggle').addEventListener('change', function() {
 document.getElementById('splitIEToggle').addEventListener('change', function() {
   splitIE = this.checked;
   if (!running) draw();
+});
+document.getElementById('fullTimelineBtn').addEventListener('click', () => {
+  resetGraphZoom();
 });
 document.getElementById('sieOffsetInput').addEventListener('input', function() {
   sieOffset = parseFloat(this.value) || 0;
@@ -2039,7 +2160,7 @@ function loop() {
       const cmvy2 = (particles[0].vy + particles[1].vy) / 2;
       const pIdx = particles[0].type === 'proton' ? 0 : 1;
       const nIdx = 1 - pIdx;
-      const minSep = PARTICLE_RADIUS * 2, maxSep = PARTICLE_RADIUS * 4;
+      const minSep = PARTICLE_RADIUS * 2, maxSep = PARTICLE_RADIUS * 2.5;
       const midSep = (minSep + maxSep) / 2;
       const amp    = (maxSep - minSep) / 2;
       const halfSep = (midSep + amp * Math.sin(pnJiggleFrame * 1.8)) / 2;
@@ -2159,8 +2280,11 @@ function loop() {
   if (particleHistory.length > MAX_HISTORY) particleHistory.shift();
 
   timeSlider.disabled = false;
-  timeSlider.max      = particleHistory.length - 1;
-  timeSlider.value    = timeSlider.max;
+  // Only update slider range if we're not zoomed in
+  if (graphZoomEnd === null) {
+    timeSlider.max   = particleHistory.length - 1;
+    timeSlider.value = timeSlider.max;
+  }
   timeLabelEl.textContent = `${particleHistory.length}`;
   updatePhaseTimeline();
 
