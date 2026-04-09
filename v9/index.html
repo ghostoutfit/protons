@@ -284,13 +284,11 @@ const COMBO_TABLE = {
   'd+n':   { sieOffset: 100, immediateKE: 56, keOut:  6, gammaKE: 50 },
   // Cat 4 — Coulomb only, never reach strong range.
   // KE display uses actual physics (collisionDisplayKE never set for these).
-  'p+p':   { sieOffset: 100 },
-  'p+he':  { sieOffset: 150 },
-  'he+p':  { sieOffset: 150 },
-  'd+he':  { sieOffset: 150 },
-  'he+d':  { sieOffset: 150 },
-  't+he':  { sieOffset: 150 },
-  'he+t':  { sieOffset: 150 },
+  'p+p':   { sieOffset:   0 },
+  'p+he':  { sieOffset: 250 }, 'he+p':  { sieOffset: 250 },
+  'd+he':  { sieOffset: 300 }, 'he+d':  { sieOffset: 300 },
+  't+he':  { sieOffset: 350 }, 'he+t':  { sieOffset: 350 },
+  'he+he': { sieOffset: 500 },
 };
 
 function getComboEntry() {
@@ -1507,7 +1505,7 @@ function drawBarChart() {
   // Phase label
   const phaseColors  = { approach: '#6b7280', collision: '#fbbf24', escapeAnim: '#6ee7b7', escape: '#6ee7b7' };
   let phaseLabel = { approach: 'Approaching', collision: 'Collision', escapeAnim: 'Escaping', escape: 'Escaping' }[collisionPhase] || '';
-  if ((collisionPhase === 'approach' && isCoulombOnly()) || coulombScatterEscape) phaseLabel = 'Coulomb Scattering';
+  if (coulombScatterEscape) phaseLabel = 'Escaping';
   ctx.fillStyle = phaseColors[collisionPhase] || '#9ca3af';
   ctx.font      = 'bold 13px sans-serif';
   ctx.textAlign = 'center';
@@ -2074,14 +2072,13 @@ function loop() {
         // as a pure Coulomb scatter regardless of combo category.
         const coulombBounce = hasCoulombBarrier() && !crossClusterContact();
         if (isCoulombOnly() || coulombBounce) {
-          // Coulomb-only: no nuclear collision.  Wait until clusters are well
-          // separated AND moving fast enough — prevents freezing when they
-          // barely reach the threshold at near-zero velocity.
+          // Mark as escaping immediately so the label flips the instant they
+          // start moving apart, even before releasing to coast.
+          coulombScatterEscape = true;
           if (cdist > strongCutoff() * 2.5 && relV > approachSpeed * 0.5) {
-            collisionPhase       = 'escape';
-            coulombScatterEscape = true;
-            collisionStartFrame  = particleHistory.length; // whole run = approach
-            escapeStartFrame     = particleHistory.length;
+            collisionPhase      = 'escape';
+            collisionStartFrame = particleHistory.length;
+            escapeStartFrame    = particleHistory.length;
           }
         } else {
           collisionPhase      = 'collision';
