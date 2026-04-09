@@ -75,27 +75,6 @@
 
   #canvas { display: block; cursor: default; }
 
-  #barYSliderWrap {
-    position: absolute;
-    right: 313px;
-    top: 8px;
-    bottom: 52px;
-    width: 16px;
-    display: flex;
-    align-items: center;
-  }
-
-  #barYRangeSlider {
-    writing-mode: vertical-lr;
-    direction: rtl;
-    flex: 1;
-    width: 12px;
-    accent-color: #6366f1;
-    cursor: pointer;
-    opacity: 0.7;
-  }
-  #barYRangeSlider:hover { opacity: 1; }
-
   #barBottomControls {
     position: absolute;
     right: 0;
@@ -187,9 +166,9 @@
   <label class="toggle-label" style="gap:6px;">
     Left:
     <select id="leftChoice" style="background:#1a1a3a;color:#e0e0e0;border:1px solid #3a3a5a;border-radius:4px;padding:2px 8px;font-size:12px;cursor:pointer;">
-      <option value="p" selected>Proton</option>
+      <option value="p">Proton</option>
       <option value="n">Neutron</option>
-      <option value="d">Deuterium (p+n)</option>
+      <option value="d" selected>Deuterium (p+n)</option>
       <option value="t">Tritium (p+2n)</option>
       <option value="he">Helium-4 (2p+2n)</option>
     </select>
@@ -197,10 +176,10 @@
   <label class="toggle-label" style="gap:6px;">
     Right:
     <select id="rightChoice" style="background:#1a1a3a;color:#e0e0e0;border:1px solid #3a3a5a;border-radius:4px;padding:2px 8px;font-size:12px;cursor:pointer;">
-      <option value="p" selected>Proton</option>
+      <option value="p">Proton</option>
       <option value="n">Neutron</option>
       <option value="d">Deuterium (p+n)</option>
-      <option value="t">Tritium (p+2n)</option>
+      <option value="t" selected>Tritium (p+2n)</option>
       <option value="he">Helium-4 (2p+2n)</option>
     </select>
   </label>
@@ -217,12 +196,12 @@
 
   <div style="display:flex;flex-direction:column;gap:4px;">
     <label class="toggle-label" style="gap:6px;">
-      Electric: <span id="v9ElecVal">150</span>
-      <input type="range" id="v9ElecSlider" min="10" max="600" step="10" value="150" style="width:72px;accent-color:#7dd3fc;">
+      Electric: <span id="v9ElecVal">400</span>
+      <input type="range" id="v9ElecSlider" min="10" max="600" step="10" value="400" style="width:72px;accent-color:#7dd3fc;">
     </label>
     <label class="toggle-label" style="gap:6px;">
       Speed: <span id="v9SpeedVal">2.00</span>
-      <input type="range" id="v9SpeedSlider" min="0.1" max="4.0" step="0.05" value="2.0" style="width:72px;accent-color:#6366f1;">
+      <input type="range" id="v9SpeedSlider" min="0.1" max="2.0" step="0.05" value="2.0" style="width:72px;accent-color:#6366f1;">
     </label>
   </div>
 </div>
@@ -230,9 +209,6 @@
 <div id="canvasWrap">
   <canvas id="canvas"></canvas>
 
-  <div id="barYSliderWrap">
-    <input type="range" id="barYRangeSlider" min="10" max="500" step="10" value="120">
-  </div>
 
   <div id="barBottomControls">
     <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:#9ca3af;cursor:pointer;">
@@ -334,7 +310,7 @@ function speedScale() { return (approachSpeed / 2.0) ** 2; }
 // ============================================================
 //  MUTABLE PARAMETERS  (slider-controlled)
 // ============================================================
-let coulombStrength = 150;
+let coulombStrength = 400;
 let approachSpeed   = 2.0;
 
 // ============================================================
@@ -369,10 +345,11 @@ let gammaCarriedEnergy  = 0;     // energy carried away by photon; subtracts fro
 
 // Photon capture state
 let photon             = null;   // { x, y, vx, vy, age, maxAge }
-let photonCaptureFired = false;
-let pnJiggleFrame      = 0;
-let pnBound            = false;
-let photonEscapeFrames = 0;
+let photonCaptureFired   = false;
+let pnJiggleFrame        = 0;
+let pnBound              = false;
+let photonEscapeFrames   = 0;
+let coulombScatterEscape = false;  // true when escape is pure Coulomb (run physics, not coast)
 
 // ============================================================
 //  PHASE STATE
@@ -393,7 +370,7 @@ let cameraSiteX = 0, cameraSiteY = 0;
 //  DISPLAY STATE
 // ============================================================
 let showField = true;
-let barYRange = 120;
+const barYRange = 120;
 let splitIE   = false;
 let sieOffset = 0;
 
@@ -408,8 +385,8 @@ const CLUSTER_DEFS = {
   'he': [{ type:'proton',  x:-13, y:-8  }, { type:'neutron', x:8,   y:-13 }, { type:'proton',  x:13,  y:8   }, { type:'neutron', x:-8,  y:13  }],
 };
 
-let leftChoice      = 'p';
-let rightChoice     = 'p';
+let leftChoice      = 'd';
+let rightChoice     = 't';
 let leftClusterSize = 1;
 
 // Offscreen canvas for heatmap rendering
@@ -522,12 +499,39 @@ function isCoulombOnly() {
   return other === 'p' || other === 'd' || other === 't' || other === 'he';
 }
 
+// True when both clusters carry charge (proton on each side), meaning a
+// Coulomb barrier exists.  At low speed the clusters may reverse before
+// reaching strong-force range — treat that as a Coulomb scatter, not a
+// nuclear collision.
+function hasCoulombBarrier() {
+  const lHasP = CLUSTER_DEFS[leftChoice].some(p => p.type === 'proton');
+  const rHasP = CLUSTER_DEFS[rightChoice].some(p => p.type === 'proton');
+  return lHasP && rHasP;
+}
+
+// Return true if any left-cluster particle is within strongCutoff() of any
+// right-cluster particle — i.e. nuclear contact actually occurred.
+function crossClusterContact() {
+  const cutoff = strongCutoff();
+  const lSize  = leftClusterSize;
+  const n      = particles.length;
+  for (let i = 0; i < lSize; i++) {
+    for (let j = lSize; j < n; j++) {
+      const dx = particles[j].x - particles[i].x;
+      const dy = particles[j].y - particles[i].y;
+      if (dx*dx + dy*dy < cutoff * cutoff) return true;
+    }
+  }
+  return false;
+}
+
 // Maximum safe approach speed for Coulomb-only combos.
 // Ensures CM kinetic energy < Coulomb barrier at the edge of strong range.
 function maxSafeCoulombSpeed() {
   const l = leftChoice, r = rightChoice;
-  const lMass    = CLUSTER_DEFS[l].length;
-  const rMass    = CLUSTER_DEFS[r].length;
+  const PHYS_CLUSTER_MASS = { p:1, n:1, d:2, t:2, he:4 };
+  const lMass    = PHYS_CLUSTER_MASS[l] || CLUSTER_DEFS[l].length;
+  const rMass    = PHYS_CLUSTER_MASS[r] || CLUSTER_DEFS[r].length;
   const lProtons = CLUSTER_DEFS[l].filter(p => p.type === 'proton').length;
   const rProtons = CLUSTER_DEFS[r].filter(p => p.type === 'proton').length;
   const pairs    = lProtons * rProtons; // inter-cluster proton pairs
@@ -555,12 +559,18 @@ function setupScenario() {
   const rightDef = CLUSTER_DEFS[rightChoice];
   leftClusterSize = leftDef.length;
 
+  // T is secretly given the same effective mass as D (2) by scaling each
+  // of its 3 particles down to physMass = 2/3, so cluster total = 2.
+  const CLUSTER_PHYS_MASS = { p:1, n:1, d:1, t: 2/3, he:1 };
+  const lPM = CLUSTER_PHYS_MASS[leftChoice]  || 1;
+  const rPM = CLUSTER_PHYS_MASS[rightChoice] || 1;
+
   particles = [];
   for (const d of leftDef) {
-    particles.push({ x: cx - sep + d.x, y: cy + d.y, vx:  approachSpeed, vy: 0, type: d.type });
+    particles.push({ x: cx - sep + d.x, y: cy + d.y, vx:  approachSpeed, vy: 0, type: d.type, physMass: lPM });
   }
   for (const d of rightDef) {
-    particles.push({ x: cx + sep + d.x, y: cy + d.y, vx: -approachSpeed, vy: 0, type: d.type });
+    particles.push({ x: cx + sep + d.x, y: cy + d.y, vx: -approachSpeed, vy: 0, type: d.type, physMass: rPM });
   }
 
   // Snap He-4 / T clusters to their escape geometry so the SIE baseline
@@ -619,8 +629,9 @@ function step(dt) {
         if (dist < 0.01) continue;
         const force = pairForce(dist, distSq, a.type, b.type);
         const fx = force * (dx / dist), fy = force * (dy / dist);
-        a.vx -= fx * subDt;  a.vy -= fy * subDt;
-        b.vx += fx * subDt;  b.vy += fy * subDt;
+        const ma = a.physMass || 1, mb = b.physMass || 1;
+        a.vx -= fx * subDt / ma;  a.vy -= fy * subDt / ma;
+        b.vx += fx * subDt / mb;  b.vy += fy * subDt / mb;
       }
     }
     for (let i = 0; i < n; i++) {
@@ -659,12 +670,12 @@ function step(dt) {
 //  causing internal oscillation during approach.
 // ============================================================
 function lockClusterVelocities() {
-  const n = particles.length, lSize = leftClusterSize, rSize = n - lSize;
-  let lvx = 0, lvy = 0, rvx = 0, rvy = 0;
-  for (let i = 0;     i < lSize; i++) { lvx += particles[i].vx; lvy += particles[i].vy; }
-  for (let i = lSize; i < n;     i++) { rvx += particles[i].vx; rvy += particles[i].vy; }
-  lvx /= lSize;  lvy /= lSize;
-  rvx /= rSize;  rvy /= rSize;
+  const n = particles.length, lSize = leftClusterSize;
+  let lvx=0, lvy=0, ltm=0, rvx=0, rvy=0, rtm=0;
+  for (let i = 0;     i < lSize; i++) { const m=particles[i].physMass||1; lvx+=particles[i].vx*m; lvy+=particles[i].vy*m; ltm+=m; }
+  for (let i = lSize; i < n;     i++) { const m=particles[i].physMass||1; rvx+=particles[i].vx*m; rvy+=particles[i].vy*m; rtm+=m; }
+  lvx /= ltm;  lvy /= ltm;
+  rvx /= rtm;  rvy /= rtm;
   for (let i = 0;     i < lSize; i++) { particles[i].vx = lvx; particles[i].vy = lvy; }
   for (let i = lSize; i < n;     i++) { particles[i].vx = rvx; particles[i].vy = rvy; }
 }
@@ -704,13 +715,14 @@ function computeEnergy() {
   const phys = particles;
   const n = phys.length;
   if (n === 0) return { ke: 0, eie: 0, sie: 0, total: 0 };
-  let cmvx = 0, cmvy = 0;
-  for (const p of phys) { cmvx += p.vx; cmvy += p.vy; }
-  cmvx /= n;  cmvy /= n;
+  let cmvx = 0, cmvy = 0, totalM = 0;
+  for (const p of phys) { const m=p.physMass||1; cmvx += p.vx*m; cmvy += p.vy*m; totalM += m; }
+  cmvx /= totalM;  cmvy /= totalM;
   let ke = 0;
   for (const p of phys) {
+    const m = p.physMass || 1;
     const rvx = p.vx - cmvx, rvy = p.vy - cmvy;
-    ke += 0.5 * (rvx * rvx + rvy * rvy);
+    ke += 0.5 * m * (rvx * rvx + rvy * rvy);
   }
   let eie = 0, sie = 0;
   const cutoff = strongCutoff();
@@ -1492,7 +1504,7 @@ function drawBarChart() {
   // Phase label
   const phaseColors  = { approach: '#6b7280', collision: '#fbbf24', escapeAnim: '#6ee7b7', escape: '#6ee7b7' };
   let phaseLabel = { approach: 'Approaching', collision: 'Collision', escapeAnim: 'Escaping', escape: 'Escaping' }[collisionPhase] || '';
-  if (collisionPhase === 'approach' && isCoulombOnly()) phaseLabel = 'Coulomb Scattering';
+  if ((collisionPhase === 'approach' && isCoulombOnly()) || coulombScatterEscape) phaseLabel = 'Coulomb Scattering';
   ctx.fillStyle = phaseColors[collisionPhase] || '#9ca3af';
   ctx.font      = 'bold 13px sans-serif';
   ctx.textAlign = 'center';
@@ -1621,11 +1633,12 @@ function resetState() {
   escapeAnimTargetPos = null;
   escapeAnimStartVel  = null;
   escapeAnimTargetVel = null;
-  photon             = null;
-  photonCaptureFired = false;
-  pnJiggleFrame      = 0;
-  pnBound            = false;
-  photonEscapeFrames = 0;
+  photon              = null;
+  photonCaptureFired  = false;
+  pnJiggleFrame       = 0;
+  pnBound             = false;
+  photonEscapeFrames  = 0;
+  coulombScatterEscape = false;
   particleHistory  = [];
   scrubFrame       = -1;
   timeSlider.value    = 0;
@@ -1751,10 +1764,6 @@ document.getElementById('fieldToggle').addEventListener('change', function() {
   showField = this.checked;
   if (!running) draw();
 });
-document.getElementById('barYRangeSlider').addEventListener('input', function() {
-  barYRange = parseInt(this.value);
-  if (!running) { if (scrubFrame >= 0) renderFrame(scrubFrame); else draw(); }
-});
 document.getElementById('splitIEToggle').addEventListener('change', function() {
   splitIE = this.checked;
   if (!running) draw();
@@ -1853,11 +1862,17 @@ function loop() {
       collisionPhase = 'escape';
     }
 
-  // ── ESCAPE  (coast: no forces, camera tracks midpoint) ────────
+  // ── ESCAPE  (coast for nuclear products; physics for Coulomb scatter) ───
   } else if (collisionPhase === 'escape') {
-    for (const p of particles) {
-      p.x += p.vx * FRAME_SPEED;
-      p.y += p.vy * FRAME_SPEED;
+    if (coulombScatterEscape) {
+      // Coulomb scatter: keep running forces so EIE→KE conversion completes.
+      step(FRAME_SPEED);
+      lockClusterVelocities();
+    } else {
+      for (const p of particles) {
+        p.x += p.vx * FRAME_SPEED;
+        p.y += p.vy * FRAME_SPEED;
+      }
     }
     updateCamera();
 
@@ -1968,13 +1983,19 @@ function loop() {
       rvx /= rSize;  rvy /= rSize;
       const relV = (rvx - lvx) * (cdx / cdist) + (rvy - lvy) * (cdy / cdist);
       if (relV >= 0) {
-        if (isCoulombOnly()) {
+        // If both clusters are charged and no particle pair reached nuclear
+        // contact range, the Coulomb barrier turned them around — treat it
+        // as a pure Coulomb scatter regardless of combo category.
+        const coulombBounce = hasCoulombBarrier() && !crossClusterContact();
+        if (isCoulombOnly() || coulombBounce) {
           // Coulomb-only: no nuclear collision.  Wait until clusters are well
-          // separated (Coulomb negligible) then coast freely in escape phase.
-          if (cdist > strongCutoff() * 2.5) {
-            collisionPhase      = 'escape';
-            collisionStartFrame = particleHistory.length; // whole run = approach
-            escapeStartFrame    = particleHistory.length;
+          // separated AND moving fast enough — prevents freezing when they
+          // barely reach the threshold at near-zero velocity.
+          if (cdist > strongCutoff() * 2.5 && relV > approachSpeed * 0.5) {
+            collisionPhase       = 'escape';
+            coulombScatterEscape = true;
+            collisionStartFrame  = particleHistory.length; // whole run = approach
+            escapeStartFrame     = particleHistory.length;
           }
         } else {
           collisionPhase      = 'collision';
