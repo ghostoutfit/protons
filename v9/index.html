@@ -1070,19 +1070,18 @@ function fireTTEscape(targetKE = null) {
   for (let i = 0; i < 4; i++) { hcx += particles[i].x; hcy += particles[i].y; }
   hcx /= 4; hcy /= 4;
 
-  // Place neutrons outside strong range, spread perpendicular to each other
+  // Both neutrons start at the same position (their midpoint) — they travel
+  // together and spread apart gradually via diverging velocities added below.
   const nmx = (particles[4].x + particles[5].x) / 2 - hcx;
   const nmy = (particles[4].y + particles[5].y) / 2 - hcy;
   const nmd = Math.sqrt(nmx*nmx + nmy*nmy);
   const nnx = nmd > 0.01 ? nmx/nmd : 1;
   const nny = nmd > 0.01 ? nmy/nmd : 0;
-  const perpX = -nny, perpY = nnx;
   const safeDist = strongCutoff() * 1.15 + PARTICLE_RADIUS;
-  const spread   = strongCutoff() * 1.3  + PARTICLE_RADIUS;
-  particles[4].x = hcx + nnx * safeDist + perpX * spread;
-  particles[4].y = hcy + nny * safeDist + perpY * spread;
-  particles[5].x = hcx + nnx * safeDist - perpX * spread;
-  particles[5].y = hcy + nny * safeDist - perpY * spread;
+  const nx0 = hcx + nnx * safeDist;
+  const ny0 = hcy + nny * safeDist;
+  particles[4].x = nx0;  particles[4].y = ny0;
+  particles[5].x = nx0;  particles[5].y = ny0;
 
   escapeAnimTargetPos = particles.map(p => ({ x: p.x, y: p.y }));
   for (let i = 0; i < 6; i++) { particles[i].x = escapeAnimStartPos[i].x; particles[i].y = escapeAnimStartPos[i].y; }
@@ -1111,19 +1110,24 @@ function fireTTEscape(targetKE = null) {
   const v_nc_x = -2 * v4_cm * Math.cos(theta);
   const v_nc_y = -2 * v4_cm * Math.sin(theta);
 
-  // Remaining KE goes to neutron relative motion
-  const KE_N_rel = KE_cm - 3 * K_He4;
-  // In neutron-pair CM frame each neutron has speed v_rel: ½v²+½v² = v² = KE_N_rel
-  const v_rel = Math.sqrt(Math.max(0, KE_N_rel));
-  const phi   = Math.random() * 2 * Math.PI;
-
-  // Final lab-frame velocities
+  // Neutrons travel as a pair: both get the pair's CM velocity, plus a tiny
+  // perpendicular spread (±18° from pair direction) so they gradually diverge
+  // as they fly — distance between them grows proportionally to distance traveled.
   const He4vx = cmvx + v4_cm * Math.cos(theta);
   const He4vy = cmvy + v4_cm * Math.sin(theta);
-  const N1vx  = cmvx + v_nc_x + v_rel * Math.cos(phi);
-  const N1vy  = cmvy + v_nc_y + v_rel * Math.sin(phi);
-  const N2vx  = cmvx + v_nc_x - v_rel * Math.cos(phi);
-  const N2vy  = cmvy + v_nc_y - v_rel * Math.sin(phi);
+
+  const ncSpeed = Math.sqrt(v_nc_x * v_nc_x + v_nc_y * v_nc_y);
+  // Perpendicular unit vector to neutron-pair CM direction
+  const ncLen = ncSpeed > 0.001 ? ncSpeed : 1;
+  const perpX =  v_nc_y / ncLen;
+  const perpY = -v_nc_x / ncLen;
+  // Spread = 18° half-angle → tan(18°) ≈ 0.325 of CM speed
+  const spreadV = ncSpeed * 0.325;
+
+  const N1vx = cmvx + v_nc_x + perpX * spreadV;
+  const N1vy = cmvy + v_nc_y + perpY * spreadV;
+  const N2vx = cmvx + v_nc_x - perpX * spreadV;
+  const N2vy = cmvy + v_nc_y - perpY * spreadV;
 
   const targetVels = [];
   for (let i = 0; i < 4; i++) targetVels.push({ vx: He4vx, vy: He4vy });
@@ -2074,51 +2078,47 @@ function loop() {
       }
     }
 
-  // ── APPROACH  (rigid-cluster, stop when centroids reverse) ────
+  // ── APPROACH  (rigid-cluster) ─────────────────────────────────
   } else {
     step(FRAME_SPEED);
     lockClusterVelocities();
     const { lcx, lcy, rcx, rcy } = updateCamera();
 
-    const cdx = rcx - lcx, cdy = rcy - lcy;
-    const cdist = Math.sqrt(cdx * cdx + cdy * cdy);
-    if (cdist > 0.01) {
-      const n = particles.length, lSize = leftClusterSize, rSize = n - lSize;
-      let lvx = 0, lvy = 0, rvx = 0, rvy = 0;
-      for (let i = 0;     i < lSize; i++) { lvx += particles[i].vx; lvy += particles[i].vy; }
-      for (let i = lSize; i < n;     i++) { rvx += particles[i].vx; rvy += particles[i].vy; }
-      lvx /= lSize;  lvy /= lSize;
-      rvx /= rSize;  rvy /= rSize;
-      const relV = (rvx - lvx) * (cdx / cdist) + (rvy - lvy) * (cdy / cdist);
-      if (relV >= 0) {
-        // If both clusters are charged and no particle pair reached nuclear
-        // contact range, the Coulomb barrier turned them around — treat it
-        // as a pure Coulomb scatter regardless of combo category.
-        const coulombBounce = hasCoulombBarrier() && !crossClusterContact();
-        if (isCoulombOnly() || coulombBounce) {
-          // Mark as escaping immediately so the label flips the instant they
-          // start moving apart, even before releasing to coast.
+    // Enter collision the instant any cross-cluster particle pair reaches
+    // strong-force range — this is when the collision actually happens,
+    // not after the clusters have already reversed direction.
+    if (!isCoulombOnly() && crossClusterContact()) {
+      collisionPhase      = 'collision';
+      collisionFrames     = 0;
+      collisionStartFrame = particleHistory.length;
+      const isPN2 = (leftChoice==='p'&&rightChoice==='n') || (leftChoice==='n'&&rightChoice==='p');
+      if (isPN2) { pnBound = true; pnJiggleFrame = 0; }
+      const colE    = computeEnergy();
+      const colEntry = getComboEntry();
+      const scale    = speedScale();
+      collisionDisplayKE  = colEntry ? colEntry.immediateKE * scale
+                                     : Math.max(initialKE, colE.ke);
+      collisionPeakKE     = collisionDisplayKE;
+      collisionDisplayEIE = colE.eie;
+    } else {
+      // No nuclear contact yet — check for Coulomb scatter reversal
+      const cdx = rcx - lcx, cdy = rcy - lcy;
+      const cdist = Math.sqrt(cdx * cdx + cdy * cdy);
+      if (cdist > 0.01) {
+        const n = particles.length, lSize = leftClusterSize, rSize = n - lSize;
+        let lvx = 0, lvy = 0, rvx = 0, rvy = 0;
+        for (let i = 0;     i < lSize; i++) { lvx += particles[i].vx; lvy += particles[i].vy; }
+        for (let i = lSize; i < n;     i++) { rvx += particles[i].vx; rvy += particles[i].vy; }
+        lvx /= lSize;  lvy /= lSize;
+        rvx /= rSize;  rvy /= rSize;
+        const relV = (rvx - lvx) * (cdx / cdist) + (rvy - lvy) * (cdy / cdist);
+        if (relV >= 0) {
           coulombScatterEscape = true;
           if (cdist > strongCutoff() * 2.5 && relV > approachSpeed * 0.5) {
             collisionPhase      = 'escape';
             collisionStartFrame = particleHistory.length;
             escapeStartFrame    = particleHistory.length;
           }
-        } else {
-          collisionPhase      = 'collision';
-          collisionFrames     = 0;
-          collisionStartFrame = particleHistory.length;
-          // P+N: mark as bound immediately so scripted jiggle can start.
-          const isPN2 = (leftChoice==='p'&&rightChoice==='n') || (leftChoice==='n'&&rightChoice==='p');
-          if (isPN2) { pnBound = true; pnJiggleFrame = 0; }
-          // Set display KE to table value (scaled by speed²) at collision onset.
-          const colE    = computeEnergy();
-          const colEntry = getComboEntry();
-          const scale    = speedScale();
-          collisionDisplayKE  = colEntry ? colEntry.immediateKE * scale
-                                         : Math.max(initialKE, colE.ke);
-          collisionPeakKE     = collisionDisplayKE;
-          collisionDisplayEIE = colE.eie;
         }
       }
     }
