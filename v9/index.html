@@ -581,6 +581,17 @@ function setupScenario() {
   if (lSz === 3) snapTGeometry(0, lSz);
   if (rSz === 3) snapTGeometry(lSz, particles.length);
 
+  // Mirror the left cluster's internal x-layout around its centroid so the
+  // proton faces right (toward the right cluster).  This makes D-He and He-D
+  // symmetric: the leading particle on both sides is always the proton, so
+  // the Coulomb barrier engages immediately and neither sneaks a neutron in.
+  {
+    let lcx = 0;
+    for (let i = 0; i < lSz; i++) lcx += particles[i].x;
+    lcx /= lSz;
+    for (let i = 0; i < lSz; i++) particles[i].x = 2 * lcx - particles[i].x;
+  }
+
   const e0  = computeEnergy();
   initialTotal = e0.total;
   initialKE    = e0.ke;
