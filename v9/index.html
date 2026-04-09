@@ -79,10 +79,18 @@
     background: #0e0e22;
     border-top: 1px solid #2a2a4a;
     display: flex;
-    flex-direction: column;
-    padding: 0 0 8px;
-    gap: 4px;
+    flex-direction: row;
     flex-shrink: 0;
+  }
+
+  /* Left column: graph + phase labels + time scrubber */
+  #scrubLeft {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 8px;
+    gap: 4px;
   }
 
   #energyGraph {
@@ -91,11 +99,12 @@
     height: 150px;
     border-bottom: 1px solid #1e1e3a;
   }
+
   #phaseTimeline {
     display: none;
     align-items: stretch;
     height: 18px;
-    margin: 0 24px;
+    margin: 0 16px;
     border-radius: 4px;
     overflow: hidden;
     gap: 0;
@@ -112,20 +121,31 @@
     min-width: 0;
     transition: flex 0.1s;
   }
+
   #scrubControls {
     display: flex;
     align-items: center;
-    padding: 0 24px;
+    padding: 0 16px;
     gap: 14px;
     margin-top: 2px;
   }
   #scrubBar .scrub-label { font-size: 12px; color: #6b7280; white-space: nowrap; }
   #scrubBar .scrub-time {
     font-size: 12px; color: #6b7280; white-space: nowrap;
-    min-width: 7em; text-align: right; font-variant-numeric: tabular-nums;
+    min-width: 5em; text-align: right; font-variant-numeric: tabular-nums;
   }
   #timeSlider { flex: 1; height: 10px; accent-color: #6366f1; cursor: pointer; }
   #timeSlider:disabled { opacity: 0.25; cursor: not-allowed; }
+
+  /* Right column: matches the 320px bar chart panel */
+  #scrubRight {
+    width: 320px;
+    flex-shrink: 0;
+    border-left: 1px solid #2a2a4a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
 
   #portrait-overlay {
     display: none;
@@ -205,17 +225,21 @@
 </div>
 
 <div id="scrubBar">
-  <canvas id="energyGraph" height="150"></canvas>
-  <div id="phaseTimeline">
-    <div class="phase-seg" id="phaseSeg-approach" style="background:#374151; color:#9ca3af;">Approaching</div>
-    <div class="phase-seg" id="phaseSeg-collision" style="background:#92400e; color:#fbbf24; display:none;">Collision</div>
-    <div class="phase-seg" id="phaseSeg-escape"    style="background:#064e3b; color:#6ee7b7; display:none;">Escaping</div>
+  <div id="scrubLeft">
+    <canvas id="energyGraph" height="150"></canvas>
+    <div id="phaseTimeline">
+      <div class="phase-seg" id="phaseSeg-approach" style="background:#374151; color:#9ca3af;">Approaching</div>
+      <div class="phase-seg" id="phaseSeg-collision" style="background:#92400e; color:#fbbf24; display:none;">Collision</div>
+      <div class="phase-seg" id="phaseSeg-escape"    style="background:#064e3b; color:#6ee7b7; display:none;">Escaping</div>
+    </div>
+    <div id="scrubControls">
+      <span class="scrub-label">Time</span>
+      <input type="range" id="timeSlider" min="0" max="0" value="0" disabled>
+      <span class="scrub-time" id="timeLabel">–</span>
+    </div>
   </div>
-  <div id="scrubControls">
-    <span class="scrub-label">Time</span>
-    <input type="range" id="timeSlider" min="0" max="0" value="0" disabled>
-    <span class="scrub-time" id="timeLabel">–</span>
-    <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:#9ca3af;cursor:pointer;white-space:nowrap;margin-left:8px;">
+  <div id="scrubRight">
+    <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:#9ca3af;cursor:pointer;white-space:nowrap;">
       <input type="checkbox" id="splitIEToggle" style="accent-color:#fb923c;">
       Split IE → <span style="color:#818cf8">EIE</span>&nbsp;+&nbsp;<span style="color:#fb923c">SIE</span>
     </label>
@@ -1691,7 +1715,7 @@ function resize() {
   const scrubH   = document.getElementById('scrubBar').offsetHeight;
   canvas.width        = window.innerWidth;
   canvas.height       = window.innerHeight - toolbarH - scrubH;
-  energyGraph.width   = window.innerWidth;
+  energyGraph.width   = Math.max(1, window.innerWidth - 320);
   if (!running) draw();
 }
 window.addEventListener('resize', resize);
