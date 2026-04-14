@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>U-235 Fission Simulation</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0a14; color: #ccc; font-family: monospace; overflow: hidden; user-select: none; }
+#container { display: flex; flex-direction: column; align-items: center; height: 100vh; }
+#topRow { display: flex; width: 100%; flex: 1; min-height: 0; }
+#canvas3d { flex: 1; cursor: grab; }
+#canvas3d:active { cursor: grabbing; }
+#canvas2d { width: 320px; flex-shrink: 0; }
+#scrubberRow {
+  width: 100%; height: 72px; background: #111; display: flex;
+  align-items: center; padding: 0 16px; gap: 12px;
+  border-top: 1px solid #333;
+}
+#scrubberLabel { font-size: 11px; color: #888; white-space: nowrap; }
+#scrubber { flex: 1; height: 6px; cursor: pointer; accent-color: #5af; }
+#timeLabel { font-size: 11px; color: #aaa; min-width: 60px; text-align: right; }
+#fireBtn {
+  padding: 6px 16px; background: #234; border: 1px solid #5af; color: #5af;
+  border-radius: 4px; cursor: pointer; font-family: monospace; font-size: 13px;
+}
+#fireBtn:hover { background: #345; }
+#fireBtn:disabled { opacity: 0.4; cursor: default; }
+</style>
+</head>
+<body>
+<div id="container">
+  <div id="topRow">
+    <canvas id="canvas3d"></canvas>
+    <canvas id="canvas2d"></canvas>
+  </div>
+  <div id="scrubberRow">
+    <span id="scrubberLabel">t =</span>
+    <input type="range" id="scrubber" min="0" max="0" value="0" step="1">
+    <span id="timeLabel">–</span>
+    <button id="fireBtn">Fire Neutron</button>
+  </div>
+</div>
+
+<script>
+// ─── Constants ───────────────────────────────────────────────────────────────
+const N_NUCLEONS  = 235;
+const N_PROTONS   = 92;
+const D1_PROTONS  = 36;
+const D2_PROTONS  = 46;
+const D1_NUCLEONS = 93;
+const D2_NUCLEONS = 139;
+const N_FREE      = 3;
+
+const NUC_R = 6.5;  // base nucleon radius px
+
+// Phase durations (frames at 30fps)
+const DUR_NEUTRON = 70;
+const DUR_ABSORB  = 20;
+const DUR_VIBRATE = 55;
+const DUR_NECK    = 45;
+const DUR_SPLIT   = 14;
+
+// ─── Canvas setup ────────────────────────────────────────────────────────────
+const c3  = document.getElementById('canvas3d');
+const ctx3 = c3.getContext('2d');
+const c2  = document.getElementById('canvas2d');
+const ctx2 = c2.getContext('2d');
+
+function resize() {
+  const W = window.innerWidth;
+  const H = window.innerHeight - 72;
+  const side2d = Math.min(320, Math.floor(W * 0.28));
+  c3.width  = W - side2d;  c3.height = H;
+  c2.width  = side2d;      c2.height = H;
+}
+resize();
+window.addEventListener('resize', () => { resize(); drawAll(); });
+
+// ─── 3D math ─────────────────────────────────────────────────────────────────
+function mulMat3(a, b) {
+  const r = new Array(9);
+  for (let i = 0; i < 3; i++)
+    for (let j = 0; j < 3; j++) {
+      let s = 0;
+      for (let k = 0; k < 3; k++) s += a[i*3+k] * b[k*3+j];
+      r[i*3+j] = s;
+    }
+  return r;
+}
+function makeRotX(a) { const c=Math.cos(a),s=Math.sin(a); return [1,0,0, 0,c,-s, 0,s,c]; }
+function makeRotY(a) { const c=Math.cos(a),s=Math.sin(a); return [c,0,s, 0,1,0, -s,0,c]; }
+function applyMat3(m, x, y, z) {
+  return {
+    x: m[0]*x + m[1]*y + m[2]*z,
+    y: m[3]*x + m[4]*y + m[5]*z,
+    z: m[6]*x + m[7]*y + m[8]*z
+  };
+}
+
+// ─── Nucleon generation ───────────────────────────────────────────────────────
+let nucleons = [];  // { x0,y0,z0, isProton, group:'A'|'B'|'N' }
+
+function generateNucleons() {
+  const pts = [];
+  const minDist2 = 0.155 * 0.155;
+  for (let i = 0; i < N_NUCLEONS; i++) {
+    let placed = false;
+    for (let attempt = 0; attempt < 3000; attempt++) {
+      const u = Math.random()*2-1, v = Math.random()*2-1, w = Math.random()*2-1;
+      if (u*u+v*v+w*w > 0.98*0.98) continue;
+      let ok = true;
+      for (let j = 0; j < pts.length; j++) {
+        const dx=pts[j].x-u, dy=pts[j].y-v, dz=pts[j].z-w;
+        if (dx*dx+dy*dy+dz*dz < minDist2) { ok=false; break; }
+      }
+      if (ok) { pts.push({x:u,y:v,z:w}); placed=true; break; }
+    }
+    if (!placed) {
+      let r2=2, u2, v2, w2;
+      while (r2 > 0.96*0.96) { u2=Math.random()*2-1; v2=Math.random()*2-1; w2=Math.random()*2-1; r2=u2*u2+v2*v2+w2*w2; }
+      pts.push({x:u2,y:v2,z:w2});
+    }
+  }
+
+  // Assign free neutrons: the 3 nearest to equator (|y| smallest)
+  const sorted = pts.slice().sort((a,b) => Math.abs(a.y)-Math.abs(b.y));
+  const nIdx = new Set(sorted.slice(0, N_FREE).map(p => pts.indexOf(p)));
+
+  // Group A: top D1_NUCLEONS by y (excluding free neutrons)
+  const nonN = pts.filter((_,i) => !nIdx.has(i));
+  nonN.sort((a,b) => b.y - a.y);
+  const aSet = new Set(nonN.slice(0, D1_NUCLEONS).map(p => pts.indexOf(p)));
+
+  // Assign protons: first N_PROTONS among non-free-neutron indices
+  const nonNIdx = pts.map((_,i)=>i).filter(i => !nIdx.has(i));
+  const protonSet = new Set(nonNIdx.slice(0, N_PROTONS));
+
+  nucleons = pts.map((p, i) => ({
+    x0: p.x, y0: p.y, z0: p.z,
+    isProton: protonSet.has(i),
+    group: nIdx.has(i) ? 'N' : aSet.has(i) ? 'A' : 'B'
+  }));
+}
+generateNucleons();
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let rotMat = mulMat3(makeRotX(-0.28), makeRotY(0.18));
+
+// 'idle' | 'neutron' | 'absorb' | 'vibrate' | 'neck' | 'split' | 'escape' | 'done'
+let phase = 'idle';
+let phaseFrame = 0;
+let animDone = false;
+
+// Incoming neutron world pos (XZ plane, x=worldX, y=worldZ)
+let neutronPos = { x: 2.2, y: 0 };
+
+// Escape state (initialized in initSplitPhase)
+let splitData   = null;  // { aCenter, bCenter, freeNeutrons[] }
+let escapeGroupACM = { x:0, y:0, z:0 };
+let escapeGroupBCM = { x:0, y:0, z:0 };
+let escapeFNPos    = [];
+
+// ─── Deformed positions (unrotated world space) ───────────────────────────────
+function getDeformedPos(nucIdx) {
+  const n = nucleons[nucIdx];
+  let x = n.x0, y = n.y0, z = n.z0;
+
+  if (phase === 'absorb') {
+    const pulse = 1 + 0.06 * Math.sin((phaseFrame / DUR_ABSORB) * Math.PI * 2);
+    x *= pulse; y *= pulse; z *= pulse;
+
+  } else if (phase === 'vibrate') {
+    const amp = 0.28 * Math.sin((phaseFrame / DUR_VIBRATE) * Math.PI * 2);
+    const xzS = 1 / Math.sqrt(Math.max(0.01, 1 + amp));
+    x *= xzS; z *= xzS; y *= (1 + amp);
+
+  } else if (phase === 'neck') {
+    const nt = phaseFrame / DUR_NECK;
+    y *= (1 + nt * 0.7);
+    const pinch = Math.max(0.05, 1 - nt * 0.9 * Math.exp(-n.y0 * n.y0 / 0.12));
+    x *= pinch; z *= pinch;
+
+  } else if ((phase === 'split' || phase === 'escape' || phase === 'done') && splitData) {
+    if (n.group === 'N') {
+      const fnList = nucleons.map((nn,i) => nn.group==='N' ? i : -1).filter(i=>i>=0);
+      const fnIdx  = fnList.indexOf(nucIdx);
+      const p = escapeFNPos[fnIdx] || {x:0,y:0,z:0};
+      return { x: p.x, y: p.y, z: p.z };
+    }
+    const nt = (DUR_NECK - 1) / DUR_NECK;
+    y *= (1 + nt * 0.7);
+    const pinch = Math.max(0.05, 1 - nt * 0.9 * Math.exp(-n.y0 * n.y0 / 0.12));
+    x *= pinch; z *= pinch;
+    const gCM  = n.group === 'A' ? splitData.aCenter   : splitData.bCenter;
+    const cCM  = n.group === 'A' ? escapeGroupACM       : escapeGroupBCM;
+    x = cCM.x + (x - gCM.x);
+    y = cCM.y + (y - gCM.y);
+    z = cCM.z + (z - gCM.z);
+  }
+  return { x, y, z };
+}
+
+function getWorldPos(nucIdx) {
+  const d = getDeformedPos(nucIdx);
+  return applyMat3(rotMat, d.x, d.y, d.z);
+}
+
+// ─── Split init ───────────────────────────────────────────────────────────────
+function initSplitPhase() {
+  const savedPhase = phase, savedFrame = phaseFrame;
+  phase = 'neck'; phaseFrame = DUR_NECK - 1;
+
+  const aPos=[], bPos=[], nPos=[];
+  for (let i = 0; i < nucleons.length; i++) {
+    const d = getDeformedPos(i);
+    const g = nucleons[i].group;
+    if      (g==='A') aPos.push({...d, idx:i});
+    else if (g==='B') bPos.push({...d, idx:i});
+    else              nPos.push({...d, idx:i});
+  }
+  phase = savedPhase; phaseFrame = savedFrame;
+
+  const avg = arr => {
+    let sx=0,sy=0,sz=0; arr.forEach(p=>{sx+=p.x;sy+=p.y;sz+=p.z;});
+    return {x:sx/arr.length,y:sy/arr.length,z:sz/arr.length};
+  };
+  const aCM = avg(aPos), bCM = avg(bPos);
+
+  const fnAngle = Math.random() * Math.PI * 2;
+  const freeNeutrons = nPos.map((p,i) => {
+    const a = fnAngle + i * 2*Math.PI/3;
+    return { x:0.3*Math.cos(a), y:p.y, z:0.3*Math.sin(a),
+             vx:0.028*Math.cos(a), vy:0, vz:0.028*Math.sin(a) };
+  });
+
+  splitData      = { aCenter:{...aCM}, bCenter:{...bCM}, freeNeutrons };
+  escapeGroupACM = {...aCM};
+  escapeGroupBCM = {...bCM};
+  escapeFNPos    = freeNeutrons.map(p=>({x:p.x,y:p.y,z:p.z}));
+}
+
+// ─── History / Scrubber ───────────────────────────────────────────────────────
+const history = [];
+let scrubbing = false;
+
+function captureFrame() {
+  history.push({
+    phase, phaseFrame,
+    neutronPos:    {...neutronPos},
+    escapeGroupACM:{...escapeGroupACM},
+    escapeGroupBCM:{...escapeGroupBCM},
+    escapeFNPos:   escapeFNPos.map(p=>({...p})),
+    splitData: splitData ? {
+      aCenter:{...splitData.aCenter},
+      bCenter:{...splitData.bCenter},
+      freeNeutrons:splitData.freeNeutrons.map(p=>({...p}))
+    } : null
+  });
+  const scrub = document.getElementById('scrubber');
+  scrub.max = history.length - 1;
+  if (!scrubbing) {
+    scrub.value = history.length - 1;
+    document.getElementById('timeLabel').textContent = history.length - 1;
+  }
+}
+
+function restoreFrame(idx) {
+  const s = history[idx];
+  if (!s) return;
+  phase       = s.phase;
+  phaseFrame  = s.phaseFrame;
+  neutronPos  = {...s.neutronPos};
+  escapeGroupACM = {...s.escapeGroupACM};
+  escapeGroupBCM = {...s.escapeGroupBCM};
+  escapeFNPos = s.escapeFNPos.map(p=>({...p}));
+  splitData   = s.splitData ? {
+    aCenter:{...s.splitData.aCenter},
+    bCenter:{...s.splitData.bCenter},
+    freeNeutrons:s.splitData.freeNeutrons.map(p=>({...p}))
+  } : null;
+}
+
+const scrubEl = document.getElementById('scrubber');
+scrubEl.addEventListener('mousedown', () => { scrubbing = true; });
+scrubEl.addEventListener('touchstart', () => { scrubbing = true; }, {passive:true});
+scrubEl.addEventListener('input', () => {
+  const idx = parseInt(scrubEl.value);
+  document.getElementById('timeLabel').textContent = idx;
+  restoreFrame(idx);
+  drawAll();
+});
+scrubEl.addEventListener('mouseup',  () => { scrubbing = false; });
+scrubEl.addEventListener('touchend', () => { scrubbing = false; });
+
+// ─── Mouse rotation ───────────────────────────────────────────────────────────
+let dragging = false, lastMX = 0, lastMY = 0;
+
+c3.addEventListener('mousedown', e => { dragging=true; lastMX=e.clientX; lastMY=e.clientY; });
+window.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  handleDrag(e.clientX-lastMX, e.clientY-lastMY);
+  lastMX=e.clientX; lastMY=e.clientY;
+});
+window.addEventListener('mouseup', () => { dragging=false; });
+c3.addEventListener('touchstart', e => {
+  if (e.touches.length===1) { dragging=true; lastMX=e.touches[0].clientX; lastMY=e.touches[0].clientY; }
+}, {passive:true});
+c3.addEventListener('touchmove', e => {
+  if (!dragging||e.touches.length!==1) return;
+  handleDrag(e.touches[0].clientX-lastMX, e.touches[0].clientY-lastMY);
+  lastMX=e.touches[0].clientX; lastMY=e.touches[0].clientY;
+}, {passive:true});
+c3.addEventListener('touchend', () => { dragging=false; });
+
+function handleDrag(dx, dy) {
+  rotMat = mulMat3(makeRotY(dx*0.008), mulMat3(makeRotX(dy*0.008), rotMat));
+  drawAll();
+}
+
+// ─── Fire button ─────────────────────────────────────────────────────────────
+document.getElementById('fireBtn').addEventListener('click', () => {
+  if (phase !== 'idle') return;
+  // reset scrubber/history for new run
+  history.length = 0;
+  scrubEl.min = 0; scrubEl.max = 0; scrubEl.value = 0;
+  document.getElementById('timeLabel').textContent = '0';
+  animDone = false;
+  phase = 'neutron';
+  phaseFrame = 0;
+  neutronPos = { x: 2.2, y: 0 };
+  document.getElementById('fireBtn').disabled = true;
+});
+
+// ─── Animation update ─────────────────────────────────────────────────────────
+function update() {
+  if (scrubbing || phase === 'idle' || animDone) return;
+
+  if (phase === 'neutron') {
+    neutronPos.x = 2.2 * (1 - phaseFrame / DUR_NEUTRON);
+    phaseFrame++;
+    captureFrame();
+    if (phaseFrame >= DUR_NEUTRON) { phase='absorb'; phaseFrame=0; }
+
+  } else if (phase === 'absorb') {
+    phaseFrame++;
+    captureFrame();
+    if (phaseFrame >= DUR_ABSORB) { phase='vibrate'; phaseFrame=0; }
+
+  } else if (phase === 'vibrate') {
+    phaseFrame++;
+    captureFrame();
+    if (phaseFrame >= DUR_VIBRATE) { phase='neck'; phaseFrame=0; }
+
+  } else if (phase === 'neck') {
+    phaseFrame++;
+    captureFrame();
+    if (phaseFrame >= DUR_NECK) {
+      initSplitPhase();
+      phase='split'; phaseFrame=0;
+    }
+
+  } else if (phase === 'split') {
+    const t = phaseFrame / DUR_SPLIT;
+    const speed = 0.012 + t * 0.022;
+    escapeGroupACM.y += speed;
+    escapeGroupBCM.y -= speed;
+    splitData.freeNeutrons.forEach((fn,i) => {
+      escapeFNPos[i].x += fn.vx;
+      escapeFNPos[i].y += fn.vy;
+      escapeFNPos[i].z += fn.vz;
+    });
+    phaseFrame++;
+    captureFrame();
+    if (phaseFrame >= DUR_SPLIT) { phase='escape'; phaseFrame=0; }
+
+  } else if (phase === 'escape') {
+    escapeGroupACM.y += 0.034;
+    escapeGroupBCM.y -= 0.034;
+    splitData.freeNeutrons.forEach((fn,i) => {
+      escapeFNPos[i].x += fn.vx;
+      escapeFNPos[i].y += fn.vy;
+      escapeFNPos[i].z += fn.vz;
+    });
+    phaseFrame++;
+    captureFrame();
+
+    // Stop when both daughters are off-screen (world |y| > 1.8)
+    if (Math.abs(escapeGroupACM.y) > 1.8 && Math.abs(escapeGroupBCM.y) > 1.8) {
+      animDone = true;
+      phase = 'done';
+    }
+  }
+}
+
+// ─── 3D canvas drawing ────────────────────────────────────────────────────────
+function draw3D() {
+  const W = c3.width, H = c3.height;
+  ctx3.clearRect(0, 0, W, H);
+  ctx3.fillStyle = '#0a0a14';
+  ctx3.fillRect(0, 0, W, H);
+
+  const cx = W/2, cy = H/2;
+  const scale = Math.min(W, H) * 0.38;
+
+  // Collect projected positions, sort back→front
+  const proj = [];
+  for (let i = 0; i < nucleons.length; i++) {
+    const p = getWorldPos(i);
+    proj.push({ px: cx + p.x*scale, py: cy - p.y*scale, pz: p.z, idx: i });
+  }
+  proj.sort((a,b) => a.pz - b.pz);
+
+  // Draw each nucleon using v9 particle style
+  for (const p of proj) {
+    const n = nucleons[p.idx];
+    const depthT = Math.max(0, Math.min(1, (p.pz + 1.1) / 2.1));
+    const r = NUC_R * (0.65 + 0.35 * depthT);
+    const px = p.px, py = p.py;
+
+    // Outer Coulomb glow (proton red, neutron blue-grey)
+    const glowR = r * 2.5;
+    const ga = 0.12 + 0.22 * depthT;
+    const glow = ctx3.createRadialGradient(px, py, 0, px, py, glowR);
+    if (n.isProton) {
+      glow.addColorStop(0, `rgba(255,80,80,${ga})`);
+      glow.addColorStop(1, 'rgba(255,80,80,0)');
+    } else {
+      glow.addColorStop(0, `rgba(160,160,200,${ga*0.7})`);
+      glow.addColorStop(1, 'rgba(160,160,200,0)');
+    }
+    ctx3.fillStyle = glow;
+    ctx3.beginPath(); ctx3.arc(px, py, glowR, 0, Math.PI*2); ctx3.fill();
+
+    // Core sphere gradient — color by group after split
+    const g = ctx3.createRadialGradient(px - r*0.3, py - r*0.3, r*0.08, px, py, r);
+    const group = n.group;
+    if (group==='A' && n.isProton)      { g.addColorStop(0,'#ffcc88'); g.addColorStop(0.7,'#ff8822'); g.addColorStop(1,'#cc5500'); }
+    else if (group==='A')               { g.addColorStop(0,'#99ddcc'); g.addColorStop(0.7,'#44aaaa'); g.addColorStop(1,'#226688'); }
+    else if (group==='B' && n.isProton) { g.addColorStop(0,'#ddaaff'); g.addColorStop(0.7,'#aa44ee'); g.addColorStop(1,'#7722bb'); }
+    else if (group==='B')               { g.addColorStop(0,'#aaaaee'); g.addColorStop(0.7,'#6666cc'); g.addColorStop(1,'#4444aa'); }
+    else if (n.isProton)                { g.addColorStop(0,'#ff9999'); g.addColorStop(0.7,'#ff4444'); g.addColorStop(1,'#cc2222'); }
+    else                                { g.addColorStop(0,'#ccccdd'); g.addColorStop(0.7,'#8888aa'); g.addColorStop(1,'#666688'); }
+    ctx3.fillStyle = g;
+    ctx3.beginPath(); ctx3.arc(px, py, r, 0, Math.PI*2); ctx3.fill();
+  }
+
+  // Incoming neutron
+  if (phase === 'neutron') {
+    const np = applyMat3(rotMat, neutronPos.x, 0, neutronPos.y);
+    const nx = cx + np.x*scale, ny = cy - np.y*scale;
+    const nr = NUC_R * (0.65 + 0.35 * ((np.z+1.1)/2.1));
+    const ng = ctx3.createRadialGradient(nx-nr*0.3, ny-nr*0.3, nr*0.08, nx, ny, nr);
+    ng.addColorStop(0, '#aaddff'); ng.addColorStop(0.7, '#5599cc'); ng.addColorStop(1, '#336688');
+    ctx3.globalAlpha = 0.85;
+    ctx3.fillStyle = 'rgba(100,200,255,0.18)';
+    ctx3.beginPath(); ctx3.arc(nx, ny, nr*2.5, 0, Math.PI*2); ctx3.fill();
+    ctx3.fillStyle = ng;
+    ctx3.beginPath(); ctx3.arc(nx, ny, nr, 0, Math.PI*2); ctx3.fill();
+    ctx3.globalAlpha = 1;
+  }
+
+  // Daughter CM labels
+  if (phase === 'split' || phase === 'escape' || phase === 'done') {
+    const aCM = applyMat3(rotMat, escapeGroupACM.x, escapeGroupACM.y, escapeGroupACM.z);
+    const bCM = applyMat3(rotMat, escapeGroupBCM.x, escapeGroupBCM.y, escapeGroupBCM.z);
+    const ax = cx + aCM.x*scale, ay = cy - aCM.y*scale;
+    const bx = cx + bCM.x*scale, by = cy - bCM.y*scale;
+    ctx3.font = 'bold 12px monospace';
+    ctx3.textAlign = 'center';
+    ctx3.fillStyle = '#fc9'; ctx3.globalAlpha = 0.9;
+    ctx3.fillText(`${D1_PROTONS}p`, ax, ay - NUC_R*5);
+    ctx3.fillText(`${D2_PROTONS}p`, bx, by + NUC_R*3.5);
+    ctx3.globalAlpha = 1;
+  }
+
+  // Phase label
+  ctx3.textAlign = 'left'; ctx3.textBaseline = 'top';
+  ctx3.font = 'bold 14px monospace'; ctx3.globalAlpha = 0.85;
+  if (phase==='idle')                   { ctx3.fillStyle='#aaa';  ctx3.fillText('U-235', 14, 14); }
+  else if (phase==='neutron')           { ctx3.fillStyle='#aaa';  ctx3.fillText('U-235  ← n', 14, 14); }
+  else if (phase==='absorb'||phase==='vibrate'||phase==='neck') {
+                                          ctx3.fillStyle='#fa8';  ctx3.fillText('U-236*', 14, 14); }
+  else if (phase==='split'||phase==='escape'||phase==='done') {
+                                          ctx3.fillStyle='#fb6';  ctx3.fillText('Fission!', 14, 14); }
+  ctx3.globalAlpha = 0.5;
+  ctx3.fillStyle = '#888'; ctx3.font = '10px monospace'; ctx3.textBaseline = 'bottom';
+  ctx3.fillText(`phase: ${phase} [${phaseFrame}]`, 14, c3.height - 8);
+  ctx3.globalAlpha = 1;
+}
+
+// ─── 2D proton field canvas ───────────────────────────────────────────────────
+// Shows the XY cross-section (side view) of proton Coulomb field contributions.
+// Each proton contributes a red radial glow at its projected position.
+function draw2D() {
+  const W = c2.width, H = c2.height;
+  ctx2.clearRect(0, 0, W, H);
+  ctx2.fillStyle = '#0c0c1a';
+  ctx2.fillRect(0, 0, W, H);
+
+  const cx = W/2, cy = H/2;
+  const fScale = Math.min(W, H) * 0.38;  // same world→px mapping as 3D view
+
+  // Gather proton deformed positions (unrotated world XY)
+  const protonPositions = [];
+  for (let i = 0; i < nucleons.length; i++) {
+    if (!nucleons[i].isProton) continue;
+    const d = getDeformedPos(i);
+    protonPositions.push({ x: d.x, y: d.y, group: nucleons[i].group });
+  }
+
+  // Also gather free neutrons for labeling
+  const fnWorld = escapeFNPos.map(p => ({ x: p.x, y: p.y }));
+
+  // Draw proton field glows
+  const glowR = fScale * 0.22;
+  for (const p of protonPositions) {
+    const sx = cx + p.x * fScale;
+    const sy = cy - p.y * fScale;
+
+    // Only draw if on-canvas
+    if (sx < -glowR || sx > W+glowR || sy < -glowR || sy > H+glowR) continue;
+
+    // Color by group during split/escape
+    let r=255, g=80, b=80;
+    if (phase==='split'||phase==='escape'||phase==='done') {
+      if      (p.group==='A') { r=255; g=140; b=40; }  // orange
+      else if (p.group==='B') { r=180; g=80;  b=255; } // purple
+    }
+
+    const grad = ctx2.createRadialGradient(sx, sy, 0, sx, sy, glowR);
+    grad.addColorStop(0,   `rgba(${r},${g},${b},0.28)`);
+    grad.addColorStop(0.5, `rgba(${r},${g},${b},0.10)`);
+    grad.addColorStop(1,   `rgba(${r},${g},${b},0)`);
+    ctx2.fillStyle = grad;
+    ctx2.beginPath(); ctx2.arc(sx, sy, glowR, 0, Math.PI*2); ctx2.fill();
+  }
+
+  // Nucleus outline
+  drawFieldOutline2D(cx, cy, fScale);
+
+  // Incoming neutron dot
+  if (phase === 'neutron') {
+    const t = phaseFrame / DUR_NEUTRON;
+    const nx = cx + (2.2 - t*2.2) * fScale;
+    const ny = cy;
+    ctx2.globalAlpha = 0.9;
+    const ng = ctx2.createRadialGradient(nx, ny, 0, nx, ny, 7);
+    ng.addColorStop(0, '#aaddff'); ng.addColorStop(1, 'rgba(80,150,200,0)');
+    ctx2.fillStyle = ng;
+    ctx2.beginPath(); ctx2.arc(nx, ny, 7, 0, Math.PI*2); ctx2.fill();
+    ctx2.fillStyle = '#7be'; ctx2.beginPath(); ctx2.arc(nx, ny, 4, 0, Math.PI*2); ctx2.fill();
+    ctx2.globalAlpha = 1;
+  }
+
+  // Free neutron dots during split/escape/done
+  if ((phase==='split'||phase==='escape'||phase==='done') && splitData) {
+    for (const fn of fnWorld) {
+      const sx = cx + fn.x * fScale;
+      const sy = cy - fn.y * fScale;
+      if (sx < -20||sx > W+20||sy < -20||sy > H+20) continue;
+      ctx2.globalAlpha = 0.85;
+      ctx2.fillStyle = '#7ae';
+      ctx2.beginPath(); ctx2.arc(sx, sy, 4, 0, Math.PI*2); ctx2.fill();
+      ctx2.fillStyle = '#cef'; ctx2.font = 'bold 8px sans-serif';
+      ctx2.textAlign = 'center'; ctx2.textBaseline = 'middle';
+      ctx2.fillText('n', sx, sy+1);
+      ctx2.globalAlpha = 1;
+    }
+  }
+
+  // Daughter labels
+  if (phase==='split'||phase==='escape'||phase==='done') {
+    const aY = cy - escapeGroupACM.y * fScale;
+    const bY = cy - escapeGroupBCM.y * fScale;
+    ctx2.font = 'bold 11px monospace'; ctx2.textAlign = 'center';
+    ctx2.fillStyle = '#fc9'; ctx2.globalAlpha = 0.85;
+    if (aY > -20 && aY < H+20) ctx2.fillText(`${D1_PROTONS}p`, cx, aY - fScale*0.5);
+    if (bY > -20 && bY < H+20) ctx2.fillText(`${D2_PROTONS}p`, cx, bY + fScale*0.5);
+    ctx2.globalAlpha = 1;
+  }
+
+  // Field panel label
+  ctx2.globalAlpha = 0.6;
+  ctx2.fillStyle = '#aaa'; ctx2.font = '11px monospace';
+  ctx2.textAlign = 'center'; ctx2.textBaseline = 'top';
+  ctx2.fillText('proton field (XY)', W/2, 6);
+  ctx2.globalAlpha = 1;
+}
+
+function drawFieldOutline2D(cx, cy, fScale) {
+  ctx2.strokeStyle = 'rgba(255,140,80,0.30)';
+  ctx2.lineWidth = 1.5;
+
+  if (phase==='idle'||phase==='neutron') {
+    ctx2.beginPath(); ctx2.arc(cx, cy, fScale, 0, Math.PI*2); ctx2.stroke();
+
+  } else if (phase==='absorb') {
+    const pulse = 1 + 0.05 * Math.sin((phaseFrame/DUR_ABSORB)*Math.PI*2);
+    ctx2.beginPath(); ctx2.arc(cx, cy, fScale*pulse, 0, Math.PI*2); ctx2.stroke();
+
+  } else if (phase==='vibrate') {
+    const amp = 0.28 * Math.sin((phaseFrame/DUR_VIBRATE)*Math.PI*2);
+    const rx = fScale / Math.sqrt(Math.max(0.01, 1+amp));
+    const ry = fScale * (1+amp);
+    ctx2.beginPath(); ctx2.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2); ctx2.stroke();
+
+  } else if (phase==='neck') {
+    const nt = phaseFrame / DUR_NECK;
+    const rx = fScale / Math.sqrt(Math.max(0.01, 1 + nt*0.7));
+    const ry = fScale * (1 + nt*0.7);
+    // Draw two lobe outlines
+    const sep = nt * fScale * 0.4;
+    ctx2.beginPath(); ctx2.ellipse(cx, cy-sep, rx*(1-nt*0.3), ry*0.55, 0, 0, Math.PI*2); ctx2.stroke();
+    ctx2.beginPath(); ctx2.ellipse(cx, cy+sep, rx*(1-nt*0.3), ry*0.55, 0, 0, Math.PI*2); ctx2.stroke();
+
+  } else if (phase==='split'||phase==='escape'||phase==='done') {
+    const rA = fScale * Math.pow(D1_NUCLEONS/N_NUCLEONS, 1/3);
+    const rB = fScale * Math.pow(D2_NUCLEONS/N_NUCLEONS, 1/3);
+    const aY = cy - escapeGroupACM.y * fScale;
+    const bY = cy - escapeGroupBCM.y * fScale;
+    if (aY > -rA*2 && aY < c2.height+rA*2) {
+      ctx2.strokeStyle = 'rgba(255,140,40,0.40)';
+      ctx2.beginPath(); ctx2.arc(cx, aY, rA, 0, Math.PI*2); ctx2.stroke();
+    }
+    if (bY > -rB*2 && bY < c2.height+rB*2) {
+      ctx2.strokeStyle = 'rgba(180,80,255,0.40)';
+      ctx2.beginPath(); ctx2.arc(cx, bY, rB, 0, Math.PI*2); ctx2.stroke();
+    }
+  }
+}
+
+// ─── Main loop ────────────────────────────────────────────────────────────────
+function drawAll() { draw3D(); draw2D(); }
+
+let lastTs = 0;
+const FRAME_MS = 1000 / 30;
+
+function loop(ts) {
+  requestAnimationFrame(loop);
+  if (ts - lastTs < FRAME_MS) return;
+  lastTs = ts;
+  if (!scrubbing) update();
+  drawAll();
+}
+
+drawAll();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

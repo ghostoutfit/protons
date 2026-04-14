@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Notepad API Test Harness</title>
+<style>
+  body { background:#0a0a1a; color:#e0e0e0; font-family:monospace; padding:20px; max-width:800px; }
+  h1 { color:#ff6b6b; margin-bottom:4px; }
+  p.sub { color:#6b7280; margin-top:0; margin-bottom:20px; font-size:12px; }
+  .row { display:flex; gap:8px; margin-bottom:8px; align-items:flex-end; flex-wrap:wrap; }
+  label { font-size:11px; color:#9ca3af; display:block; margin-bottom:3px; }
+  input, textarea {
+    background:#12122a; border:1px solid #3a3a5a; border-radius:4px;
+    color:#e0e0e0; padding:6px 10px; font-family:monospace; font-size:13px; outline:none;
+  }
+  input:focus, textarea:focus { border-color:#6366f1; }
+  input.wide { width:420px; } input.mid { width:180px; }
+  textarea { width:420px; height:60px; resize:vertical; }
+  button {
+    padding:6px 16px; border:none; border-radius:4px; background:#6366f1;
+    color:#fff; font-family:monospace; font-size:13px; font-weight:600; cursor:pointer;
+  }
+  button:hover { background:#4f46e5; }
+  #log {
+    margin-top:20px; background:#050510; border:1px solid #2a2a4a; border-radius:6px;
+    padding:14px; font-size:12px; line-height:1.6; min-height:160px;
+    white-space:pre-wrap; word-break:break-all; max-height:55vh; overflow-y:auto;
+  }
+  .ok { color:#22c55e; } .err { color:#f87171; } .info { color:#9ca3af; } .val { color:#60a5fa; }
+  hr { border:none; border-top:1px solid #2a2a4a; margin:16px 0; }
+  h3 { font-size:12px; color:#9ca3af; text-transform:uppercase; letter-spacing:1px; margin:14px 0 5px; }
+</style>
+</head>
+<body>
+
+<h1>Notepad API Test Harness</h1>
+<p class="sub">
+  Script: <code id="scriptUrl"></code><br>
+  Sheet:  <code id="sheetUrl"></code>
+</p>
+
+<h3>1. parseConfig (reads Config tab via gviz — no auth)</h3>
+<div class="row"><button onclick="testParseConfig()">Run</button></div>
+
+<h3>2. getAllNotes (calls Apps Script getNotes action)</h3>
+<div class="row"><button onclick="testGetAllNotes()">Run</button></div>
+
+<h3>3. readStudentNotes</h3>
+<div class="row">
+  <div><label>Student ID</label><input id="studentId" class="mid" value="michael-001"></div>
+  <button onclick="testReadStudentNotes()">Run</button>
+</div>
+
+<h3>4. readPublicNotes</h3>
+<div class="row">
+  <button onclick="testReadPublicNotes()">All public</button>
+  <button onclick="testReadPublicNotes(true)" style="background:#374151">Promoted only</button>
+</div>
+
+<h3>5. appendNote (GET to doGet — response readable, row should appear immediately)</h3>
+<div class="row">
+  <div><label>Text</label><input id="noteText" class="wide" value="Test observation — harness"></div>
+</div>
+<div class="row">
+  <div><label>is_public?</label><input type="checkbox" id="notePublic"></div>
+  <button onclick="testAppendNote()">Append</button>
+  <span id="lastId" style="font-size:11px;color:#6b7280;align-self:center"></span>
+</div>
+
+<h3>6. updateNote (requires updateNote action in Apps Script)</h3>
+<div class="row">
+  <div><label>Note ID (or use last appended)</label><input id="updateId" class="mid" placeholder="auto-filled"></div>
+  <div><label>Set is_public?</label><input type="checkbox" id="updatePublic" checked></div>
+  <button onclick="testUpdateNote()">Update</button>
+</div>
+
+<hr>
+<button onclick="clearLog()" style="background:#1e1e3a;color:#9ca3af;border:1px solid #3a3a5a">Clear log</button>
+
+<div id="log"></div>
+
+<script src="sheets-api.js"></script>
+<script>
+  document.getElementById('scriptUrl').textContent = SHEETS.SCRIPT_URL;
+  document.getElementById('sheetUrl').textContent  =
+    `https://docs.google.com/spreadsheets/d/${SHEETS.SHEET_ID}`;
+
+  const log = document.getElementById('log');
+  let lastAppendedId = null;
+
+  function print(msg, cls = '') {
+    const span = document.createElement('span');
+    span.className = cls;
+    span.textContent = msg + '\n';
+    log.appendChild(span);
+    log.scrollTop = log.scrollHeight;
+  }
+  function clearLog() { log.innerHTML = ''; }
+
+  async function run(label, fn) {
+    print(`\n▶ ${label}`, 'info');
+    const t0 = performance.now();
+    try {
+      const result = await fn();
+      const ms = (performance.now() - t0).toFixed(0);
+      print(`✓ ${ms}ms`, 'ok');
+      if (result !== undefined)
+        print(JSON.stringify(result, null, 2).slice(0, 4000), 'val');
+      return result;
+    } catch(e) {
+      print(`✗ ${e.message}`, 'err');
+      console.error(e);
+    }
+  }
+
+  function testParseConfig() {
+    return run('parseConfig()', () => SHEETS.parseConfig());
+  }
+
+  function testGetAllNotes() {
+    return run('getAllNotes()', () => SHEETS.getAllNotes());
+  }
+
+  function testReadStudentNotes() {
+    const sid = document.getElementById('studentId').value.trim();
+    return run(`readStudentNotes("${sid}")`, () => SHEETS.readStudentNotes(sid));
+  }
+
+  function testReadPublicNotes(promotedOnly = false) {
+    return run(`readPublicNotes(promotedOnly=${promotedOnly})`,
+      () => SHEETS.readPublicNotes({ promotedOnly }));
+  }
+
+  async function testAppendNote() {
+    const sid  = document.getElementById('studentId').value.trim();
+    const text = document.getElementById('noteText').value.trim();
+    const pub  = document.getElementById('notePublic').checked;
+    const note = {
+      id:            SHEETS.generateId(),
+      student_id:    sid,
+      timestamp:     new Date().toISOString(),
+      sim_version:   'v2-test',
+      sim_state:     JSON.stringify({ particles: 2, test: true }),
+      screenshot_b64:'',
+      text,
+      is_public: pub,
+    };
+    lastAppendedId = note.id;
+    document.getElementById('lastId').textContent = `id: ${note.id}`;
+    document.getElementById('updateId').value = note.id;
+    await run('appendNote()', () => SHEETS.appendNote(note));
+  }
+
+  function testUpdateNote() {
+    const id  = document.getElementById('updateId').value.trim() || lastAppendedId;
+    const pub = document.getElementById('updatePublic').checked;
+    if (!id) { print('✗ Run appendNote first or enter a note ID.', 'err'); return; }
+    return run(`updateNote("${id}", {is_public:${pub}})`,
+      () => SHEETS.updateNote(id, { is_public: pub }));
+  }
+</script>
+</body>
+</html>

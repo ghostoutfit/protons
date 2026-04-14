@@ -1,0 +1,3786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nuclear Simulation v12</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
+<script src="../v2/sheets-api.js"></script>
+<style>
+  /* ========================================
+     THEME VARIABLES  (default: Synthwave)
+     ======================================== */
+  :root {
+    --accent1:      #ff2d78;
+    --accent1-dim:  rgba(255,45,120,0.25);
+    --accent1-glow: rgba(255,45,120,0.55);
+    --accent2:      #1a6eff;
+    --accent2-dim:  rgba(26,110,255,0.18);
+    --accent2-glow: rgba(26,110,255,0.45);
+    --ui-bg:        rgba(8, 6, 24, 0.38);
+    --ui-border:    rgba(255,255,255,0.07);
+    --text-dim:     rgba(220,215,255,0.55);
+    --text-bright:  rgba(240,235,255,0.92);
+    --speck-color:  rgba(180,130,255,0.35);
+    --neutron-core: #b0b0c4;
+    --neutron-mid:  #70707f;
+    --neutron-edge: #383848;
+  }
+
+  /* ========================================
+     RESET & BASE
+     ======================================== */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #05040f;
+    color: var(--text-bright);
+    font-family: 'JetBrains Mono', monospace;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+  }
+  button, input, select, textarea {
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ========================================
+     FULL-VIEWPORT CANVAS
+     ======================================== */
+  #main {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+  }
+
+  #canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: default;
+  }
+
+  /* ========================================
+     TOOLBAR — floating glass overlay
+     ======================================== */
+  #toolbar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 20px 10px;
+    background: var(--ui-bg);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  }
+
+  .toolbar-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+
+  #toolbar h1 {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--accent1);
+    margin-right: 6px;
+    white-space: nowrap;
+    text-shadow: 0 0 12px var(--accent1-glow);
+  }
+
+  /* ========================================
+     SCRUB BAR — floating glass overlay at bottom
+     ======================================== */
+  #scrubBar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 10;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px;
+    background: var(--ui-bg);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border-top: 1px solid var(--ui-border);
+    box-shadow: 0 -1px 0 var(--accent1-dim), 0 -4px 20px rgba(0,0,0,0.5);
+  }
+  #scrubBar .scrub-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  #scrubBar .scrub-time {
+    font-size: 11px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  #timeSlider {
+    flex: 1;
+    height: 3px;
+    accent-color: var(--accent1);
+    cursor: pointer;
+    opacity: 0.8;
+  }
+  #timeSlider:disabled { opacity: 0.18; cursor: not-allowed; }
+
+  /* ========================================
+     PARTICLE FRAMES — borderless glass
+     ======================================== */
+  .particle-frame {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--ui-border);
+    border-radius: 10px;
+    box-shadow: 0 0 10px var(--accent1-dim), inset 0 0 8px rgba(0,0,0,0.3);
+    padding: 7px 14px 9px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .particle-frame-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    text-align: center;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* ========================================
+     PARTICLE ICONS — canvas-drawn to match the sim exactly
+     ======================================== */
+  .particle-icon-canvas {
+    display: block;
+    flex-shrink: 0;
+  }
+
+  .particle-frame-controls {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  /* ========================================
+     BUTTONS — full neon sign treatment
+     Inactive base: dead tube. Active variants: full tube + bloom.
+     ======================================== */
+  .btn {
+    padding: 4px 14px;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: transparent;
+    color: rgba(255,255,255,0.18);
+    box-shadow: none;
+    text-shadow: none;
+    white-space: nowrap;
+  }
+  .btn:hover {
+    color: rgba(255,255,255,0.38);
+    border-color: rgba(255,255,255,0.12);
+  }
+
+  /* accent1 neon (pink) — Go, particle add, center, btn-neon1 */
+  .btn-neon1,
+  #goBtn,
+  .particle-add-btn,
+  #centerBtn,
+  #neutronDecBtn,
+  #neutronIncBtn {
+    border-color: var(--accent1);
+    color: rgba(255,255,255,0.5);
+    background: var(--accent1-dim);
+    box-shadow:
+      inset 0 0 6px var(--accent1-dim),
+      0 0 2px var(--accent1),
+      0 0 8px var(--accent1),
+      0 0 18px var(--accent1-glow),
+      0 0 40px var(--accent1-dim),
+      0 0 70px var(--accent1-dim);
+    text-shadow:
+      0 0 4px rgba(255,255,255,0.5),
+      0 0 10px var(--accent1),
+      0 0 22px var(--accent1-glow),
+      0 0 44px var(--accent1-dim);
+  }
+  .btn-neon1:hover,
+  #goBtn:hover,
+  .particle-add-btn:hover,
+  #centerBtn:hover,
+  #neutronDecBtn:hover,
+  #neutronIncBtn:hover {
+    background: var(--accent1-glow);
+    color: rgba(255,255,255,0.5);
+    box-shadow:
+      inset 0 0 10px var(--accent1-glow),
+      0 0 4px var(--accent1),
+      0 0 14px var(--accent1),
+      0 0 28px var(--accent1-glow),
+      0 0 60px var(--accent1-dim),
+      0 0 100px var(--accent1-dim);
+  }
+
+  /* accent2 neon (cyan/violet) — Replay, btn-neon2 */
+  .btn-neon2,
+  #replayBtn {
+    border-color: var(--accent2);
+    color: rgba(255,255,255,0.5);
+    background: var(--accent2-dim);
+    box-shadow:
+      inset 0 0 6px var(--accent2-dim),
+      0 0 2px var(--accent2),
+      0 0 8px var(--accent2),
+      0 0 18px var(--accent2-glow),
+      0 0 40px var(--accent2-dim),
+      0 0 70px var(--accent2-dim);
+    text-shadow:
+      0 0 4px rgba(255,255,255,0.5),
+      0 0 10px var(--accent2),
+      0 0 22px var(--accent2-glow),
+      0 0 44px var(--accent2-dim);
+  }
+  .btn-neon2:hover,
+  #replayBtn:hover {
+    background: var(--accent2-glow);
+    color: rgba(255,255,255,0.5);
+    box-shadow:
+      inset 0 0 10px var(--accent2-glow),
+      0 0 4px var(--accent2),
+      0 0 14px var(--accent2),
+      0 0 28px var(--accent2-glow),
+      0 0 60px var(--accent2-dim),
+      0 0 100px var(--accent2-dim);
+  }
+  #replayBtn:disabled {
+    background: transparent;
+    border-color: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.18);
+    box-shadow: none;
+    text-shadow: none;
+    cursor: not-allowed;
+  }
+
+  /* Go running state */
+  #goBtn.running {
+    border-color: #ff4040;
+    color: rgba(255,255,255,0.5);
+    background: rgba(255,40,40,0.15);
+    box-shadow:
+      inset 0 0 6px rgba(255,40,40,0.2),
+      0 0 2px #ff4040,
+      0 0 8px #ff4040,
+      0 0 18px rgba(255,40,40,0.5),
+      0 0 40px rgba(255,40,40,0.2);
+    text-shadow: 0 0 4px rgba(255,255,255,0.5), 0 0 10px #ff4040, 0 0 22px rgba(255,80,80,0.6);
+  }
+  #goBtn.running:hover { background: rgba(255,40,40,0.3); }
+
+
+  /* ========================================
+     SLIDERS — neon tube aesthetic
+     Track: dim line with a faint glow
+     Thumb: thin bright pill with bloom shadow
+     ======================================== */
+  .neutron-slider-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .neutron-slider-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent2);
+    text-shadow: 0 0 6px var(--accent2-glow);
+    min-width: 2em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Shared track style for all range inputs */
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 5px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.10);
+    box-shadow:
+      0 0 4px var(--accent2),
+      0 0 12px var(--accent2-glow),
+      0 0 28px var(--accent2-dim);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 10px;
+    height: 26px;
+    border-radius: 3px;
+    background: var(--accent2);
+    border: none;
+    box-shadow:
+      0 0 3px var(--accent2),
+      0 0 10px var(--accent2-glow),
+      0 0 24px var(--accent2-dim),
+      0 0 44px var(--accent2-dim);
+    cursor: grab;
+    transition: box-shadow 0.15s;
+  }
+  input[type="range"]::-webkit-slider-thumb:active {
+    cursor: grabbing;
+    box-shadow:
+      0 0 4px var(--accent2),
+      0 0 18px var(--accent2-glow),
+      0 0 40px var(--accent2-dim),
+      0 0 70px var(--accent2-dim);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 10px; height: 26px;
+    border-radius: 3px;
+    background: var(--accent2);
+    border: none;
+    box-shadow: 0 0 3px var(--accent2), 0 0 10px var(--accent2-glow), 0 0 24px var(--accent2-dim);
+    cursor: grab;
+  }
+
+  #neutronSlider { width: 140px; }
+
+  /* ========================================
+     SLIDER GROUPS & TOGGLES
+     ======================================== */
+  .slider-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .slider-group label {
+    font-size: 10px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0px;
+  }
+  .slider-group label span {
+    display: inline-block;
+    min-width: 3em;
+    text-align: right;
+    color: var(--accent2);
+    text-shadow: 0 0 5px var(--accent2-glow);
+  }
+  .slider-group input[type="range"] { width: 72px; }
+
+  .toggle-label {
+    font-size: 10px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .toggle-label input[type="checkbox"] { accent-color: var(--accent1); }
+
+  /* ========================================
+     SLIDER ICONS (turtle / rabbit / magnifier)
+     ======================================== */
+  .slider-icon {
+    font-size: 23px;
+    line-height: 1;
+    user-select: none;
+    filter:
+      brightness(0) invert(1)
+      blur(0.75px)
+      opacity(0.7)
+      drop-shadow(0 0 5px var(--accent2))
+      drop-shadow(0 0 14px var(--accent2))
+      drop-shadow(0 0 28px var(--accent2-glow))
+      drop-shadow(0 0 50px var(--accent2-glow))
+      drop-shadow(0 0 80px var(--accent2-glow));
+  }
+
+  /* ========================================
+     FIELD TOGGLE LABELS — neon text treatment
+     ======================================== */
+  .field-label-electric {
+    color: var(--accent2);
+    text-shadow:
+      0 0 4px var(--accent2),
+      0 0 10px var(--accent2-glow),
+      0 0 22px var(--accent2-dim);
+  }
+  .field-label-strong {
+    color: #ffb946;
+    text-shadow:
+      0 0 4px #ffb946,
+      0 0 10px rgba(255,185,70,0.5),
+      0 0 22px rgba(255,185,70,0.2);
+  }
+
+  /* ========================================
+     ARROW WHEEL — vertical drum picker
+     Active item is always in normal flow (defines height).
+     Above/below items are position:absolute overlays — they
+     never push other toolbar elements. On hover they slide in.
+     Cycle order: selected is always in the middle.
+     ======================================== */
+  .arrow-wheel {
+    position: relative;
+  }
+  .awheel-item {
+    display: block;
+    padding: 2px 12px;
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 5px;
+    background: transparent;
+    color: rgba(255,255,255,0.15);
+    font-size: 10px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+    letter-spacing: 0.5px;
+    transition: color 0.15s, border-color 0.15s, background 0.15s,
+                box-shadow 0.15s, text-shadow 0.15s,
+                opacity 0.18s ease, transform 0.22s ease;
+  }
+  /* Inactive items float above or below — never affect layout.
+     top/bottom/padding are set by JS to handle stacking.
+     Padding on slot-1 items bridges the gap to the active item. */
+  .awheel-item[data-position] {
+    position: absolute;
+    left: 0; right: 0;
+    opacity: 0;
+    pointer-events: none;
+    color: rgba(255,255,255,0.55);
+    border-color: rgba(255,255,255,0.18);
+    transform: translateY(var(--slide-dir, 0px));
+  }
+  /* Reveal on hover — slide into place */
+  .arrow-wheel:hover .awheel-item[data-position] {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+  .awheel-item:hover:not(.active) {
+    color: var(--accent2);
+    border-color: var(--accent2);
+    background: var(--accent2-dim);
+    box-shadow:
+      0 0 4px var(--accent2),
+      0 0 12px var(--accent2-glow),
+      0 0 26px var(--accent2-dim);
+    text-shadow:
+      0 0 6px var(--accent2),
+      0 0 14px var(--accent2-glow);
+  }
+  .awheel-item.active {
+    color: var(--accent2);
+    border-color: var(--accent2);
+    background: var(--accent2-dim);
+    box-shadow:
+      0 0 3px var(--accent2),
+      0 0 9px var(--accent2-glow),
+      0 0 20px var(--accent2-dim);
+    text-shadow:
+      0 0 5px var(--accent2),
+      0 0 12px var(--accent2-glow);
+  }
+
+  /* ========================================
+     TAB BAR
+     ======================================== */
+  #tabBar {
+    display: flex;
+    gap: 8px;
+    padding-bottom: 2px;
+  }
+  .tab-btn {
+    padding: 4px 14px;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    color: rgba(255,255,255,0.18);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+    box-shadow: none;
+    text-shadow: none;
+  }
+  .tab-btn:hover {
+    color: rgba(255,255,255,0.38);
+    border-color: rgba(255,255,255,0.12);
+  }
+  .tab-btn.active {
+    color: #fff;
+    border-color: var(--accent1);
+    background: var(--accent1-dim);
+    /* neon sign: tight tube on the border, then atmospheric bloom layers */
+    box-shadow:
+      inset 0 0 6px var(--accent1-dim),
+      0 0 2px var(--accent1),
+      0 0 8px var(--accent1),
+      0 0 18px var(--accent1-glow),
+      0 0 40px var(--accent1-dim),
+      0 0 70px var(--accent1-dim);
+    text-shadow:
+      0 0 4px #fff,
+      0 0 10px var(--accent1),
+      0 0 22px var(--accent1-glow),
+      0 0 44px var(--accent1-dim);
+  }
+
+  /* ========================================
+     THEME SWITCHER
+     ======================================== */
+  .theme-btn {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.12);
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    flex-shrink: 0;
+    box-shadow: none;
+  }
+  .theme-btn:hover { transform: scale(1.2); box-shadow: 0 0 8px rgba(255,255,255,0.3); }
+  .theme-btn.active {
+    border-color: rgba(255,255,255,0.55);
+    box-shadow: 0 0 6px rgba(255,255,255,0.4), 0 0 14px rgba(255,255,255,0.15);
+  }
+  #themeA { background: linear-gradient(135deg, #ff2d78 50%, #1a6eff 50%); }  /* pink / blue   */
+  #themeB { background: linear-gradient(135deg, #ff2d78 50%, #bd00ff 50%); }  /* pink / purple */
+  #themeC { background: linear-gradient(135deg, #ff2d78 50%, #00f5e0 50%); }  /* pink / teal   */
+
+  /* ========================================
+     STATS & MISC
+     ======================================== */
+  #stats {
+    font-size: 12px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    letter-spacing: 0.3px;
+  }
+
+  /* ========================================
+     INSTRUCTIONS OVERLAY
+     ======================================== */
+  #instructions {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--ui-bg);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--ui-border);
+    border-radius: 8px;
+    padding: 8px 18px;
+    font-size: 12px;
+    color: var(--text-dim);
+    pointer-events: none;
+    text-align: center;
+    transition: opacity 0.5s;
+    white-space: nowrap;
+  }
+
+  .cluster-inputs { display: flex; align-items: center; gap: 6px; }
+  .cluster-label {
+    font-size: 12px; color: var(--text-dim);
+    display: flex; align-items: center; gap: 3px; white-space: nowrap;
+  }
+  .cluster-label input[type="number"] {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--ui-border);
+    border-radius: 4px;
+    color: var(--text-bright);
+    padding: 3px 5px;
+    font-size: 12px;
+    width: 46px;
+  }
+
+  /* ========================================
+     NOTEPAD PANEL  (absolute overlay, right half)
+     ======================================== */
+  #notepadPanel {
+    position: absolute;
+    top: 0; right: 0; bottom: 0;
+    width: 0;
+    overflow: hidden;
+    transition: width 0.22s ease;
+    background: rgba(5,4,18,0.97);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border-left: 1px solid var(--ui-border);
+    display: flex;
+    flex-direction: column;
+    z-index: 20;
+  }
+  #notepadPanel.open { width: 50%; }
+
+  .notepad-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--ui-border);
+    flex-shrink: 0;
+    gap: 8px;
+  }
+  .notepad-header h2 {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    flex: 1;
+  }
+  #npUserDisplay {
+    font-size: 10px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+  }
+  .notepad-close {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 18px;
+    padding: 0 2px;
+    line-height: 1;
+    flex-shrink: 0;
+    font-family: inherit;
+  }
+  .notepad-close:hover { color: var(--text-bright); }
+
+  #npAuthSection, #npContent {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+    min-width: 0;
+  }
+  .np-auth-form {
+    padding: 20px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .np-auth-form label {
+    font-size: 10px;
+    color: var(--text-dim);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .np-auth-form input {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    color: var(--text-bright);
+    padding: 7px 10px;
+    font-size: 12px;
+    font-family: inherit;
+    outline: none;
+  }
+  .np-auth-form input:focus { border-color: var(--accent2); }
+  .np-auth-form p.np-hint {
+    font-size: 10px;
+    color: rgba(255,255,255,0.25);
+    line-height: 1.6;
+    margin-top: 4px;
+  }
+
+  /* Tabs inside notepad */
+  .np-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--ui-border);
+    flex-shrink: 0;
+  }
+  .nptab {
+    flex: 1;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: rgba(255,255,255,0.25);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 7px 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  .nptab:hover { color: var(--text-dim); }
+  .nptab.active { color: var(--text-bright); border-bottom-color: var(--accent2); }
+
+  /* Observation list */
+  #npMyTab, #npFeedTab {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .obs-empty {
+    color: rgba(255,255,255,0.22);
+    font-size: 11px;
+    text-align: center;
+    padding: 20px 8px;
+    line-height: 1.6;
+  }
+  .obs-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--ui-border);
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .obs-thumb-wrap {
+    position: relative;
+    display: block;
+    line-height: 0;
+  }
+  .obs-sim-canvas {
+    width: 100%;
+    display: block;
+    background: #05040f;
+  }
+  .obs-play-btn {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: rgba(5,4,18,0.72);
+    border: 2px solid rgba(255,255,255,0.35);
+    color: #fff;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity 0.15s, background 0.15s;
+    padding-left: 3px;
+    font-family: inherit;
+  }
+  .obs-thumb-wrap:hover .obs-play-btn { opacity: 1; }
+  .obs-play-btn:hover { background: var(--accent2-dim); border-color: var(--accent2); }
+  .obs-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 9px;
+    font-size: 10px;
+    color: rgba(255,255,255,0.25);
+  }
+  .obs-student { color: var(--text-dim); font-weight: 700; }
+  .obs-annotation-ro {
+    padding: 7px 9px;
+    font-size: 11px;
+    color: var(--text-dim);
+    border-top: 1px solid var(--ui-border);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .obs-actions {
+    display: flex;
+    gap: 5px;
+    padding: 5px 7px;
+    border-top: 1px solid var(--ui-border);
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .obs-btn {
+    padding: 2px 9px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.04);
+    color: var(--text-dim);
+    transition: all 0.15s;
+    white-space: nowrap;
+    font-family: inherit;
+  }
+  .obs-btn:hover:not(:disabled) { background: rgba(255,255,255,0.08); color: var(--text-bright); }
+  .obs-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .obs-btn-share {
+    border-color: var(--accent2);
+    color: var(--accent2);
+    text-shadow: 0 0 6px var(--accent2-glow);
+  }
+  .obs-btn-share:hover:not(:disabled) { background: var(--accent2-dim); }
+
+  /* Notepad toolbar button */
+  #notepadBtn {
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.07);
+    color: rgba(255,255,255,0.25);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 4px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+  }
+  #notepadBtn:hover { color: var(--text-dim); border-color: rgba(255,255,255,0.15); }
+  #notepadBtn.np-open {
+    color: var(--accent2);
+    border-color: var(--accent2);
+    background: var(--accent2-dim);
+    box-shadow: 0 0 3px var(--accent2), 0 0 9px var(--accent2-glow);
+    text-shadow: 0 0 5px var(--accent2);
+  }
+
+  /* ========================================
+     FAB (Add to Notepad)
+     ======================================== */
+  #addNoteBtn {
+    position: fixed;
+    bottom: 52px;   /* above scrubBar (38px) + gap */
+    right: 24px;
+    z-index: 30;
+    background: var(--accent1-dim);
+    color: rgba(255,255,255,0.7);
+    border: 1px solid var(--accent1);
+    border-radius: 8px;
+    padding: 8px 18px;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: inherit;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: pointer;
+    box-shadow: 0 0 8px var(--accent1), 0 0 20px var(--accent1-glow);
+    text-shadow: 0 0 6px var(--accent1);
+    transition: background 0.15s, right 0.22s ease, box-shadow 0.15s;
+  }
+  #addNoteBtn:hover {
+    background: var(--accent1-glow);
+    box-shadow: 0 0 12px var(--accent1), 0 0 32px var(--accent1-glow);
+  }
+  body.notepad-open #addNoteBtn { right: calc(50% + 24px); }
+
+  /* ========================================
+     MODALS  (identity + capture)
+     ======================================== */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(4,3,14,0.88);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+  }
+  .modal-overlay.hidden { display: none; }
+  .modal-box {
+    background: rgba(8,6,24,0.98);
+    border: 1px solid var(--ui-border);
+    border-radius: 12px;
+    padding: 26px 26px 22px;
+    width: 360px;
+    max-width: calc(100vw - 40px);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .modal-box h2 {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-bright);
+    letter-spacing: 1px;
+  }
+  .modal-box p.modal-hint {
+    font-size: 11px;
+    color: rgba(255,255,255,0.3);
+    line-height: 1.5;
+    margin-top: -4px;
+  }
+  .modal-label {
+    font-size: 10px;
+    color: var(--text-dim);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+  .modal-input, .modal-select {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    color: var(--text-bright);
+    padding: 8px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    width: 100%;
+  }
+  .modal-input:focus, .modal-select:focus { border-color: var(--accent2); }
+  .modal-select { cursor: pointer; }
+  .modal-error { font-size: 11px; color: #f87171; min-height: 16px; }
+  .modal-row { display: flex; gap: 8px; }
+  .modal-row .btn { flex: 1; }
+  #identLookupBtn2 {
+    background: var(--accent2-dim); border: 1px solid var(--accent2);
+    color: var(--accent2); font-size: 11px; font-weight: 700;
+    padding: 6px 14px; border-radius: 8px; cursor: pointer;
+    font-family: inherit; letter-spacing: 1px; text-transform: uppercase;
+    text-shadow: 0 0 5px var(--accent2); transition: background 0.15s;
+  }
+  #identLookupBtn2:hover { background: var(--accent2-glow); }
+  #identStartBtn {
+    background: var(--accent1-dim); border: 1px solid var(--accent1);
+    color: rgba(255,255,255,0.7); font-size: 11px; font-weight: 700;
+    padding: 6px 14px; border-radius: 8px; cursor: pointer;
+    font-family: inherit; letter-spacing: 1px; text-transform: uppercase;
+    text-shadow: 0 0 5px var(--accent1); transition: background 0.15s;
+  }
+  #identStartBtn:hover { background: var(--accent1-glow); }
+  #captureModal .modal-box { width: 520px; max-width: calc(100vw - 32px); }
+  #capturePreviewImg {
+    width: 100%; border-radius: 6px; display: block;
+    border: 1px solid var(--ui-border);
+  }
+  #captureAnnotation {
+    width: 100%; min-height: 72px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    color: var(--text-bright);
+    padding: 9px 12px; font-size: 12px;
+    font-family: inherit; resize: vertical; outline: none; line-height: 1.5;
+  }
+  #captureAnnotation:focus { border-color: var(--accent2); }
+  #captureAnnotation::placeholder { color: rgba(255,255,255,0.18); }
+  #captureSaveBtn {
+    background: var(--accent2-dim); border: 1px solid var(--accent2);
+    color: var(--accent2); font-size: 11px; font-weight: 700;
+    padding: 6px 14px; border-radius: 8px; cursor: pointer;
+    font-family: inherit; letter-spacing: 1px; text-transform: uppercase;
+    transition: background 0.15s;
+  }
+  #captureSaveBtn:hover { background: var(--accent2-glow); }
+  #captureShareBtn {
+    background: var(--accent1-dim); border: 1px solid var(--accent1);
+    color: rgba(255,255,255,0.7); font-size: 11px; font-weight: 700;
+    padding: 6px 14px; border-radius: 8px; cursor: pointer;
+    font-family: inherit; letter-spacing: 1px; text-transform: uppercase;
+    transition: background 0.15s;
+  }
+  #captureShareBtn:hover { background: var(--accent1-glow); }
+  #captureCancelBtn {
+    background: transparent; border: 1px solid rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.3); font-size: 11px; font-weight: 700;
+    padding: 6px 14px; border-radius: 8px; cursor: pointer;
+    font-family: inherit; letter-spacing: 1px; text-transform: uppercase;
+    transition: all 0.15s;
+  }
+  #captureCancelBtn:hover { color: var(--text-dim); border-color: rgba(255,255,255,0.2); }
+</style>
+</head>
+<body>
+
+<!-- ========================================
+     TOOLBAR HTML
+     ======================================== -->
+<div id="toolbar">
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+    <div id="tabBar">
+      <button class="tab-btn active" id="tabA">Protons</button>
+      <button class="tab-btn" id="tabB">Protons + Neutrons</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-left:auto;">
+      <button id="notepadBtn">Notepad</button>
+      <button class="theme-btn active" id="themeA" title="Blue / grey"></button>
+      <button class="theme-btn" id="themeB" title="Purple / purple"></button>
+      <button class="theme-btn" id="themeC" title="Teal / blue"></button>
+    </div>
+  </div>
+  <div class="toolbar-row" style="align-items:flex-start;gap:10px">
+    <!-- PROTONS frame: always visible, always in this position -->
+    <div class="particle-frame">
+      <div class="particle-frame-title"><canvas id="protonIconCanvas" class="particle-icon-canvas" width="40" height="40"></canvas></div>
+      <div class="particle-frame-controls">
+        <div id="particleBtns" style="display:flex;gap:6px">
+          <button class="btn particle-add-btn" data-count="1">1</button>
+          <button class="btn particle-add-btn" data-count="2">2</button>
+          <button class="btn particle-add-btn" data-count="6">6</button>
+          <button class="btn particle-add-btn" data-count="20">20</button>
+          <button class="btn particle-add-btn" data-count="36">36</button>
+        </div>
+      </div>
+    </div>
+    <!-- NEUTRONS frame: visible in Tab B, invisible-but-present in Tab A to hold position -->
+    <div id="neutronFrame" class="particle-frame" style="visibility:hidden">
+      <div class="particle-frame-title"><canvas id="neutronIconCanvas" class="particle-icon-canvas" width="40" height="40"></canvas></div>
+      <div class="particle-frame-controls">
+        <div class="neutron-slider-wrap">
+          <button id="neutronDecBtn" style="width:28px;height:28px;padding:0;font-size:13px;line-height:1;flex-shrink:0;">&#9664;</button>
+          <input type="range" id="neutronSlider" min="0" max="50" step="1" value="2">
+          <button id="neutronIncBtn" style="width:28px;height:28px;padding:0;font-size:13px;line-height:1;flex-shrink:0;">&#9654;</button>
+          <span class="neutron-slider-label"><span id="neutronSliderVal">2</span></span>
+        </div>
+      </div>
+    </div>
+    <!-- GO + REPLAY always visible, bottom-aligned with the button rows -->
+    <div style="display:flex;flex-direction:column;justify-content:flex-end;align-self:stretch;gap:6px;padding-bottom:10px">
+      <button class="btn" id="goBtn">Go</button>
+      <button class="btn" id="replayBtn" disabled>Replay</button>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin-left:8px;align-self:center">
+      <span id="stats">Protons: 0</span>
+      <button class="btn" id="centerBtn" style="display:none;font-size:11px;padding:2px 8px">Center</button>
+    </div>
+  </div>
+  <div class="toolbar-row">
+    <div class="slider-group">
+      <span class="slider-icon" title="Slow">🐢</span>
+      <input type="range" id="speedSlider" min="0" max="20" step="1" value="13">
+      <span class="slider-icon" title="Fast">🐇</span>
+    </div>
+    <div class="slider-group">
+      <span class="slider-icon" title="Zoom">🔍</span>
+      <input type="range" id="zoomSlider" min="5" max="40" step="1" value="20">
+    </div>
+    <label class="toggle-label"><input type="checkbox" id="electricFieldToggle" checked> <span class="field-label-electric">Electric field</span></label>
+    <label class="toggle-label"><input type="checkbox" id="strongFieldToggle" checked> <span class="field-label-strong">Strong field</span></label>
+    <div id="arrowWheel" class="arrow-wheel">
+      <button class="awheel-item active" data-mode="0">Force arrows off</button>
+      <button class="awheel-item" data-mode="1" data-position="below">Show all forces</button>
+      <button class="awheel-item" data-mode="2" data-position="above">Show total forces</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ========================================
+     MAIN CONTENT: Canvas
+     ======================================== -->
+<div id="main">
+  <canvas id="canvas"></canvas>
+
+  <!-- ========================================
+       NOTEPAD PANEL
+       ======================================== -->
+  <div id="notepadPanel">
+    <!-- Auth view (shown until student is identified) -->
+    <div id="npAuthSection">
+      <div class="notepad-header">
+        <h2>Student Notepad</h2>
+        <button class="notepad-close" id="npCloseBtn1">×</button>
+      </div>
+      <div class="np-auth-form">
+        <p class="np-hint">Sign in to start saving observations.</p>
+        <button id="npSignInBtn"
+          style="background:var(--accent2-dim);border:1px solid var(--accent2);color:var(--accent2);font-size:11px;font-weight:700;padding:7px 14px;border-radius:8px;cursor:pointer;font-family:inherit;letter-spacing:1px;text-transform:uppercase;text-shadow:0 0 5px var(--accent2)">
+          Join your class
+        </button>
+      </div>
+    </div>
+
+    <!-- Content view (shown after sign-in) -->
+    <div id="npContent" style="display:none">
+      <div class="notepad-header">
+        <h2>My Notepad</h2>
+        <span id="npUserDisplay"></span>
+        <button class="notepad-close" id="npCloseBtn2">×</button>
+      </div>
+      <div class="np-tabs">
+        <button class="nptab active" data-nptab="my">My Observations</button>
+        <button class="nptab" data-nptab="feed">Class Feed</button>
+      </div>
+      <div id="npMyTab"><div id="npObsList"></div></div>
+      <div id="npFeedTab" style="display:none"><div id="npFeedList"></div></div>
+    </div>
+  </div>
+
+  <div id="instructions">Drag particles to reposition. Use "Add Cluster" to place particles.</div>
+</div>
+
+<!-- Add to Notepad FAB -->
+<button id="addNoteBtn">+ Notepad</button>
+
+<!-- Identity modal (roster picker, overlaid when first identifying) -->
+<div id="identityModal" class="modal-overlay hidden">
+  <div class="modal-box">
+    <h2>Join Your Class</h2>
+    <p class="modal-hint">Enter the class code your teacher gave you.</p>
+    <div>
+      <div class="modal-label">Class Code</div>
+      <input class="modal-input" id="identClassCode" placeholder="e.g. Chem202603" autocomplete="off">
+    </div>
+    <div id="identRosterWrap" style="display:none">
+      <div class="modal-label">Your name</div>
+      <select class="modal-select" id="identRosterSel"></select>
+    </div>
+    <div class="modal-error" id="identError"></div>
+    <div class="modal-row">
+      <button id="identLookupBtn2">Look up class</button>
+      <button id="identStartBtn" style="display:none">Let's go →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Capture modal -->
+<div id="captureModal" class="modal-overlay hidden">
+  <div class="modal-box">
+    <h2>Add to Notepad</h2>
+    <img id="capturePreviewImg" alt="Sim capture">
+    <div>
+      <div class="modal-label">What did you notice?</div>
+      <textarea id="captureAnnotation" placeholder="Describe what you observed, or what you're wondering…"></textarea>
+    </div>
+    <div class="modal-error" id="captureError"></div>
+    <div class="modal-row">
+      <button id="captureSaveBtn">Save</button>
+      <button id="captureShareBtn">Save &amp; Share</button>
+      <button id="captureCancelBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="scrubBar">
+  <span class="scrub-label">Time</span>
+  <input type="range" id="timeSlider" min="0" max="0" value="0" disabled>
+  <span class="scrub-time" id="timeLabel">–</span>
+</div>
+
+<script>
+// ============================================================
+//  DOM ELEMENT REFERENCES
+// ============================================================
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const goBtn = document.getElementById('goBtn');
+const replayBtn = document.getElementById('replayBtn');
+const speedSlider = document.getElementById('speedSlider');
+const statsEl = document.getElementById('stats');
+const instructionsEl = document.getElementById('instructions');
+const timeSlider  = document.getElementById('timeSlider');
+const timeLabelEl = document.getElementById('timeLabel');
+
+// ============================================================
+//  SIMULATION STATE
+//  All mutable state lives here. Particles are plain objects:
+//  { x, y, vx, vy, type: 'proton'|'neutron' }
+// ============================================================
+let particles = [];
+let running = false;
+let animId = null;
+let speed = 1.5;  // Internal dt per frame (display speed = speed * 2)
+
+// ---- Time scrubber ----
+const MAX_HISTORY = 4000;
+let particleHistory = [];
+let scrubFrame = -1;
+
+// ---- Visualization toggles ----
+let showElectricField = true;   // Toggle for Coulomb heatmap
+let showStrongField = true;     // Toggle for strong nuclear heatmap
+
+const antispin = true;            // Always on; suppresses runaway cluster spin
+
+// ---- Selection & force arrows ----
+let selectedParticle = null;  // Index of the clicked particle
+let arrowMode = 0;            // 0=off, 1=per-source arrows, 2=net force arrow
+let currentTabIsProton = true; // true = Tab A (protons only)
+let currentTab = 'proton';    // 'proton' | 'nucleus'
+
+// ============================================================
+//  QUANTUM: NUCLEAR STABILITY + NEUTRON DECAY CASCADE
+// ============================================================
+const STABILITY_TABLE = { 1:2, 2:2, 3:4, 4:6, 5:6, 6:8, 7:8, 8:10, 9:10, 10:12 };
+function maxStableNeutrons(z) {
+  if (z <= 0) return 0;
+  return STABILITY_TABLE[z] !== undefined ? STABILITY_TABLE[z] : Math.floor(z * 1.5);
+}
+
+const QUANTUM_ESCAPE_SPEED = 4.0;  // px/frame for ejected neutron
+const COHESION_K = 0.004;          // Spring constant toward cluster CM (Quantum tab only)
+let quantumEjectAt      = null;    // performance.now() when next ejection fires
+let quantumTimerStartAt = null;    // when current timer began
+let quantumFlashes      = [];      // [{x,y,startTime}] brief ejection flashes
+
+function ejectDelayRange(excessRatio) {
+  if (excessRatio >= 4) return [ 20,  50];
+  if (excessRatio >= 3) return [ 50, 100];
+  if (excessRatio >= 2) return [100, 200];
+  if (excessRatio >= 1) return [200, 400];
+  return                       [400, 800];
+}
+
+function ejectCount(excessRatio) {
+  if (excessRatio >= 4) return 4;
+  if (excessRatio >= 3) return 3;
+  if (excessRatio >= 2) return 2;
+  return 1;
+}
+
+function updateQuantumStability() {
+  if (currentTab !== 'nucleus') return;
+
+  for (const p of particles) {
+    if (!p.ejected) { p.unstable = false; p.strongScale = 1.0; }
+  }
+
+  // Evaluate each cluster independently; cache each cluster's CM on its particles
+  // so step() can apply the cohesion spring without re-clustering every substep.
+  const clusters = findAllClusters();
+  for (const cluster of clusters) {
+    let cmx = 0, cmy = 0;
+    for (const p of cluster) { cmx += p.x; cmy += p.y; }
+    cmx /= cluster.length; cmy /= cluster.length;
+    for (const p of cluster) { p.clusterCmx = cmx; p.clusterCmy = cmy; }
+  }
+
+  let maxExcessRatio = 0;
+  const unstableClusters = [];
+
+  for (const cluster of clusters) {
+    const Z       = cluster.filter(p => p.type === 'proton').length;
+    const neutrons = cluster.filter(p => p.type === 'neutron');
+    const excess  = neutrons.length - maxStableNeutrons(Z);
+    if (excess <= 0) continue;
+
+    const excessRatio = Z > 0 ? excess / Z : excess;
+    if (excessRatio > maxExcessRatio) maxExcessRatio = excessRatio;
+
+    let cx = 0, cy = 0;
+    for (const p of cluster) { cx += p.x; cy += p.y; }
+    cx /= cluster.length; cy /= cluster.length;
+
+    const protons = cluster.filter(p => p.type === 'proton');
+    const sorted = neutrons.map(p => {
+      let nearestDist = Infinity;
+      for (const pr of protons) {
+        const d = Math.hypot(p.x - pr.x, p.y - pr.y);
+        if (d < nearestDist) nearestDist = d;
+      }
+      if (!isFinite(nearestDist)) nearestDist = Math.hypot(p.x - cx, p.y - cy);
+      return { p, d: nearestDist };
+    }).sort((a, b) => b.d - a.d);
+
+    for (let i = 0; i < excess; i++) {
+      sorted[i].p.unstable    = true;
+      sorted[i].p.strongScale = 0.2;
+    }
+
+    unstableClusters.push({ cluster, sorted, excess, excessRatio, cx, cy });
+  }
+
+  if (unstableClusters.length === 0) {
+    quantumEjectAt = quantumTimerStartAt = null;
+    return;
+  }
+
+  const now = performance.now();
+  if (quantumEjectAt === null) {
+    const [lo, hi] = ejectDelayRange(maxExcessRatio);
+    quantumTimerStartAt = now;
+    quantumEjectAt      = now + lo + Math.random() * (hi - lo);
+  } else if (now >= quantumEjectAt) {
+    // Eject from every unstable cluster simultaneously
+    for (const { cluster, sorted, excessRatio, cx, cy } of unstableClusters) {
+      const count   = Math.min(ejectCount(excessRatio), sorted.length);
+      const targets = sorted.slice(0, count).map(s => s.p);
+      let totalRecoilVx = 0, totalRecoilVy = 0;
+
+      for (const target of targets) {
+        const dx = target.x - cx, dy = target.y - cy;
+        const d  = Math.sqrt(dx * dx + dy * dy);
+        const nx = d > 0.01 ? dx / d : Math.random() * 2 - 1;
+        const ny = d > 0.01 ? dy / d : Math.random() * 2 - 1;
+        target.vx = nx * QUANTUM_ESCAPE_SPEED;
+        target.vy = ny * QUANTUM_ESCAPE_SPEED;
+        target.ejected = true; target.unstable = false; target.strongScale = 0;
+        delete target.clusterCmx; delete target.clusterCmy;
+        totalRecoilVx -= target.vx; totalRecoilVy -= target.vy;
+        quantumFlashes.push({ x: target.x, y: target.y, startTime: now });
+      }
+
+      const remaining = cluster.filter(p => !p.ejected);
+      if (remaining.length > 0) {
+        const rvx = totalRecoilVx / remaining.length;
+        const rvy = totalRecoilVy / remaining.length;
+        for (const p of remaining) { p.vx += rvx; p.vy += rvy; }
+      }
+    }
+    quantumEjectAt = quantumTimerStartAt = null;
+  }
+}
+
+// ---- View ----
+let zoom = 2.0;  // Canvas zoom centered on canvas midpoint
+
+// ---- Sizing ----
+const PARTICLE_RADIUS = 10;  // px — display radius and physics hard-sphere radius
+const MIN_DIST = 20;         // Minimum distance for force calc = 2*PARTICLE_RADIUS (softening floor)
+
+// ============================================================
+//  PHYSICS PARAMETERS
+//  These are fixed — changing them changes the whole character
+//  of the simulation (equilibrium distance, fusion threshold, etc.)
+// ============================================================
+const coulombStrength = 139;      // K in F = K/r² (Coulomb repulsion, proton-proton only)
+let strongForceStrength = 0.25;   // Constant attractive force magnitude within cutoff
+let strongForceRange = 1.2;       // Cutoff = PARTICLE_RADIUS * 2 * strongForceRange
+const COULOMB_CUTOFF_SQ = (PARTICLE_RADIUS * 40) ** 2;  // 400px — Coulomb force negligible beyond this
+const equilibriumRatio = 0.6;     // Ratio r_eq / r_cutoff (informational, not used directly)
+const damping = 1.00;             // Velocity multiplier per frame; 1.0 = no damping
+const SUBSTEPS = 20;              // Physics substeps per animation frame for integration accuracy
+
+
+// ============================================================
+//  HEATMAP OFFSCREEN CANVAS (half resolution for performance)
+// ============================================================
+const hmCanvas = document.createElement('canvas');
+const hmCtx = hmCanvas.getContext('2d');
+
+// Composite canvas: holds the fully-blended heatmap at full resolution.
+// Cached between frames so we can skip recomputation every other frame.
+const hmComposite = document.createElement('canvas');
+const hmcCtx = hmComposite.getContext('2d');
+
+// Pre-allocated pixel buffers; resized when canvas dimensions change.
+let hmW = 0, hmH = 0;
+let hmDataElec = null, hmDataStrong = null;
+let hmImgElec  = null, hmImgStrong  = null;
+let hmFrameCounter = 0;
+
+function ensureHmBuffers(w, h) {
+  if (hmW === w && hmH === h) return;
+  hmW = w; hmH = h;
+  hmCanvas.width = w; hmCanvas.height = h;
+  hmDataElec   = new Uint8ClampedArray(w * h * 4);
+  hmDataStrong = new Uint8ClampedArray(w * h * 4);
+  hmImgElec    = new ImageData(hmDataElec,   w, h);
+  hmImgStrong  = new ImageData(hmDataStrong, w, h);
+}
+
+// ============================================================
+//  DRAG STATE
+// ============================================================
+let dragging = null;       // Index of particle being dragged, or null
+let dragOffsetX = 0;
+let dragOffsetY = 0;
+
+// ============================================================
+//  LAYOUT / RESIZE
+// ============================================================
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  updatePanelGeometry();
+  if (!running) draw();
+}
+function updatePanelGeometry() {
+  const tbH = document.getElementById('toolbar').offsetHeight;
+  const scH = 38; // scrubBar height
+  if (notepadPanel) {
+    notepadPanel.style.top    = tbH + 'px';
+    notepadPanel.style.bottom = scH + 'px';
+  }
+}
+window.addEventListener('resize', resize);
+setTimeout(resize, 0);
+
+// ============================================================
+//  PARTICLE HELPERS: create, position, hit-test
+// ============================================================
+function createParticle(x, y, type) {
+  return { x, y, vx: 0, vy: 0, type: type || 'proton' };
+}
+
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const sx = e.clientX - rect.left;
+  const sy = e.clientY - rect.top;
+  // Invert the centered zoom transform applied in draw()
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+  return { x: (sx - cx) / zoom + cx, y: (sy - cy) / zoom + cy };
+}
+
+function findParticleAt(x, y) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    const dx = p.x - x;
+    const dy = p.y - y;
+    if (dx * dx + dy * dy <= (PARTICLE_RADIUS + 4) * (PARTICLE_RADIUS + 4)) {  // +4px hit margin
+      return i;
+    }
+  }
+  return -1;
+}
+
+// ============================================================
+//  OVERLAP RESOLUTION
+//  Iterative position-correction pass: push overlapping pairs
+//  apart by half the overlap distance, up to 10 iterations.
+//  Used after placing or adding particles, not during physics
+//  (the physics step handles collisions with its own constraint).
+// ============================================================
+function separateOverlaps() {
+  const minSep = PARTICLE_RADIUS * 2;
+  for (let iter = 0; iter < 10; iter++) {
+    let moved = false;
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+        const a = particles[i];
+        const b = particles[j];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < minSep && dist > 0) {
+          const overlap = (minSep - dist) / 2;
+          const nx = dx / dist;
+          const ny = dy / dist;
+          a.x -= nx * overlap;
+          a.y -= ny * overlap;
+          b.x += nx * overlap;
+          b.y += ny * overlap;
+          moved = true;
+        } else if (dist === 0) {
+          b.x += (Math.random() - 0.5) * minSep;
+          b.y += (Math.random() - 0.5) * minSep;
+          moved = true;
+        }
+      }
+    }
+    if (!moved) break;
+  }
+}
+
+// ============================================================
+//  CANVAS MOUSE EVENTS
+//  mousedown  — start dragging an existing particle (or deselect)
+//  mousemove  — drag particle / initiate bucket drag once threshold met
+//  mouseup    — drop particle; delete if released over trash can
+//  click      — place a new particle of the selected type on empty space
+//  didDrag flag prevents click from firing after a drag release
+// ============================================================
+let didDrag = false;
+canvas.addEventListener('mousedown', (e) => {
+  const pos = getCanvasPos(e);
+  const idx = findParticleAt(pos.x, pos.y);
+  didDrag = false;
+  if (idx >= 0) {
+    dragging = idx;
+    dragOffsetX = particles[idx].x - pos.x;
+    dragOffsetY = particles[idx].y - pos.y;
+    particles[idx].vx = 0;
+    particles[idx].vy = 0;
+    canvas.style.cursor = 'grabbing';
+    selectedParticle = idx;
+    if (!running) draw();
+  } else {
+    selectedParticle = null;
+    if (!running) draw();
+  }
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (dragging === null) {
+    const pos = getCanvasPos(e);
+    const idx = findParticleAt(pos.x, pos.y);
+    canvas.style.cursor = idx >= 0 ? 'grab' : 'default';
+    return;
+  }
+  const pos = getCanvasPos(e);
+  const p = particles[dragging];
+  didDrag = true;
+  p.x = pos.x + dragOffsetX;
+  p.y = pos.y + dragOffsetY;
+  p.vx = 0;
+  p.vy = 0;
+  if (!running) { computeEnergy(); draw(); }
+});
+
+window.addEventListener('mouseup', (e) => {
+  if (dragging !== null) {
+    separateOverlaps();
+    if (!running) { computeEnergy(); draw(); }
+  }
+  dragging = null;
+  canvas.style.cursor = 'default';
+});
+
+// ============================================================
+//  PACKED CLUSTER BUILDER
+//  Returns an array of { x, y, type } in a hex close-packed
+//  arrangement centered on (0, 0).  Particles are placed at
+//  touching distance (2 * PARTICLE_RADIUS) from their neighbors.
+//
+//  Proton assignment — farthest-point greedy:
+//    1. Seed the first proton at the outermost position.
+//    2. Each subsequent proton goes to the open slot whose
+//       minimum distance to any already-placed proton is largest.
+//  This maximises the spread of positive charge across the cluster.
+// ============================================================
+function buildPackedCluster(numProtons, numNeutrons, spacing = PARTICLE_RADIUS * 2) {
+  if (numProtons + numNeutrons === 0) return [];
+
+  const D    = spacing;               // 1 diameter — fine grid spacing
+  const rowH = D * Math.sqrt(3) / 2;
+  const jitter = () => (Math.random() - 0.5) * D * 0.3;
+
+  // Generate a large fine hex grid (enough for all particles plus room for proton spacing)
+  const span = Math.ceil(Math.sqrt(numProtons * 4 + numNeutrons)) + 4;
+  const grid = [];
+  for (let row = -span; row <= span; row++) {
+    const xOff = (Math.abs(row) % 2 === 1) ? D / 2 : 0;
+    for (let col = -span; col <= span; col++) {
+      const x = col * D + xOff + jitter();
+      const y = row * rowH + jitter();
+      grid.push({ x, y, dist2: x * x + y * y });
+    }
+  }
+  grid.sort((a, b) => a.dist2 - b.dist2);
+
+  // Step 1: pick proton slots — innermost positions at least 1.5 diameters apart.
+  const protonMinDist2 = (D * 1.0) * (D * 1.0);
+  const protonSlots = [];
+  const usedIdx = new Set();
+  for (let i = 0; i < grid.length && protonSlots.length < numProtons; i++) {
+    let tooClose = false;
+    for (const pp of protonSlots) {
+      const dx = grid[i].x - pp.x, dy = grid[i].y - pp.y;
+      if (dx * dx + dy * dy < protonMinDist2) { tooClose = true; break; }
+    }
+    if (!tooClose) { protonSlots.push(grid[i]); usedIdx.add(i); }
+  }
+
+  // Step 2: pick neutron slots — innermost positions not already used by protons.
+  const neutronSlots = [];
+  for (let i = 0; i < grid.length && neutronSlots.length < numNeutrons; i++) {
+    if (!usedIdx.has(i)) neutronSlots.push(grid[i]);
+  }
+
+  return [
+    ...protonSlots.map(p => ({ x: p.x, y: p.y, type: 'proton'  })),
+    ...neutronSlots.map(p => ({ x: p.x, y: p.y, type: 'neutron' })),
+  ];
+}
+
+// ============================================================
+//  RANDOM PROTON PLACER (Tab A)
+//  Poisson-disk rejection sampling: each proton is placed at a
+//  random position in a disk, retrying until it is farther than
+//  minDist from every already-placed proton.  minDist is set well
+//  above the strong-force cutoff so no interactions start.
+// ============================================================
+function buildRandomProtons(n) {
+  if (n === 0) return [];
+  const minDist = strongCutoff() * 1.8;          // clear margin above strong range
+  const radius  = minDist * Math.sqrt(n) * 0.85; // disk sized for n non-overlapping protons
+  const placed  = [];
+
+  for (let i = 0; i < n; i++) {
+    let best = null, bestMinD = -1;
+    const attempts = 300;
+    for (let a = 0; a < attempts; a++) {
+      // Uniform random point inside disk
+      const angle = Math.random() * 2 * Math.PI;
+      const r     = Math.sqrt(Math.random()) * radius;
+      const x = r * Math.cos(angle), y = r * Math.sin(angle);
+
+      let minD = Infinity;
+      for (const p of placed) {
+        const dx = p.x - x, dy = p.y - y;
+        const d  = Math.sqrt(dx * dx + dy * dy);
+        if (d < minD) minD = d;
+      }
+      if (placed.length === 0 || minD >= minDist) { best = { x, y }; break; }
+      if (minD > bestMinD) { bestMinD = minD; best = { x, y }; }
+    }
+    placed.push(best);
+  }
+  return placed.map(p => ({ x: p.x, y: p.y, type: 'proton' }));
+}
+
+// ============================================================
+//  CLUSTER PLACEMENT
+//  placeProtons(n)     — Tab A: random layout, no strong force
+//  placeNucleus(p, n)  — Tab B: tight hex pack, called by
+//                        Add buttons and neutron slider
+// ============================================================
+function resetSim() {
+  running = false;
+  cancelAnimationFrame(animId);
+  goBtn.textContent = 'Go';
+  goBtn.classList.remove('running');
+  particles = [];
+  snapshot = null;
+  replayBtn.disabled = true;
+  particleHistory = [];
+  scrubFrame = -1;
+  timeSlider.value = 0;
+  timeSlider.max = 0;
+  timeSlider.disabled = true;
+  timeLabelEl.textContent = '–';
+}
+
+function placeCluster(numProtons, numNeutrons, spacing) {
+  resetSim();
+
+  const nzRatio = numProtons > 0 ? numNeutrons / numProtons : 1.0;
+  strongForceStrength = Math.min(1.0, Math.max(0.01, 2 * nzRatio - 1));
+
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+  const cluster = buildPackedCluster(numProtons, numNeutrons, spacing);
+  for (const p of cluster) particles.push(createParticle(cx + p.x, cy + p.y, p.type));
+  updateStats();
+  computeEnergy();
+  draw();
+  hideInstructions();
+}
+
+function placeProtons(n) {
+  resetSim();
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+  const pts = buildRandomProtons(n);
+  for (const p of pts) particles.push(createParticle(cx + p.x, cy + p.y, 'proton'));
+  updateStats();
+  computeEnergy();
+  draw();
+  hideInstructions();
+}
+
+let lastNucleusProtonCount = 2;  // tracks last Add N button pressed in Tab B
+
+function placeNucleus(numProtons, numNeutrons) {
+  lastNucleusProtonCount = numProtons;
+  placeCluster(numProtons, numNeutrons, PARTICLE_RADIUS * 2);
+}
+
+
+// ============================================================
+//  SNAPSHOT STATE (captured when user presses Go)
+// ============================================================
+let snapshot = null;  // Deep copy of particles at simulation start
+
+function takeSnapshot() {
+  snapshot = particles.map(p => ({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, type: p.type }));
+  replayBtn.disabled = false;
+}
+
+function restoreSnapshot() {
+  if (!snapshot) return;
+  particles = snapshot.map(p => ({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, type: p.type }));
+}
+
+// ============================================================
+//  GO / STOP BUTTON
+// ============================================================
+goBtn.addEventListener('click', () => {
+  running = !running;
+  goBtn.textContent = running ? 'Stop' : 'Go';
+  goBtn.classList.toggle('running', running);
+  if (running) {
+    takeSnapshot();  // Snapshot state at simulation start
+    loop();
+  } else {
+    cancelAnimationFrame(animId);
+  }
+});
+
+// ============================================================
+//  REPLAY BUTTON
+// ============================================================
+replayBtn.addEventListener('click', () => {
+  if (!snapshot) return;
+  // Stop current simulation if running
+  running = false;
+  cancelAnimationFrame(animId);
+  goBtn.textContent = 'Go';
+  goBtn.classList.remove('running');
+  // Restore particle state
+  restoreSnapshot();
+  updateStats();
+  computeEnergy();
+  draw();
+  // Auto-start the simulation
+  running = true;
+  goBtn.textContent = 'Stop';
+  goBtn.classList.add('running');
+  loop();
+});
+
+
+// ============================================================
+//  SPEED SLIDER (non-linear stops for fine control at low speeds)
+// ============================================================
+const SPEED_STOPS = [
+  0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5,
+  1.0, 1.5, 2.0, 2.5, 3.0,
+  4, 5, 6, 7, 8, 9, 10
+];
+function applySpeedSlider() {
+  const idx = parseInt(speedSlider.value);
+  speed = SPEED_STOPS[idx] / 2;  // Internal dt is half the display value for stability
+}
+speedSlider.addEventListener('input', applySpeedSlider);
+
+// ============================================================
+//  VIZ TOGGLES & SLIDERS
+// ============================================================
+
+// Zoom: scale the canvas transform centered on the midpoint.
+// Physics coordinates are unchanged — only the view scales.
+document.getElementById('zoomSlider').addEventListener('input', function() {
+  zoom = parseInt(this.value) / 10;
+  if (!running) draw();
+});
+
+// Electric field: toggles Coulomb heatmap visualization.
+document.getElementById('electricFieldToggle').addEventListener('change', function() {
+  showElectricField = this.checked;
+  if (!running) draw();
+});
+
+// Strong field: toggles strong nuclear heatmap visualization.
+document.getElementById('strongFieldToggle').addEventListener('change', function() {
+  showStrongField = this.checked;
+  if (!running) draw();
+});
+
+
+// ============================================================
+//  TAB SWITCHING
+// ============================================================
+const neutronFrame = document.getElementById('neutronFrame');
+
+function applyTab(tab, skipReset = false) {
+  const isProtonOnly = tab === true || tab === 'proton';
+  const isNucleus    = !isProtonOnly;
+  currentTabIsProton = isProtonOnly;
+  currentTab = isProtonOnly ? 'proton' : 'nucleus';
+  neutronFrame.style.visibility = isNucleus ? 'visible' : 'hidden';
+  document.getElementById('arrowWheel').style.display   = isProtonOnly ? '' : 'none';
+  document.getElementById('tabA').classList.toggle('active', isProtonOnly);
+  document.getElementById('tabB').classList.toggle('active', isNucleus);
+  document.getElementById('centerBtn').style.display = isNucleus ? '' : 'none';
+  // Reset strong force to tab default (unless restoring a saved state)
+  if (isProtonOnly && !skipReset) strongForceStrength = 0.25;
+  // Clear simulation state on tab switch (skip when restoring from notepad)
+  if (!skipReset) {
+    running = false;
+    cancelAnimationFrame(animId);
+    goBtn.textContent = 'Go';
+    goBtn.classList.remove('running');
+    particles = [];
+    snapshot = null;
+    selectedParticle = null;
+    replayBtn.disabled = true;
+    quantumEjectAt = quantumTimerStartAt = null;
+    quantumFlashes = [];
+    updateStats();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+}
+
+document.getElementById('tabA').addEventListener('click', () => applyTab(true));
+document.getElementById('tabB').addEventListener('click', () => {
+  applyTab(false);
+  neutronSlider.value = 2;
+  neutronSliderVal.textContent = '2';
+  placeNucleus(2, 2);
+});
+
+function findAllClusters() {
+  const active = particles.filter(p => !p.ejected);
+  if (active.length === 0) return [];
+  const threshold = strongCutoff() * 1.5;
+  const visited = new Array(active.length).fill(false);
+  const clusters = [];
+  for (let i = 0; i < active.length; i++) {
+    if (visited[i]) continue;
+    const cluster = [];
+    const queue = [i];
+    visited[i] = true;
+    while (queue.length) {
+      const idx = queue.shift();
+      cluster.push(active[idx]);
+      for (let j = 0; j < active.length; j++) {
+        if (visited[j]) continue;
+        const dx = active[idx].x - active[j].x;
+        const dy = active[idx].y - active[j].y;
+        if (dx * dx + dy * dy <= threshold * threshold) {
+          visited[j] = true;
+          queue.push(j);
+        }
+      }
+    }
+    clusters.push(cluster);
+  }
+  return clusters;
+}
+
+function findBiggestCluster() {
+  return findAllClusters().reduce((best, c) => c.length > best.length ? c : best, []);
+}
+
+document.getElementById('centerBtn').addEventListener('click', () => {
+  const cluster = findBiggestCluster();
+  if (cluster.length === 0) return;
+
+  // Position: translate so cluster centroid is at canvas centre
+  let cx = 0, cy = 0;
+  for (const p of cluster) { cx += p.x; cy += p.y; }
+  cx /= cluster.length; cy /= cluster.length;
+  const dx = canvas.width / 2 - cx;
+  const dy = canvas.height / 2 - cy;
+  for (const p of particles) { p.x += dx; p.y += dy; }
+  for (const f of quantumFlashes) { f.x += dx; f.y += dy; }
+
+  // Velocity: subtract cluster CM velocity from all particles
+  let cvx = 0, cvy = 0;
+  for (const p of cluster) { cvx += p.vx; cvy += p.vy; }
+  cvx /= cluster.length; cvy /= cluster.length;
+  for (const p of particles) { p.vx -= cvx; p.vy -= cvy; }
+
+  if (!running) draw();
+});
+
+
+document.querySelectorAll('.particle-add-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const count = parseInt(btn.dataset.count);
+    if (currentTabIsProton) {
+      placeProtons(count);
+    } else {
+      placeNucleus(count, parseInt(neutronSlider.value));
+    }
+  });
+});
+
+const neutronSlider    = document.getElementById('neutronSlider');
+const neutronSliderVal = document.getElementById('neutronSliderVal');
+neutronSlider.addEventListener('input', function() {
+  neutronSliderVal.textContent = this.value;
+  if (lastNucleusProtonCount > 0) {
+    placeNucleus(lastNucleusProtonCount, parseInt(this.value));
+  }
+});
+
+function stepNeutronSlider(delta) {
+  const v = Math.min(50, Math.max(0, parseInt(neutronSlider.value) + delta));
+  neutronSlider.value = v;
+  neutronSliderVal.textContent = v;
+  if (lastNucleusProtonCount > 0) placeNucleus(lastNucleusProtonCount, v);
+}
+document.getElementById('neutronDecBtn').addEventListener('click', () => stepNeutronSlider(-1));
+document.getElementById('neutronIncBtn').addEventListener('click', () => stepNeutronSlider(1));
+
+
+// Arrow mode wheel — fixed order, selected stays in flow, others float above/below
+function setArrowWheelActive(targetBtn) {
+  const items = [...document.querySelectorAll('.awheel-item[data-mode]')];
+  const activeIdx = items.indexOf(targetBtn);
+  const SLOT = 27; // item height (~22px) + inter-item gap (5px)
+
+  items.forEach(item => {
+    item.classList.remove('active');
+    delete item.dataset.position;
+    item.style.top = item.style.bottom = item.style.paddingTop = item.style.paddingBottom = '';
+    item.style.removeProperty('--slide-dir');
+  });
+
+  targetBtn.classList.add('active');
+
+  items.forEach((item, i) => {
+    if (i === activeIdx) return;
+    if (i < activeIdx) {
+      const slot = activeIdx - i;
+      item.dataset.position = 'above';
+      item.style.bottom = `calc(100% + ${(slot - 1) * SLOT}px)`;
+      if (slot === 1) item.style.paddingBottom = '5px';
+      item.style.setProperty('--slide-dir', '5px');
+    } else {
+      const slot = i - activeIdx;
+      item.dataset.position = 'below';
+      item.style.top = `calc(100% + ${(slot - 1) * SLOT}px)`;
+      if (slot === 1) item.style.paddingTop = '5px';
+      item.style.setProperty('--slide-dir', '-5px');
+    }
+  });
+}
+
+document.querySelectorAll('.awheel-item[data-mode]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    arrowMode = parseInt(btn.dataset.mode);
+    setArrowWheelActive(btn);
+    if (!running) draw();
+  });
+});
+
+// ============================================================
+//  UI HELPERS
+// ============================================================
+function hideInstructions() {
+  instructionsEl.style.opacity = '0';
+  setTimeout(() => instructionsEl.style.display = 'none', 500);
+}
+
+function updateStats() {
+  const np = particles.filter(p => p.type === 'proton').length;
+  const nn = particles.filter(p => p.type === 'neutron').length;
+  if (currentTabIsProton) {
+    statsEl.textContent = `Protons: ${np}`;
+  } else {
+    statsEl.textContent = `Protons: ${np}  Neutrons: ${nn}`;
+  }
+}
+
+// ============================================================
+//  FORCE MODEL
+//  Two forces act between particles:
+//
+//  Coulomb repulsion (proton-proton only):
+//    F = coulombStrength / r²  (softened: r clamped to PARTICLE_RADIUS)
+//
+//  Strong nuclear force (all pairs within cutoff):
+//    F = -strongForceStrength  (constant attraction, no r-dependence)
+//    Cutoff = PARTICLE_RADIUS * 2 * strongForceRange
+//
+//  The combination creates a potential well: particles repel at long
+//  range (protons), attract strongly once close, and can bind into
+//  nuclei when kinetic energy is low enough to stay in the well.
+// ============================================================
+function strongCutoff() {
+  return PARTICLE_RADIUS * 2 * strongForceRange;
+}
+
+// Returns net force magnitude along the axis between two particles.
+// Positive = repulsive (pushes apart), negative = attractive (pulls together).
+function pairForce(dist, distSq, aType, bType, strongScale) {
+  let force = 0;
+  // Coulomb: only between protons (1/r² with softening to prevent blow-up)
+  if (aType === 'proton' && bType === 'proton') {
+    const softDistSq = Math.max(distSq, PARTICLE_RADIUS * PARTICLE_RADIUS);
+    force += coulombStrength / softDistSq;
+  }
+  // Strong nuclear force: constant attraction within cutoff, no repulsive core
+  const cutoff = strongCutoff();
+  if (dist < cutoff) {
+    force -= strongForceStrength * (strongScale ?? 1.0);
+  }
+  return force;
+}
+
+// ============================================================
+//  ENERGY COMPUTATION
+//  Computes true kinetic and potential energy from particle state,
+//  then applies display transformations before writing to the UI
+//  and energy history.
+//
+//  KE = Σ ½mv²  (unit mass, so just ½v²)
+//  IE = Coulomb potential + Strong potential
+//
+//  Potential integrals match the force model:
+//    Coulomb: V = K/r  (softened)
+//    Strong:  V = -S*(cutoff - r)  (linear well, zero at cutoff)
+// ============================================================
+function computeEnergy() {
+  let kinetic = 0;
+  let eiePotential = 0;  // Coulomb (electric) potential energy
+  let siePotential = 0;  // Strong nuclear potential energy
+  const n = particles.length;
+
+  for (let i = 0; i < n; i++) {
+    const p = particles[i];
+    kinetic += 0.5 * (p.vx * p.vx + p.vy * p.vy);  // KE = ½mv² (unit mass)
+  }
+
+  const cutoff = strongCutoff();
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const dx = particles[j].x - particles[i].x;
+      const dy = particles[j].y - particles[i].y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 0) {
+        // Coulomb potential: between protons only (with softening)
+        if (particles[i].type === 'proton' && particles[j].type === 'proton') {
+          const softDist = Math.max(dist, PARTICLE_RADIUS);
+          eiePotential += coulombStrength / softDist;
+        }
+        // Strong force potential: V = -S * (cutoff - r), zero at cutoff, deepens linearly inward
+        if (dist < cutoff) {
+          siePotential -= strongForceStrength * (cutoff - dist);
+        }
+      }
+    }
+  }
+  const potential = eiePotential + siePotential;
+
+  // Update inline energy display in toolbar
+
+  return { kinetic, potential };  // Return true values for callers that need them
+}
+
+// ============================================================
+//  PHYSICS STEP
+//  Called once per animation frame with dt = speed.
+//  Internally subdivides into SUBSTEPS for accuracy.
+//
+//  Each substep:
+//    1. Compute pairwise forces → accumulate into velocities
+//    2. Let dragged particle exert force without being pushed
+//    3. Integrate positions (symplectic Euler: v first, then x)
+//    4. Hard-sphere constraint: push apart any overlapping pairs
+//       and exchange their approaching normal velocities
+//
+//  After all substeps:
+//    5. Apply damping (currently disabled: damping = 1.0)
+//    6. Antispin: clamp cluster angular velocity if enabled
+// ============================================================
+function step(dt) {
+  const n = particles.length;
+  const subDt = dt / SUBSTEPS;  // Per-substep timestep
+
+  for (let sub = 0; sub < SUBSTEPS; sub++) {
+    // 1. Compute pairwise forces
+    for (let i = 0; i < n; i++) {
+      if (i === dragging) continue;
+      for (let j = i + 1; j < n; j++) {
+        if (j === dragging) continue;
+        const a = particles[i];
+        const b = particles[j];
+        if (a.ejected || b.ejected) continue;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const distSq = dx * dx + dy * dy;
+        if (distSq > COULOMB_CUTOFF_SQ) continue;  // Too far for any meaningful force
+        const dist = Math.sqrt(distSq);
+        if (dist < 0.01) continue;  // Skip coincident particles
+        const ss = currentTab === 'nucleus'
+          ? Math.min(a.strongScale ?? 1, b.strongScale ?? 1)
+          : 1;
+        const force = pairForce(dist, distSq, a.type, b.type, ss);
+        const fx = force * (dx / dist);
+        const fy = force * (dy / dist);
+        a.vx -= fx * subDt;
+        a.vy -= fy * subDt;
+        b.vx += fx * subDt;
+        b.vy += fy * subDt;
+      }
+    }
+
+
+    // Cohesion: gentle spring toward each particle's cluster CM (nucleus tab)
+    if (currentTab === 'nucleus') {
+      for (let i = 0; i < n; i++) {
+        if (i === dragging) continue;
+        const p = particles[i];
+        if (p.ejected || p.clusterCmx === undefined) continue;
+        const dx = p.clusterCmx - p.x;
+        const dy = p.clusterCmy - p.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 0.01) continue;
+        const f = COHESION_K * dist;
+        p.vx += (dx / dist) * f * subDt;
+        p.vy += (dy / dist) * f * subDt;
+      }
+    }
+
+    // 2. Dragged particle still exerts force on others (but is not itself pushed)
+    if (dragging !== null) {
+      const d = particles[dragging];
+      for (let j = 0; j < n; j++) {
+        if (j === dragging) continue;
+        const b = particles[j];
+        const dx = b.x - d.x;
+        const dy = b.y - d.y;
+        const distSq = dx * dx + dy * dy;
+        const dist = Math.sqrt(distSq);
+        if (dist < 0.01) continue;
+        const force = pairForce(dist, distSq, d.type, b.type);
+        const fx = force * (dx / dist);
+        const fy = force * (dy / dist);
+        b.vx += fx * subDt;
+        b.vy += fy * subDt;
+      }
+    }
+
+    // 3. Integrate positions (symplectic Euler: velocity already updated above)
+    for (let i = 0; i < n; i++) {
+      if (i === dragging) continue;
+      const p = particles[i];
+      p.x += p.vx * subDt;
+      p.y += p.vy * subDt;
+    }
+
+    // 4. Hard-sphere constraint: resolve any remaining overlaps.
+    //    Force softening caps—but doesn't eliminate—overlap at high speed.
+    //    Position correction: push overlapping centers apart by full overlap.
+    //    Velocity correction: only when particles are approaching (dvDotN < 0)
+    //    — swap the normal velocity component (equal-mass elastic collision).
+    //    If one particle is being dragged, only the free particle is corrected.
+    const minSep = PARTICLE_RADIUS * 2;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const a = particles[i];
+        const b = particles[j];
+        if (a.ejected || b.ejected) continue;
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        const dSq = dx * dx + dy * dy;
+        if (dSq >= minSep * minSep) continue;
+        let d = Math.sqrt(dSq);
+        if (d < 0.001) { dx = 1; dy = 0; d = 0.001; }
+        const nx = dx / d;
+        const ny = dy / d;
+        const overlap = minSep - d;
+        const aFixed = (i === dragging);
+        const bFixed = (j === dragging);
+
+        // Position correction
+        if (aFixed && !bFixed) {
+          b.x += nx * overlap; b.y += ny * overlap;
+        } else if (bFixed && !aFixed) {
+          a.x -= nx * overlap; a.y -= ny * overlap;
+        } else if (!aFixed && !bFixed) {
+          a.x -= nx * overlap * 0.5; a.y -= ny * overlap * 0.5;
+          b.x += nx * overlap * 0.5; b.y += ny * overlap * 0.5;
+        }
+
+        // Inelastic velocity correction: zero out approaching velocity
+        // (the strong force handles the rebound; this is just a safety net)
+        const dvx = b.vx - a.vx;
+        const dvy = b.vy - a.vy;
+        const dvDotN = dvx * nx + dvy * ny;
+        if (dvDotN < 0) {  // approaching
+          const half = dvDotN * 0.5;
+          if (aFixed) {
+            b.vx -= dvDotN * nx; b.vy -= dvDotN * ny;
+          } else if (bFixed) {
+            a.vx += dvDotN * nx; a.vy += dvDotN * ny;
+          } else {
+            a.vx += half * nx; a.vy += half * ny;
+            b.vx -= half * nx; b.vy -= half * ny;
+          }
+        }
+      }
+    }
+  }  // end substep loop
+
+  // 5. Damping: multiply all velocities by damping factor once per frame.
+  //    Currently disabled (damping = 1.0) so energy is conserved.
+  if (damping < 1.0) {
+    for (let i = 0; i < n; i++) {
+      if (i === dragging) continue;
+      particles[i].vx *= damping;
+      particles[i].vy *= damping;
+    }
+  }
+
+  // 6. Antispin: suppress runaway rotation in bound clusters.
+  //    Without this, the strong force can pump angular momentum into a
+  //    nucleus over time and it will spin up indefinitely.
+  //    Algorithm:
+  //      a) Build adjacency list: particles within strongCutoff are "bonded"
+  //      b) Flood-fill to find connected clusters of 3+ particles
+  //      c) For each cluster: compute CM, angular momentum L, moment I
+  //         → omega = L / I  (angular velocity)
+  //      d) Only subtract the excess beyond MAX_OMEGA (1 rev/sim-s),
+  //         leaving a small allowed spin so clusters still feel natural.
+  //    MAX_OMEGA scales with speed so the allowed spin is speed-invariant.
+  if (antispin && n >= 3) {
+    const cutoffSpin = strongCutoff();
+    const cutoffSpinSq = cutoffSpin * cutoffSpin;
+
+    // Build adjacency list
+    const adj = new Array(n);
+    for (let i = 0; i < n; i++) adj[i] = [];
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const dx = particles[j].x - particles[i].x;
+        const dy = particles[j].y - particles[i].y;
+        if (dx * dx + dy * dy < cutoffSpinSq) {
+          adj[i].push(j);
+          adj[j].push(i);
+        }
+      }
+    }
+
+    // Flood-fill to find connected clusters
+    const visited = new Uint8Array(n);
+    for (let seed = 0; seed < n; seed++) {
+      if (visited[seed]) continue;
+      if (adj[seed].length === 0) { visited[seed] = 1; continue; }
+      const cluster = [seed];
+      visited[seed] = 1;
+      let head = 0;
+      while (head < cluster.length) {
+        const cur = cluster[head++];
+        for (let k = 0; k < adj[cur].length; k++) {
+          const nb = adj[cur][k];
+          if (!visited[nb]) { visited[nb] = 1; cluster.push(nb); }
+        }
+      }
+
+      if (cluster.length < 3) continue;
+
+      // Center of mass position and velocity
+      let cmx = 0, cmy = 0, cvx = 0, cvy = 0;
+      for (let k = 0; k < cluster.length; k++) {
+        const p = particles[cluster[k]];
+        cmx += p.x; cmy += p.y; cvx += p.vx; cvy += p.vy;
+      }
+      cmx /= cluster.length; cmy /= cluster.length;
+      cvx /= cluster.length; cvy /= cluster.length;
+
+      // Angular momentum L and moment of inertia I about center of mass
+      let L = 0, I = 0;
+      for (let k = 0; k < cluster.length; k++) {
+        const p = particles[cluster[k]];
+        const rx = p.x - cmx, ry = p.y - cmy;
+        const vxr = p.vx - cvx, vyr = p.vy - cvy;
+        L += rx * vyr - ry * vxr;
+        I += rx * rx + ry * ry;
+      }
+      if (I < 0.001) continue;
+
+      // omega in rad/subDt. MAX_OMEGA = 1 rev per sim-second at 60fps,
+      // scaled by speed so the visual spin rate is consistent across speeds.
+      // removeOmega is only the excess — spins within the cap are untouched.
+      const omega = L / I;
+      const MAX_OMEGA = 2 * Math.PI * speed / (60 * SUBSTEPS);  // 1 rev/sim-s, scales with speed
+      const removeOmega = Math.sign(omega) * Math.max(0, Math.abs(omega) - MAX_OMEGA);
+      for (let k = 0; k < cluster.length; k++) {
+        if (cluster[k] === dragging) continue;
+        const p = particles[cluster[k]];
+        const rx = p.x - cmx, ry = p.y - cmy;
+        p.vx -= -removeOmega * ry;
+        p.vy -=  removeOmega * rx;
+      }
+    }
+  }
+}
+
+// ============================================================
+//  COLORMAP
+//  Pre-baked 256-entry RGBA lookup table mapping energy density
+//  [0, 1] to a blue-white gradient (transparent at zero, opaque
+//  near-white at max). Used by the Coulomb heatmap renderer.
+// ============================================================
+function buildColorstops(stops, out) {
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    let s0 = stops[0], s1 = stops[1];
+    for (let s = 0; s < stops.length - 1; s++) {
+      if (t >= stops[s].t && t <= stops[s + 1].t) { s0 = stops[s]; s1 = stops[s + 1]; break; }
+    }
+    const f = (t - s0.t) / (s1.t - s0.t);
+    const idx = i * 4;
+    out[idx]     = s0.r + (s1.r - s0.r) * f;
+    out[idx + 1] = s0.g + (s1.g - s0.g) * f;
+    out[idx + 2] = s0.b + (s1.b - s0.b) * f;
+    out[idx + 3] = s0.a + (s1.a - s0.a) * f;
+  }
+}
+
+const COLORMAP = new Uint8Array(256 * 4);
+buildColorstops([
+  { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0   },
+  { t: 0.12, r: 10,  g: 35,  b: 170, a: 140 },
+  { t: 0.4,  r: 25,  g: 85,  b: 235, a: 210 },
+  { t: 0.7,  r: 70,  g: 165, b: 255, a: 245 },
+  { t: 1.0,  r: 210, g: 238, b: 255, a: 255 },
+], COLORMAP);
+
+const STRONG_COLORMAP = new Uint8Array(256 * 4);
+buildColorstops([
+  { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0   },
+  { t: 0.12, r: 160, g: 45,  b: 0,   a: 140 },
+  { t: 0.4,  r: 240, g: 110, b: 10,  a: 210 },
+  { t: 0.7,  r: 255, g: 185, b: 70,  a: 245 },
+  { t: 1.0,  r: 255, g: 238, b: 210, a: 255 },
+], STRONG_COLORMAP);
+
+// ============================================================
+//  COMBINED HEATMAP
+//  Single pixel loop computes both electric (blue) and strong
+//  (orange) fields. Results are composited into hmComposite at
+//  full resolution. When running, the composite is reused every
+//  other frame (heatmap every 2 frames — imperceptible at the
+//  blurred quarter-resolution the maps are rendered at).
+// ============================================================
+function drawCombinedHeatmap() {
+  const fullW = canvas.width, fullH = canvas.height;
+  const scale = 0.25;
+  const w = Math.ceil(fullW * scale), h = Math.ceil(fullH * scale);
+
+  // Every other frame when running: blit cached composite and return
+  hmFrameCounter++;
+  if (running && (hmFrameCounter & 1) &&
+      hmComposite.width === fullW && hmComposite.height === fullH) {
+    ctx.drawImage(hmComposite, 0, 0);
+    return;
+  }
+
+  // Build electric pairs (proton-proton only)
+  const elecPairs = [];
+  if (showElectricField) {
+    const refEnergy = coulombStrength / (PARTICLE_RADIUS * 2);
+    const logRef = Math.log(2);
+    const protonList = particles.filter(p => p.type === 'proton');
+    for (let i = 0; i < protonList.length; i++) {
+      for (let j = i + 1; j < protonList.length; j++) {
+        const a = protonList[i], b = protonList[j];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 0.01) continue;
+        const energy = coulombStrength / dist;
+        const sigma = Math.max(3.5, 28 / Math.sqrt(dist));
+        const distFade = Math.exp(-dist / 350);
+        const mag = Math.min(1, Math.log(1 + energy / refEnergy) / logRef) * distFade;
+        const cullSq = 16 * (sigma * 2) * (sigma * 2);
+        elecPairs.push({ ax: a.x, ay: a.y, ux: dx / dist, uy: dy / dist, dist, sigma, mag, cullSq });
+      }
+    }
+  }
+  elecPairs.sort((a, b) => b.mag - a.mag);
+
+  // Build strong pairs (all nucleons within cutoff)
+  const strongPairs = [];
+  if (showStrongField) {
+    const cutoff = strongCutoff();
+    const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
+    const span = cutoff - eqDist;
+    if (span > 0) {
+      const maxBinding = strongForceStrength * span / 2;
+      const n = particles.length;
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const a = particles[i], b = particles[j];
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist === 0 || dist >= cutoff) continue;
+          const dr = dist - eqDist;
+          const energy = strongForceStrength / (2 * span) * (dr * dr - span * span);
+          const mag = Math.min(1, Math.abs(energy) / maxBinding);
+          const sigma = Math.max(0.375, 0.0875 * dist);
+          const spread = 1.6;
+          const cullSq = 16 * (sigma * spread * 3) * (sigma * spread * 3);
+          strongPairs.push({ ax: a.x, ay: a.y, ux: dx / dist, uy: dy / dist, dist, sigma, mag, spread, cullSq });
+        }
+      }
+    }
+  }
+  strongPairs.sort((a, b) => b.mag - a.mag);
+
+  if (elecPairs.length === 0 && strongPairs.length === 0) return;
+
+  ensureHmBuffers(w, h);
+  if (elecPairs.length   > 0) hmDataElec.fill(0);
+  if (strongPairs.length > 0) hmDataStrong.fill(0);
+
+  const invScale = 1 / scale;
+  const cxH = fullW / 2, cyH = fullH / 2;
+
+  // Single pixel loop — computes both fields at once
+  for (let py = 0; py < h; py++) {
+    const worldY = (py * invScale - cyH) / zoom + cyH;
+    for (let px = 0; px < w; px++) {
+      const worldX = (px * invScale - cxH) / zoom + cxH;
+      const di = (py * w + px) * 4;
+
+      // Electric field
+      if (elecPairs.length > 0) {
+        let total = 0;
+        for (let k = 0; k < elecPairs.length; k++) {
+          const p = elecPairs[k];
+          const rx = worldX - p.ax, ry = worldY - p.ay;
+          const para = rx * p.ux + ry * p.uy;
+          const e1 = para > 0 ? Math.min(1, para / 8) : 0;
+          const e2 = para < p.dist ? Math.min(1, (p.dist - para) / 8) : 0;
+          const endFade = e1 * e2;
+          if (endFade <= 0) continue;
+          const perpSq = Math.max(0, rx * rx + ry * ry - para * para);
+          if (perpSq > p.cullSq) continue;
+          const t = para / p.dist;
+          const sigmaT = p.sigma * (1 + Math.sin(Math.PI * t));
+          total += p.mag * Math.exp(-perpSq / (2 * sigmaT * sigmaT)) * endFade;
+          if (total >= 1/3) break;
+        }
+        if (total > 0.002) {
+          const ci = (Math.min(255, (total * 3.0 * 255) | 0));
+          const ci4 = ci * 4;
+          hmDataElec[di]     = COLORMAP[ci4];
+          hmDataElec[di + 1] = COLORMAP[ci4 + 1];
+          hmDataElec[di + 2] = COLORMAP[ci4 + 2];
+          hmDataElec[di + 3] = COLORMAP[ci4 + 3];
+        }
+      }
+
+      // Strong field
+      if (strongPairs.length > 0) {
+        let total = 0;
+        for (let k = 0; k < strongPairs.length; k++) {
+          const p = strongPairs[k];
+          const rx = worldX - p.ax, ry = worldY - p.ay;
+          const para = rx * p.ux + ry * p.uy;
+          const margin = (p.spread - 1) / 2 * p.dist;
+          const extDist = p.dist * p.spread;
+          const paraExt = para + margin;
+          const e1 = paraExt > 0 ? Math.min(1, paraExt / 8) : 0;
+          const e2 = paraExt < extDist ? Math.min(1, (extDist - paraExt) / 8) : 0;
+          const endFade = e1 * e2;
+          if (endFade <= 0) continue;
+          const perpSq = Math.max(0, rx * rx + ry * ry - para * para);
+          if (perpSq > p.cullSq) continue;
+          const t = paraExt / extDist;
+          const sigmaT = p.sigma * p.spread * (1 + 2 * Math.sin(Math.PI * t));
+          const val = p.mag * Math.exp(-perpSq / (2 * sigmaT * sigmaT)) * endFade;
+          if (val > total) total = val;
+          if (total >= 1/3) break;
+        }
+        if (total > 0.002) {
+          const ci = (Math.min(255, (total * 3.0 * 255) | 0));
+          const ci4 = ci * 4;
+          hmDataStrong[di]     = STRONG_COLORMAP[ci4];
+          hmDataStrong[di + 1] = STRONG_COLORMAP[ci4 + 1];
+          hmDataStrong[di + 2] = STRONG_COLORMAP[ci4 + 2];
+          hmDataStrong[di + 3] = STRONG_COLORMAP[ci4 + 3];
+        }
+      }
+    }
+  }
+
+  // Composite both layers into hmComposite at full resolution
+  if (hmComposite.width !== fullW || hmComposite.height !== fullH) {
+    hmComposite.width = fullW; hmComposite.height = fullH;
+  }
+  hmcCtx.clearRect(0, 0, fullW, fullH);
+  hmcCtx.imageSmoothingEnabled = true;
+  hmcCtx.imageSmoothingQuality = 'high';
+  if (elecPairs.length > 0) {
+    hmCtx.putImageData(hmImgElec, 0, 0);
+    hmcCtx.drawImage(hmCanvas, 0, 0, fullW, fullH);
+  }
+  if (strongPairs.length > 0) {
+    hmCtx.putImageData(hmImgStrong, 0, 0);
+    hmcCtx.drawImage(hmCanvas, 0, 0, fullW, fullH);
+  }
+
+  ctx.drawImage(hmComposite, 0, 0);
+}
+
+
+// ============================================================
+//  FORCE ARROW RENDERING (Tab A / Proton mode)
+//
+//  drawArrow draws a single arrow (shaft + arrowhead) in world
+//  space inside the active zoom transform.
+//
+//  drawProtonForceArrows renders arrows on the selected proton:
+//    mode 1: one arrow per other proton showing the Coulomb push
+//    mode 2: one arrow showing the vector sum of all Coulomb forces
+// ============================================================
+function drawArrow(fromX, fromY, nx, ny, len, color, w) {
+  if (len < 1) return;
+  // CRT grit: tiny jitter on shaft midpoint
+  const midJx = (Math.random() - 0.5) * 1.2;
+  const midJy = (Math.random() - 0.5) * 1.2;
+  const midX  = fromX + nx * len * 0.5 + midJx;
+  const midY  = fromY + ny * len * 0.5 + midJy;
+  const tipX  = fromX + nx * len, tipY = fromY + ny * len;
+  const HEAD  = 8;
+  const perpX = -ny, perpY = nx;
+  const baseX = tipX - nx * HEAD, baseY = tipY - ny * HEAD;
+
+  function drawShaft(lw, alpha) {
+    ctx.lineWidth = lw; ctx.globalAlpha = alpha; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(fromX, fromY);
+    ctx.quadraticCurveTo(midX, midY, baseX, baseY);
+    ctx.stroke();
+  }
+  function drawHead(hw, alpha) {
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.moveTo(tipX, tipY);
+    ctx.lineTo(baseX + perpX * hw, baseY + perpY * hw);
+    ctx.lineTo(baseX - perpX * hw, baseY - perpY * hw);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+
+  ctx.save();
+  // Single pass: shadowBlur for bloom, then draw shaft + head once
+  ctx.shadowColor = color;
+  ctx.shadowBlur  = 10;
+  drawShaft(2, 0.85);
+  drawHead(4, 0.85);
+  ctx.restore();
+
+  ctx.globalAlpha = 1.0; ctx.lineCap = 'butt';
+}
+
+function drawProtonForceArrows() {
+  if (arrowMode === 0 || selectedParticle === null) return;
+  if (selectedParticle >= particles.length) return;
+  const pi = particles[selectedParticle];
+  if (pi.type !== 'proton') return;
+
+  const MAX_LEN = 40;
+  const refDist = PARTICLE_RADIUS * 2;
+  const aw = PARTICLE_RADIUS * 0.15;
+
+  if (arrowMode === 1) {
+    // Per-source: one arrow on pi for each other proton's Coulomb push
+    for (let j = 0; j < particles.length; j++) {
+      if (j === selectedParticle || particles[j].type !== 'proton') continue;
+      const pj = particles[j];
+      const dx = pi.x - pj.x, dy = pi.y - pj.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist === 0) continue;
+      const nx = dx / dist, ny = dy / dist;
+      // Scale arrow length ~ 1/dist (closer = longer), capped at MAX_LEN
+      const len = MAX_LEN * Math.min(1, (refDist / Math.max(dist, refDist)) * 2.4);
+      drawArrow(pi.x + nx * PARTICLE_RADIUS, pi.y + ny * PARTICLE_RADIUS, nx, ny, len, currentTheme.accent1, aw);
+    }
+  } else {
+    // Net: vector sum of the same display arrows used in per-source mode
+    let sumX = 0, sumY = 0;
+    for (let j = 0; j < particles.length; j++) {
+      if (j === selectedParticle || particles[j].type !== 'proton') continue;
+      const pj = particles[j];
+      const dx = pi.x - pj.x, dy = pi.y - pj.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist === 0) continue;
+      const nx = dx / dist, ny = dy / dist;
+      const len = MAX_LEN * Math.min(1, (refDist / Math.max(dist, refDist)) * 2.4);
+      sumX += nx * len;
+      sumY += ny * len;
+    }
+    const netLen = Math.sqrt(sumX * sumX + sumY * sumY);
+    if (netLen === 0) return;
+    drawArrow(pi.x + (sumX / netLen) * PARTICLE_RADIUS, pi.y + (sumY / netLen) * PARTICLE_RADIUS,
+              sumX / netLen, sumY / netLen, netLen, currentTheme.accent1, PARTICLE_RADIUS * 0.22);
+  }
+}
+
+// ============================================================
+//  MAIN DRAW
+//  Render order (back to front):
+//    1. Coulomb field visualization (ribbon or cloud)
+//    2. All particle bodies
+//
+//  Everything is drawn inside a centered zoom transform so the
+//  zoom slider scales visuals without touching physics coordinates.
+// ============================================================
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Heatmaps render in screen space before the zoom transform.
+  if ((showElectricField || showStrongField) && particles.length >= 2) drawCombinedHeatmap();
+
+  // Centered zoom: scale around canvas center so existing particles stay visible
+  const _cx = canvas.width / 2, _cy = canvas.height / 2;
+  ctx.save();
+  ctx.translate(_cx, _cy);
+  ctx.scale(zoom, zoom);
+  ctx.translate(-_cx, -_cy);
+
+  ensureJitter();
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    const isProton = p.type === 'proton';
+    const jx = jitter[i] ? jitter[i].x : 0;
+    const jy = jitter[i] ? jitter[i].y : 0;
+    const px = p.x + jx, py = p.y + jy;
+
+    // Selection ring
+    if (i === selectedParticle && currentTabIsProton && arrowMode > 0) {
+      ctx.beginPath();
+      ctx.arc(px, py, PARTICLE_RADIUS + 6, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(250,204,21,0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+
+    // Unstable neutron: pulsing red glow
+    if (p.unstable && currentTab === 'nucleus') {
+      const now = performance.now();
+      let timerProgress = 0;
+      if (quantumTimerStartAt !== null && quantumEjectAt !== null) {
+        timerProgress = Math.min(1, (now - quantumTimerStartAt) / (quantumEjectAt - quantumTimerStartAt));
+      }
+      const pulse  = 0.5 + 0.5 * Math.sin(now / 180);
+      const glowR  = PARTICLE_RADIUS + 5 + pulse * 3 + timerProgress * 10;
+      const alpha  = 0.35 + timerProgress * 0.55 + pulse * 0.1;
+      const glow   = ctx.createRadialGradient(px, py, PARTICLE_RADIUS * 0.4, px, py, glowR);
+      glow.addColorStop(0, `rgba(255,60,40,${Math.min(1, alpha).toFixed(2)})`);
+      glow.addColorStop(1, 'rgba(255,0,0,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(px, py, glowR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const t = currentTheme;
+
+    // Flat base circle — solid mid color, soft edge fade
+    const baseR = PARTICLE_RADIUS * 1.1;
+    const baseGrad = ctx.createRadialGradient(px, py, 0, px, py, baseR);
+    if (isProton) {
+      baseGrad.addColorStop(0,    t.protonMid);
+      baseGrad.addColorStop(0.82, t.protonMid);
+      baseGrad.addColorStop(1,    'rgba(0,0,0,0)');
+    } else {
+      baseGrad.addColorStop(0,    t.neutronMid);
+      baseGrad.addColorStop(0.82, t.neutronMid);
+      baseGrad.addColorStop(1,    'rgba(0,0,0,0)');
+    }
+    ctx.fillStyle = baseGrad;
+    ctx.beginPath();
+    ctx.arc(px, py, baseR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Inner glow — bright centered bloom, fades outward
+    const innerGlow = ctx.createRadialGradient(px, py, 0, px, py, PARTICLE_RADIUS);
+    const coreColor = isProton ? t.protonCore : t.neutronCore;
+    innerGlow.addColorStop(0,   coreColor);
+    innerGlow.addColorStop(0.5, coreColor);
+    innerGlow.addColorStop(1,   'rgba(0,0,0,0)');
+    ctx.globalAlpha = 0.82;
+    ctx.fillStyle = innerGlow;
+    ctx.beginPath();
+    ctx.arc(px, py, PARTICLE_RADIUS, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Label
+    ctx.fillStyle = 'rgba(255,255,255,0.88)';
+    ctx.font = 'bold 11px "JetBrains Mono", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    if (isProton) ctx.fillText('+', px, py + 1);
+  }
+
+  // Ejection flashes — fixed position at ejection site
+  if (currentTab === 'nucleus') {
+    const now = performance.now();
+    quantumFlashes = quantumFlashes.filter(f => {
+      const age = now - f.startTime;
+      if (age > 350) return false;
+      const t = age / 350;
+      const r = PARTICLE_RADIUS + t * PARTICLE_RADIUS * 3;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, r, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255,180,80,${(1 - t).toFixed(2)})`;
+      ctx.lineWidth = 3 * (1 - t);
+      ctx.stroke();
+      return true;
+    });
+  }
+
+  // Force arrows on selected particle (Tab A only)
+  if (currentTabIsProton) drawProtonForceArrows();
+
+  ctx.restore();
+
+  // Remove ejected neutrons once off-screen. Non-ejected particles
+  // (the nucleus, even if drifted off-screen) are always kept.
+  if (currentTab === 'nucleus') {
+    const margin = PARTICLE_RADIUS * 4;
+    particles = particles.filter(p =>
+      !p.ejected ||
+      (p.x > -margin && p.x < canvas.width  + margin &&
+       p.y > -margin && p.y < canvas.height + margin)
+    );
+  }
+
+  // In proton tab: auto-remove particles that have flown very far off-screen
+  if (currentTab !== 'nucleus') {
+    const farMargin = Math.max(canvas.width, canvas.height) * 2;
+    const kept = [];
+    let newDragging = null;
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      if (p.x > -farMargin && p.x < canvas.width  + farMargin &&
+          p.y > -farMargin && p.y < canvas.height + farMargin) {
+        if (i === dragging) newDragging = kept.length;
+        kept.push(p);
+      }
+    }
+    particles = kept;
+    dragging  = newDragging;
+  }
+}
+
+// ============================================================
+//  TIME SCRUBBER
+// ============================================================
+function renderFrame(idx) {
+  const frame = particleHistory[idx];
+  if (!frame) return;
+  const saved = particles;
+  particles = frame.p.map(p => ({ ...p }));
+  draw();
+  particles = saved;
+}
+
+timeSlider.addEventListener('input', () => {
+  const val = parseInt(timeSlider.value);
+  if (val >= particleHistory.length - 1) {
+    scrubFrame = -1;
+    timeLabelEl.textContent = `${particleHistory.length}`;
+  } else {
+    scrubFrame = val;
+    timeLabelEl.textContent = `${val + 1} / ${particleHistory.length}`;
+    if (!running) renderFrame(val);
+  }
+});
+
+// ============================================================
+//  ANIMATION LOOP
+//  Called once per animation frame while running.
+//  Order: physics → energy → visuals → schedule next frame.
+// ============================================================
+function loop() {
+  if (!running) return;
+
+  if (scrubFrame >= 0) {
+    timeLabelEl.textContent = `${scrubFrame + 1} / ${particleHistory.length}`;
+    renderFrame(scrubFrame);
+    animId = requestAnimationFrame(loop);
+    return;
+  }
+
+  updateQuantumStability();
+  step(speed);
+  computeEnergy();
+  updateStats();
+
+  particleHistory.push({ p: particles.map(p => ({ ...p })) });
+  if (particleHistory.length > MAX_HISTORY) particleHistory.shift();
+
+  timeSlider.disabled = false;
+  timeSlider.max = particleHistory.length - 1;
+  timeSlider.value = timeSlider.max;
+  timeLabelEl.textContent = `${particleHistory.length}`;
+
+  draw();
+  animId = requestAnimationFrame(loop);
+}
+
+// ============================================================
+//  THEME SWITCHER
+//
+//  Three themes — protons always hot pink (accent1).
+//  accent2 = UI label / slider color ("letters").
+//  Neutron colors vary per theme.
+//
+//  currentThemeKey is serialised into captureSimState() so
+//  notepad playback can faithfully restore the visual theme.
+// ============================================================
+const THEMES = {
+  // A: Blue labels + grey neutrons  (matches :root CSS defaults)
+  A: {
+    accent1:'#ff2d78', accent1dim:'rgba(255,45,120,0.25)', accent1glow:'rgba(255,45,120,0.55)',
+    accent2:'#1a6eff', accent2dim:'rgba(26,110,255,0.18)',  accent2glow:'rgba(26,110,255,0.45)',
+    uibg:'rgba(8,6,24,0.38)', uiborder:'rgba(255,255,255,0.07)',
+    textdim:'rgba(220,215,255,0.55)', textbright:'rgba(240,235,255,0.92)',
+    speck:'rgba(180,130,255,0.35)',
+    protonCore:'#ff80b0', protonMid:'#ff1a65', protonEdge:'#7a0030',
+    neutronCore:'#b0b0c4', neutronMid:'#70707f', neutronEdge:'#383848',
+    bg:'#05040f',
+  },
+  // B: Purple labels + purple neutrons
+  B: {
+    accent1:'#ff2d78', accent1dim:'rgba(255,45,120,0.22)', accent1glow:'rgba(255,45,120,0.5)',
+    accent2:'#bd00ff', accent2dim:'rgba(189,0,255,0.18)',  accent2glow:'rgba(189,0,255,0.42)',
+    uibg:'rgba(8,4,22,0.42)', uiborder:'rgba(189,0,255,0.14)',
+    textdim:'rgba(230,200,255,0.52)', textbright:'rgba(248,232,255,0.92)',
+    speck:'rgba(180,60,240,0.28)',
+    protonCore:'#ff80b0', protonMid:'#ff1a65', protonEdge:'#7a0030',
+    neutronCore:'#d0a0ff', neutronMid:'#9040c8', neutronEdge:'#500070',
+    bg:'#05030f',
+  },
+  // C: Teal labels + blue neutrons
+  C: {
+    accent1:'#ff2d78', accent1dim:'rgba(255,45,120,0.22)', accent1glow:'rgba(255,45,120,0.5)',
+    accent2:'#00f5e0', accent2dim:'rgba(0,245,224,0.15)',  accent2glow:'rgba(0,245,224,0.4)',
+    uibg:'rgba(6,4,20,0.40)', uiborder:'rgba(255,45,120,0.12)',
+    textdim:'rgba(220,210,255,0.52)', textbright:'rgba(245,235,255,0.92)',
+    speck:'rgba(200,100,200,0.28)',
+    protonCore:'#ff80b0', protonMid:'#ff1a65', protonEdge:'#7a0030',
+    neutronCore:'#90b8ff', neutronMid:'#3060d0', neutronEdge:'#102060',
+    bg:'#04030e',
+  },
+};
+let currentTheme = THEMES.A;
+let currentThemeKey = 'A';   // serialised into sim state JSON
+
+// ============================================================
+//  PARTICLE ICON RENDERER — live animated, matches the sim exactly
+//  Uses PARTICLE_RADIUS * default zoom (2) for same apparent size.
+// ============================================================
+const iconJitter = {
+  proton:  { x: 0, y: 0 },
+  neutron: { x: 0, y: 0 },
+};
+
+function drawParticleIcon(canvas, type) {
+  const c = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  const R  = PARTICLE_RADIUS * 1.8; // 10% smaller than default zoom
+  const cx = w / 2, cy = h / 2;
+  const t  = currentTheme;
+  const isProton = type === 'proton';
+  const jit = iconJitter[type];
+  const px = cx + jit.x, py = cy + jit.y;
+
+  c.clearRect(0, 0, w, h);
+
+  // Flat base circle — solid mid color, soft edge fade (matches main draw)
+  const baseR    = R * 1.1;
+  const baseGrad = c.createRadialGradient(px, py, 0, px, py, baseR);
+  const mid = isProton ? t.protonMid : t.neutronMid;
+  baseGrad.addColorStop(0,    mid);
+  baseGrad.addColorStop(0.82, mid);
+  baseGrad.addColorStop(1,    'rgba(0,0,0,0)');
+  c.fillStyle = baseGrad;
+  c.beginPath(); c.arc(px, py, baseR, 0, Math.PI * 2); c.fill();
+
+  // Inner glow — bright centered bloom
+  const innerGlow = c.createRadialGradient(px, py, 0, px, py, R);
+  const core = isProton ? t.protonCore : t.neutronCore;
+  innerGlow.addColorStop(0,   core);
+  innerGlow.addColorStop(0.5, core);
+  innerGlow.addColorStop(1,   'rgba(0,0,0,0)');
+  c.globalAlpha = 0.82;
+  c.fillStyle = innerGlow;
+  c.beginPath(); c.arc(px, py, R, 0, Math.PI * 2); c.fill();
+  c.globalAlpha = 1;
+
+  // + drawn geometrically — mathematically centered, no font metric issues
+  if (isProton) {
+    const arm   = R * 0.36;
+    const thick = R * 0.225;
+    c.fillStyle = 'rgba(255,255,255,0.88)';
+    c.fillRect(px - arm,    py - thick / 2, arm * 2, thick); // horizontal
+    c.fillRect(px - thick / 2, py - arm,    thick, arm * 2); // vertical
+  }
+}
+
+// Icon animation loop — runs independently; picks up theme changes automatically
+function iconAnimLoop() {
+  for (const key of ['proton', 'neutron']) {
+    const j = iconJitter[key];
+    j.x += (Math.random() - 0.5) * 0.7;
+    j.y += (Math.random() - 0.5) * 0.7;
+    j.x *= 0.78;
+    j.y *= 0.78;
+  }
+  const pCv = document.getElementById('protonIconCanvas');
+  const nCv = document.getElementById('neutronIconCanvas');
+  if (pCv) drawParticleIcon(pCv, 'proton');
+  if (nCv) drawParticleIcon(nCv, 'neutron');
+  requestAnimationFrame(iconAnimLoop);
+}
+
+function applyTheme(key) {
+  const t = THEMES[key];
+  currentTheme = t;
+  currentThemeKey = key;
+  const r = document.documentElement.style;
+  r.setProperty('--accent1',      t.accent1);
+  r.setProperty('--accent1-dim',  t.accent1dim);
+  r.setProperty('--accent1-glow', t.accent1glow);
+  r.setProperty('--accent2',      t.accent2);
+  r.setProperty('--accent2-dim',  t.accent2dim);
+  r.setProperty('--accent2-glow', t.accent2glow);
+  r.setProperty('--ui-bg',        t.uibg);
+  r.setProperty('--ui-border',    t.uiborder);
+  r.setProperty('--text-dim',     t.textdim);
+  r.setProperty('--text-bright',  t.textbright);
+  r.setProperty('--speck-color',   t.speck);
+  r.setProperty('--neutron-core',  t.neutronCore);
+  r.setProperty('--neutron-mid',   t.neutronMid);
+  r.setProperty('--neutron-edge',  t.neutronEdge);
+  document.body.style.background = t.bg;
+  document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('theme'+key).classList.add('active');
+  if (!running) draw();
+}
+document.getElementById('themeA').addEventListener('click', () => applyTheme('A'));
+document.getElementById('themeB').addEventListener('click', () => applyTheme('B'));
+document.getElementById('themeC').addEventListener('click', () => applyTheme('C'));
+// Per-particle jitter offsets — must be declared before applyTheme('A') calls draw()
+let jitter = [];
+
+// Initialise CSS vars from Theme A (matches :root defaults, keeps everything in sync)
+applyTheme('A');
+
+// ============================================================
+//  BACKGROUND SPECKS  (drifting ambient particles)
+// ============================================================
+const NUM_SPECKS = 16;
+const specks = Array.from({ length: NUM_SPECKS }, () => {
+  const speed = 15 + Math.random() * 15;
+  const angle = Math.random() * Math.PI * 2;
+  return {
+    x:  Math.random() * window.innerWidth,
+    y:  Math.random() * window.innerHeight,
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed,
+    len: 18 + Math.random() * 55,   // longer trail
+    w:   0.5 + Math.random() * 0.9,
+    a:   0.18 + Math.random() * 0.38,
+  };
+});
+
+function updateSpecks() {
+  const W = canvas.width, H = canvas.height;
+  for (const s of specks) {
+    s.x += s.vx; s.y += s.vy;
+    if (s.x < -60) s.x = W + 60;
+    else if (s.x > W + 60) s.x = -60;
+    if (s.y < -60) s.y = H + 60;
+    else if (s.y > H + 60) s.y = -60;
+  }
+}
+
+function drawSpecks() {
+  const speckColor = currentTheme.speck;
+  for (const s of specks) {
+    const base = speckColor.replace(/[\d.]+\)$/, `${s.a.toFixed(2)})`);
+    // Draw as motion-blur line: tail behind, bright head
+    const tx = s.x - s.vx / Math.hypot(s.vx, s.vy) * s.len;
+    const ty = s.y - s.vy / Math.hypot(s.vx, s.vy) * s.len;
+    const grad = ctx.createLinearGradient(tx, ty, s.x, s.y);
+    grad.addColorStop(0, speckColor.replace(/[\d.]+\)$/, '0)'));
+    grad.addColorStop(1, base);
+    ctx.beginPath();
+    ctx.moveTo(tx, ty);
+    ctx.lineTo(s.x, s.y);
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = s.w;
+    ctx.stroke();
+  }
+}
+
+// Per-particle jitter offsets (applied only when stopped)
+// (declaration moved above applyTheme call to avoid TDZ crash)
+function ensureJitter() {
+  while (jitter.length < particles.length) jitter.push({ x: 0, y: 0 });
+}
+function updateJitter() {
+  ensureJitter();
+  for (let i = 0; i < particles.length; i++) {
+    jitter[i].x += (Math.random() - 0.5) * 0.7;
+    jitter[i].y += (Math.random() - 0.5) * 0.7;
+    jitter[i].x *= 0.78;
+    jitter[i].y *= 0.78;
+  }
+}
+
+// ============================================================
+// ============================================================
+//  PARTICLE GRAIN TEXTURE
+//  Small offscreen canvas refreshed every frame; drawn with
+//  'overlay' blend clipped to each particle circle.
+// ============================================================
+const GRAIN_SIZE = 64;
+const grainBuf = document.createElement('canvas');
+grainBuf.width = grainBuf.height = GRAIN_SIZE;
+const grainBufCtx = grainBuf.getContext('2d');
+
+function refreshParticleGrain() {
+  const img = grainBufCtx.createImageData(GRAIN_SIZE, GRAIN_SIZE);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const v = (Math.random() * 255) | 0;
+    d[i] = d[i+1] = d[i+2] = v;
+    d[i+3] = (Math.random() * 210) | 0;  // dense — up to 82% opaque
+  }
+  grainBufCtx.putImageData(img, 0, 0);
+}
+
+function drawParticleGrain(cx, cy) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'overlay';
+  ctx.globalAlpha = 0.45;
+  const s = GRAIN_SIZE;
+  ctx.drawImage(grainBuf, cx - s / 2, cy - s / 2, s, s);
+  ctx.restore();
+}
+
+// ============================================================
+//  CRT NOISE + SCANLINE OVERLAY
+// ============================================================
+let noiseCanvas = null, noiseCtx = null, noiseFrame = 0;
+
+function initNoise() {
+  noiseCanvas = document.createElement('canvas');
+  noiseCanvas.width  = 256;
+  noiseCanvas.height = 256;
+  noiseCtx = noiseCanvas.getContext('2d');
+}
+initNoise();
+
+// Two noise canvases — alternate each frame for denser churn
+let noiseCanvas2 = document.createElement('canvas');
+noiseCanvas2.width = noiseCanvas2.height = 256;
+const noiseCtx2 = noiseCanvas2.getContext('2d');
+
+function updateNoise() {
+  // Fill whichever buffer is "next" — both get updated every 2 frames each
+  const target = noiseFrame % 2 === 0 ? noiseCtx : noiseCtx2;
+  const id = target.createImageData(256, 256);
+  const d  = id.data;
+  for (let i = 0; i < d.length; i += 4) {
+    // denser: ~65% of pixels get a value, brighter range
+    if (Math.random() > 0.35) {
+      const v = Math.floor(Math.random() * 200 + 30);
+      d[i] = d[i+1] = d[i+2] = v;
+      d[i+3] = Math.floor(Math.random() * 80 + 15);
+    }
+  }
+  target.putImageData(id, 0, 0);
+}
+
+function drawCRT() {
+  const W = canvas.width, H = canvas.height;
+  const now = performance.now();
+
+  // Flicker: slow swell + occasional sharp dropout
+  const slowFlicker  = 0.80 + 0.20 * (0.5 + 0.5 * Math.sin(now * 0.0009 + Math.sin(now * 0.00021) * 4));
+  const twitch       = Math.random() > 0.978 ? 0.2 + Math.random() * 0.5 : 1.0;
+  const flickerMult  = slowFlicker * twitch;
+
+  ctx.save();
+
+  // Layer 1: base noise tile (screen blend — brightens without washing out)
+  ctx.globalCompositeOperation = 'screen';
+  ctx.globalAlpha = 0.13 * flickerMult;
+  const src = noiseFrame % 2 === 0 ? noiseCanvas : noiseCanvas2;
+  for (let x = 0; x < W; x += 256) {
+    for (let y = 0; y < H; y += 256) ctx.drawImage(src, x, y);
+  }
+
+  // Layer 2: second noise pass at slight offset for texture depth
+  ctx.globalAlpha = 0.07 * flickerMult;
+  const src2 = noiseFrame % 2 === 0 ? noiseCanvas2 : noiseCanvas;
+  for (let x = 0; x < W; x += 256) {
+    for (let y = 0; y < H; y += 256) ctx.drawImage(src2, x + 32, y + 32);
+  }
+
+  // Layer 3: scanlines
+  ctx.globalAlpha = 0.055 * flickerMult;
+  ctx.fillStyle = '#000';
+  for (let y = 0; y < H; y += 3) ctx.fillRect(0, y, W, 1);
+
+  ctx.restore();
+}
+
+// ============================================================
+//  AMBIENT LOOP  (always-on: specks + jitter, even when stopped)
+// ============================================================
+let ambientId = null;
+function ambientLoop() {
+  noiseFrame++;
+  refreshParticleGrain();
+  updateJitter(); // always update, applied in draw() regardless of running state
+  if (!running) {
+    draw();
+  }
+  ambientId = requestAnimationFrame(ambientLoop);
+}
+ambientLoop();
+iconAnimLoop();
+
+// Initial draw to populate the canvas before Go is pressed
+draw();
+
+// ============================================================
+//  NOTEPAD SYSTEM
+// ============================================================
+
+// ── State ────────────────────────────────────────────────────
+let npStudentId   = localStorage.getItem('proton_student_id')   || '';
+let npStudentName = localStorage.getItem('proton_student_name') || '';
+let npRosterCache = null;
+let npPendingCapture = null;
+const npLocalScreenshots = new Map();  // noteId → base64 JPEG (session only)
+
+// ── DOM refs ─────────────────────────────────────────────────
+const notepadPanel    = document.getElementById('notepadPanel');
+const notepadBtn      = document.getElementById('notepadBtn');
+const addNoteBtn      = document.getElementById('addNoteBtn');
+const npAuthSection   = document.getElementById('npAuthSection');
+const npContent       = document.getElementById('npContent');
+const npCloseBtn1     = document.getElementById('npCloseBtn1');
+const npCloseBtn2     = document.getElementById('npCloseBtn2');
+const npUserDisplay   = document.getElementById('npUserDisplay');
+const npObsList       = document.getElementById('npObsList');
+const npFeedList      = document.getElementById('npFeedList');
+const identityModal   = document.getElementById('identityModal');
+const identClassCode  = document.getElementById('identClassCode');
+const identRosterWrap = document.getElementById('identRosterWrap');
+const identRosterSel  = document.getElementById('identRosterSel');
+const identError      = document.getElementById('identError');
+const identLookupBtn  = document.getElementById('identLookupBtn2');
+const identStartBtn   = document.getElementById('identStartBtn');
+
+// Panel "Join your class" button opens the modal
+document.getElementById('npSignInBtn').addEventListener('click', () => {
+  identityModal.classList.remove('hidden');
+});
+const captureModal      = document.getElementById('captureModal');
+const capturePreviewImg = document.getElementById('capturePreviewImg');
+const captureAnnotation = document.getElementById('captureAnnotation');
+const captureError      = document.getElementById('captureError');
+const captureSaveBtn    = document.getElementById('captureSaveBtn');
+const captureShareBtn   = document.getElementById('captureShareBtn');
+const captureCancelBtn  = document.getElementById('captureCancelBtn');
+
+// ── Init: returning student bypasses modal ────────────────────
+window.addEventListener('load', () => {
+  updatePanelGeometry();
+  if (npStudentId && npStudentName) {
+    npActivateStudent();
+  } else {
+    identityModal.classList.remove('hidden');
+  }
+});
+
+function npActivateStudent() {
+  npUserDisplay.textContent = npStudentName;
+  npAuthSection.style.display = 'none';
+  npContent.style.display = '';
+}
+
+// ── Panel open / close ────────────────────────────────────────
+function openNotepadPanel() {
+  notepadPanel.classList.add('open');
+  document.body.classList.add('notepad-open');
+  notepadBtn.classList.add('np-open');
+  updatePanelGeometry();
+}
+function closeNotepadPanel() {
+  notepadPanel.classList.remove('open');
+  document.body.classList.remove('notepad-open');
+  notepadBtn.classList.remove('np-open');
+  SideSim.stop();
+}
+
+notepadBtn.addEventListener('click', () => {
+  if (notepadPanel.classList.contains('open')) {
+    closeNotepadPanel();
+  } else {
+    if (!npStudentId) { identityModal.classList.remove('hidden'); return; }
+    openNotepadPanel();
+    npShowMyTab();
+    npLoadMyNotes();
+  }
+});
+npCloseBtn1.addEventListener('click', closeNotepadPanel);
+npCloseBtn2.addEventListener('click', closeNotepadPanel);
+
+// ── Tab switching ─────────────────────────────────────────────
+document.querySelectorAll('.nptab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nptab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const tab = btn.dataset.nptab;
+    document.getElementById('npMyTab').style.display  = tab === 'my'   ? '' : 'none';
+    document.getElementById('npFeedTab').style.display = tab === 'feed' ? '' : 'none';
+    if (tab === 'my')   npLoadMyNotes();
+    if (tab === 'feed') npLoadClassFeed();
+  });
+});
+
+function npShowMyTab() {
+  document.querySelectorAll('.nptab').forEach(b =>
+    b.classList.toggle('active', b.dataset.nptab === 'my'));
+  document.getElementById('npMyTab').style.display  = '';
+  document.getElementById('npFeedTab').style.display = 'none';
+}
+
+// ── Identity modal ────────────────────────────────────────────
+let npRoster = [];
+
+identClassCode.addEventListener('keydown', e => { if (e.key === 'Enter') identLookupBtn.click(); });
+
+async function doIdentLookup() {
+  const code = identClassCode.value.trim();
+  if (!code) { identError.textContent = 'Enter a class code.'; return; }
+  identError.textContent = '';
+  identLookupBtn.disabled = true;
+  identLookupBtn.textContent = 'Looking up…';
+  try {
+    const cfg = await SHEETS.parseConfig();
+    npRosterCache = cfg.roster;
+    if (cfg.classCode !== code) throw new Error(`Code not found. Got "${cfg.classCode}"`);
+    npRoster = cfg.roster;
+    identRosterSel.innerHTML = '<option value="" disabled selected>— pick your name —</option>';
+    cfg.roster.forEach(({ id, name }) => {
+      const opt = document.createElement('option');
+      opt.value = id; opt.textContent = name;
+      identRosterSel.appendChild(opt);
+    });
+    identRosterWrap.style.display = '';
+    identStartBtn.style.display   = '';
+    identLookupBtn.textContent = cfg.className ? `✓ ${cfg.className}` : '✓ Class found';
+  } catch(e) {
+    identError.textContent = e.message;
+  }
+  identLookupBtn.disabled = false;
+}
+identLookupBtn.addEventListener('click', doIdentLookup);
+
+identStartBtn.addEventListener('click', () => {
+  if (!identRosterSel.value) { identError.textContent = 'Pick your name first.'; return; }
+  const chosen = npRoster.find(r => r.id === identRosterSel.value);
+  npStudentId   = chosen.id;
+  npStudentName = chosen.name;
+  localStorage.setItem('proton_student_id',   npStudentId);
+  localStorage.setItem('proton_student_name', npStudentName);
+  identityModal.classList.add('hidden');
+  npActivateStudent();
+  openNotepadPanel();
+  npShowMyTab();
+  npLoadMyNotes();
+});
+
+identityModal.addEventListener('click', e => {
+  if (e.target === identityModal && npStudentId) identityModal.classList.add('hidden');
+});
+
+// ── Capture ───────────────────────────────────────────────────
+addNoteBtn.addEventListener('click', () => {
+  if (!npStudentId) { identityModal.classList.remove('hidden'); return; }
+  openCaptureModal();
+});
+
+function captureCanvasAtWidth(src, maxW) {
+  const scale = Math.min(1, maxW / src.width);
+  const w = Math.round(src.width  * scale);
+  const h = Math.round(src.height * scale);
+  const tmp = document.createElement('canvas');
+  tmp.width = w; tmp.height = h;
+  tmp.getContext('2d').drawImage(src, 0, 0, w, h);
+  return tmp.toDataURL('image/jpeg', 0.88);
+}
+
+function openCaptureModal() {
+  const screenshot = captureCanvasAtWidth(canvas, 800);
+  const simState = JSON.stringify(captureSimState());
+  npPendingCapture = { id: SHEETS.generateId(), simState, screenshot };
+  capturePreviewImg.src = screenshot;
+  captureAnnotation.value = '';
+  captureError.textContent = '';
+  captureSaveBtn.disabled = false;
+  captureShareBtn.disabled = false;
+  captureSaveBtn.textContent  = 'Save';
+  captureShareBtn.textContent = 'Save & Share';
+  captureModal.classList.remove('hidden');
+  captureAnnotation.focus();
+}
+
+captureModal.addEventListener('click', e => { if (e.target === captureModal) closeCaptureModal(); });
+captureCancelBtn.addEventListener('click', closeCaptureModal);
+function closeCaptureModal() {
+  captureModal.classList.add('hidden');
+  npPendingCapture = null;
+}
+
+async function doSave(isPublic) {
+  if (!npPendingCapture) return;
+  captureSaveBtn.disabled  = true;
+  captureShareBtn.disabled = true;
+  captureSaveBtn.textContent = 'Saving…';
+  captureError.textContent = '';
+
+  const note = {
+    id:          npPendingCapture.id,
+    student_id:  npStudentId,
+    timestamp:   new Date().toISOString(),
+    sim_version: 'v12',
+    sim_state:   npPendingCapture.simState,
+    text:        captureAnnotation.value.trim(),
+    is_public:   isPublic,
+  };
+  npLocalScreenshots.set(note.id, npPendingCapture.screenshot);
+
+  try {
+    await SHEETS.appendNote(note);
+  } catch(e) {
+    if (!e.message.includes('Failed to fetch')) {
+      captureError.textContent = 'Save failed: ' + e.message;
+      captureSaveBtn.disabled  = false;
+      captureShareBtn.disabled = false;
+      captureSaveBtn.textContent = 'Save';
+      return;
+    }
+  }
+  closeCaptureModal();
+  openNotepadPanel();
+  npShowMyTab();
+  // Optimistic display
+  npObsList.innerHTML = '';
+  npObsList.appendChild(buildNoteCard(note, true));
+  const hint = document.createElement('div');
+  hint.className = 'obs-empty';
+  hint.style.fontSize = '10px';
+  hint.textContent = 'Saved! Loading your notes…';
+  npObsList.appendChild(hint);
+  setTimeout(() => npLoadMyNotes(note.id), 1800);
+}
+
+captureSaveBtn.addEventListener('click',  () => doSave(false));
+captureShareBtn.addEventListener('click', () => doSave(true));
+
+// ── Note loading ──────────────────────────────────────────────
+async function npLoadMyNotes(confirmId) {
+  if (!confirmId) npObsList.innerHTML = '<div class="obs-empty">Loading…</div>';
+  try {
+    const notes = await SHEETS.readStudentNotes(npStudentId);
+    if (notes.length === 0) {
+      npObsList.innerHTML = '<div class="obs-empty">No observations yet.<br>Press <strong>+ Notepad</strong> to capture your first one.</div>';
+      return;
+    }
+    npObsList.innerHTML = '';
+    if (confirmId) {
+      const confirmed = notes.some(n => n.id === confirmId);
+      const banner = document.createElement('div');
+      banner.className = 'obs-empty';
+      banner.style.cssText = `font-size:10px;padding:6px 8px;color:${confirmed ? '#4ade80' : '#f87171'}`;
+      banner.textContent = confirmed ? '✓ Saved!' : '⚠ Note may not have saved — try again.';
+      npObsList.appendChild(banner);
+    }
+    for (const note of notes) npObsList.appendChild(buildNoteCard(note, true));
+  } catch(e) {
+    npObsList.innerHTML = `<div class="obs-empty">Couldn't load: ${e.message}</div>`;
+  }
+}
+
+async function npLoadClassFeed() {
+  npFeedList.innerHTML = '<div class="obs-empty">Loading…</div>';
+  try {
+    const notes = await SHEETS.readPublicNotes();
+    if (notes.length === 0) {
+      npFeedList.innerHTML = '<div class="obs-empty">No shared observations yet.</div>';
+      return;
+    }
+    npFeedList.innerHTML = '';
+    for (const note of notes) npFeedList.appendChild(buildNoteCard(note, false));
+  } catch(e) {
+    npFeedList.innerHTML = `<div class="obs-empty">Couldn't load feed: ${e.message}</div>`;
+  }
+}
+
+// ── Card builder ──────────────────────────────────────────────
+function npGetStudentName(sid) {
+  if (npRosterCache) { const r = npRosterCache.find(r => r.id === sid); if (r) return r.name; }
+  return sid;
+}
+
+function buildNoteCard(note, isOwn) {
+  const card = document.createElement('div');
+  card.className = 'obs-card';
+
+  // Inline sim canvas
+  const wrap = document.createElement('div');
+  wrap.className = 'obs-thumb-wrap';
+
+  let parsedState = null;
+  try { if (note.sim_state) parsedState = JSON.parse(note.sim_state); } catch(e) {}
+
+  if (parsedState) {
+    const srcW = parsedState.canvasWidth  || 1280;
+    const srcH = parsedState.canvasHeight || 800;
+    const simCv = document.createElement('canvas');
+    simCv.className = 'obs-sim-canvas';
+    simCv.style.aspectRatio = `${srcW} / ${srcH}`;
+    wrap.appendChild(simCv);
+
+    requestAnimationFrame(() => SideSim.drawFirstFrame(simCv, parsedState));
+
+    const play = document.createElement('button');
+    play.className = 'obs-play-btn';
+    play.title = 'Play / pause';
+    play.innerHTML = '&#9654;';
+    play.addEventListener('click', () => {
+      if (SideSim.isCurrentCanvas(simCv)) {
+        SideSim.toggle();
+      } else {
+        SideSim.loadAndPlay(note.sim_state, simCv, play);
+      }
+    });
+    wrap.appendChild(play);
+  } else {
+    const ph = document.createElement('div');
+    ph.style.cssText = 'height:90px;display:flex;align-items:center;justify-content:center;font-size:10px;color:rgba(255,255,255,0.15)';
+    ph.textContent = isOwn ? '' : npGetStudentName(note.student_id);
+    wrap.appendChild(ph);
+  }
+  card.appendChild(wrap);
+
+  // Meta row
+  const meta = document.createElement('div');
+  meta.className = 'obs-meta';
+  if (!isOwn) {
+    const nm = document.createElement('span');
+    nm.className = 'obs-student';
+    nm.textContent = npGetStudentName(note.student_id);
+    meta.appendChild(nm);
+  }
+  const ts = document.createElement('span');
+  ts.textContent = new Date(note.timestamp).toLocaleString();
+  meta.appendChild(ts);
+  if (isOwn && note.is_public) {
+    const badge = document.createElement('span');
+    badge.style.cssText = 'color:var(--accent2);font-size:10px';
+    badge.textContent = '✓ Shared';
+    meta.appendChild(badge);
+  }
+  card.appendChild(meta);
+
+  if (note.text) {
+    const ro = document.createElement('div');
+    ro.className = 'obs-annotation-ro';
+    ro.textContent = note.text;
+    card.appendChild(ro);
+  }
+
+  if (isOwn && !note.is_public) {
+    const actions = document.createElement('div');
+    actions.className = 'obs-actions';
+    const shareBtn = document.createElement('button');
+    shareBtn.className = 'obs-btn obs-btn-share';
+    shareBtn.textContent = 'Share to class feed';
+    shareBtn.addEventListener('click', async () => {
+      shareBtn.disabled = true;
+      shareBtn.textContent = 'Sharing…';
+      try {
+        await SHEETS.updateNote(note.id, { is_public: true });
+        note.is_public = true;
+        card.replaceWith(buildNoteCard(note, true));
+      } catch(e) {
+        shareBtn.disabled = false;
+        shareBtn.textContent = 'Share to class feed';
+      }
+    });
+    actions.appendChild(shareBtn);
+    card.appendChild(actions);
+  }
+
+  return card;
+}
+
+// ============================================================
+//  captureSimState / applySimState
+//  Single source of truth for serialising v12 state into JSON.
+//  Add new parameters here when extending the sim.
+// ============================================================
+function captureSimState() {
+  const r2 = v => Math.round(v * 100) / 100;
+  return {
+    simVersion:         'v12',
+    // ── Canvas dimensions (for SideSim scaling) ──────────────
+    canvasWidth:        canvas.width,
+    canvasHeight:       canvas.height,
+    // ── Tab / mode ───────────────────────────────────────────
+    currentTab,                   // 'proton' | 'nucleus'
+    // ── Theme ────────────────────────────────────────────────
+    themeKey:           currentThemeKey,   // 'A' | 'B' | 'C'
+    // ── View ─────────────────────────────────────────────────
+    zoom,                         // 0.5–4.0
+    // ── Physics ──────────────────────────────────────────────
+    strongForceStrength,
+    strongForceRange,
+    speed,                        // internal dt (display = speed*2)
+    // ── Visualisation ────────────────────────────────────────
+    showElectricField,
+    showStrongField,
+    arrowMode,                    // 0=off, 1=all, 2=total
+    // ── Particles ────────────────────────────────────────────
+    particles: particles.map(p => ({
+      x:    r2(p.x),
+      y:    r2(p.y),
+      vx:   r2(p.vx),
+      vy:   r2(p.vy),
+      type: p.type,
+    })),
+  };
+}
+
+// Restore full v12 sim state onto the main canvas and UI controls.
+// Called when the user clicks "Load" (or "play" loads into main sim).
+function applySimState(state) {
+  // Tab (skipReset=true so particles aren't wiped before we restore them)
+  if (state.currentTab !== undefined) applyTab(state.currentTab, true);
+  // Theme
+  if (state.themeKey !== undefined) applyTheme(state.themeKey);
+  // View
+  if (state.zoom !== undefined) {
+    zoom = state.zoom;
+    document.getElementById('zoomSlider').value = Math.round(zoom * 10);
+  }
+  // Physics
+  if (state.strongForceStrength !== undefined) strongForceStrength = state.strongForceStrength;
+  if (state.strongForceRange    !== undefined) strongForceRange    = state.strongForceRange;
+  if (state.speed !== undefined) {
+    speed = state.speed;
+    const idx = SPEED_STOPS.reduce((best, s, i) =>
+      Math.abs(s - speed * 2) < Math.abs(SPEED_STOPS[best] - speed * 2) ? i : best, 0);
+    speedSlider.value = idx;
+  }
+  // Visualisation toggles
+  if (state.showElectricField !== undefined) {
+    showElectricField = state.showElectricField;
+    document.getElementById('electricFieldToggle').checked = showElectricField;
+  }
+  if (state.showStrongField !== undefined) {
+    showStrongField = state.showStrongField;
+    document.getElementById('strongFieldToggle').checked = showStrongField;
+  }
+  if (state.arrowMode !== undefined) {
+    arrowMode = state.arrowMode;
+    const targetWheel = [...document.querySelectorAll('.awheel-item[data-mode]')]
+      .find(b => parseInt(b.dataset.mode) === arrowMode);
+    if (targetWheel) setArrowWheelActive(targetWheel);
+  }
+  // Particles
+  particles = (state.particles || []).map(p => ({
+    x: p.x, y: p.y, vx: p.vx || 0, vy: p.vy || 0, type: p.type || 'proton',
+  }));
+  jitter = [];
+  selectedParticle = null;
+  updateStats();
+  computeEnergy();
+  draw();
+}
+
+// ============================================================
+//  SideSim — inline playback in notepad cards
+//
+//  One shared instance.  Each card has its own <canvas>;
+//  only one plays at a time.  Adapts v12 physics:
+//    • coulombStrength = 139
+//    • constant strong force within cutoff (no equilibrium spring)
+//    • no damping, no antispin (simplified for card playback)
+// ============================================================
+const SideSim = (() => {
+  let cv = null, cx = null;
+  let parts = [], sfStr = 0.25, sfRng = 1.2, spd = 1.5;
+  let running = false, animId = null, activePlayBtn = null;
+  const R = 10, SUB = 20, K = 139;
+
+  // Theme-derived colors — updated from captured state via applyState()
+  let pCore = '#ff80b0', pMid = '#ff1a65', pEdge = '#7a0030';
+  let nCore = '#b0b0c4', nMid = '#70707f', nEdge = '#383848';
+  let bgFill = '#05040f';
+
+  function pairForce(dist, dSq, at, bt) {
+    let f = 0;
+    if (at === 'proton' && bt === 'proton') f += K / Math.max(dSq, R * R);
+    if (dist < R * 2 * sfRng) f -= sfStr;
+    return f;
+  }
+
+  function step(dt) {
+    const n = parts.length, subDt = dt / SUB;
+    for (let s = 0; s < SUB; s++) {
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const a = parts[i], b = parts[j];
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const dSq = dx * dx + dy * dy, d = Math.sqrt(dSq);
+          if (d < 0.01) continue;
+          const force = pairForce(d, dSq, a.type, b.type);
+          const fx = force * dx / d, fy = force * dy / d;
+          a.vx -= fx * subDt; a.vy -= fy * subDt;
+          b.vx += fx * subDt; b.vy += fy * subDt;
+        }
+      }
+      for (let i = 0; i < n; i++) {
+        parts[i].x += parts[i].vx * subDt;
+        parts[i].y += parts[i].vy * subDt;
+      }
+      const minSep = R * 2;
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const a = parts[i], b = parts[j];
+          let dx = b.x - a.x, dy = b.y - a.y, dSq = dx * dx + dy * dy;
+          if (dSq >= minSep * minSep) continue;
+          let d = Math.sqrt(dSq);
+          if (d < 0.001) { dx = 1; dy = 0; d = 0.001; }
+          const nx = dx / d, ny = dy / d, ov = minSep - d;
+          a.x -= nx * ov * 0.5; a.y -= ny * ov * 0.5;
+          b.x += nx * ov * 0.5; b.y += ny * ov * 0.5;
+          const dvn = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+          if (dvn < 0) {
+            const h = dvn * 0.5;
+            a.vx += h * nx; a.vy += h * ny;
+            b.vx -= h * nx; b.vy -= h * ny;
+          }
+        }
+      }
+    }
+  }
+
+  function draw() {
+    if (!cv || !cx) return;
+    // Fill with theme background so card matches the sim's color scheme
+    cx.fillStyle = bgFill;
+    cx.fillRect(0, 0, cv.width, cv.height);
+    for (const p of parts) {
+      const ip = p.type === 'proton';
+      // Outer glow
+      const g = cx.createRadialGradient(p.x, p.y, 0, p.x, p.y, R * 2.5);
+      g.addColorStop(0, ip ? 'rgba(255,80,80,0.35)' : 'rgba(140,140,180,0.25)');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      cx.fillStyle = g;
+      cx.beginPath(); cx.arc(p.x, p.y, R * 2.5, 0, Math.PI * 2); cx.fill();
+      // Body — uses theme proton/neutron colors
+      const bg = cx.createRadialGradient(p.x - 2, p.y - 2, 1, p.x, p.y, R);
+      if (ip) { bg.addColorStop(0, pCore); bg.addColorStop(0.7, pMid); bg.addColorStop(1, pEdge); }
+      else    { bg.addColorStop(0, nCore); bg.addColorStop(0.7, nMid); bg.addColorStop(1, nEdge); }
+      cx.fillStyle = bg;
+      cx.beginPath(); cx.arc(p.x, p.y, R, 0, Math.PI * 2); cx.fill();
+      // Label
+      cx.fillStyle = 'rgba(255,255,255,0.88)';
+      cx.font = 'bold 10px monospace';
+      cx.textAlign = 'center'; cx.textBaseline = 'middle';
+      if (ip) cx.fillText('+', p.x, p.y + 1);
+      else    cx.fillText('n', p.x, p.y + 1);
+    }
+  }
+
+  function loop() {
+    if (!running) return;
+    step(spd);
+    draw();
+    animId = requestAnimationFrame(loop);
+  }
+
+  function fitBuffer(targetCv) {
+    const w = targetCv.offsetWidth, h = targetCv.offsetHeight;
+    if (w > 0 && h > 0 && (targetCv.width !== w || targetCv.height !== h)) {
+      targetCv.width = w; targetCv.height = h;
+    }
+  }
+
+  // Scale particle positions from the original canvas space to the card canvas.
+  // Incorporates zoom so the card shows the same visual density as the main sim.
+  function applyState(state, targetCv) {
+    sfStr = state.strongForceStrength ?? 0.25;
+    sfRng = state.strongForceRange    ?? 1.2;
+    spd   = state.speed               ?? 1.5;
+
+    // Theme colors — look up from the global THEMES object
+    const tk = state.themeKey || 'A';
+    const t  = THEMES[tk] || THEMES.A;
+    pCore = t.protonCore;  pMid = t.protonMid;  pEdge = t.protonEdge;
+    nCore = t.neutronCore; nMid = t.neutronMid; nEdge = t.neutronEdge;
+    bgFill = t.bg;
+
+    // Zoom: incorporate the captured zoom so particle density matches the main sim
+    const z     = state.zoom || 1;
+    const srcW  = state.canvasWidth  || targetCv.width;
+    const srcH  = state.canvasHeight || targetCv.height;
+    const base  = Math.min(targetCv.width / srcW, targetCv.height / srcH);
+    const scale = base * z;
+    const offX  = (targetCv.width  - srcW * scale) / 2;
+    const offY  = (targetCv.height - srcH * scale) / 2;
+
+    parts = (state.particles || []).map(p => ({
+      x:  p.x * scale + offX,
+      y:  p.y * scale + offY,
+      vx: (p.vx || 0) * scale,
+      vy: (p.vy || 0) * scale,
+      type: p.type || 'proton',
+    }));
+  }
+
+  // Render one still frame to any canvas without disrupting active playback
+  function drawFirstFrame(targetCv, state) {
+    if (running && cv === targetCv) return;
+    fitBuffer(targetCv);
+    if (!targetCv.width || !targetCv.height) return;
+    const savedCv = cv, savedCx = cx;
+    cv = targetCv; cx = targetCv.getContext('2d');
+    applyState(state, targetCv);
+    draw();
+    cv = savedCv; cx = savedCx;
+  }
+
+  function stop() {
+    running = false;
+    cancelAnimationFrame(animId);
+    if (activePlayBtn) activePlayBtn.innerHTML = '&#9654;';
+    if (cv) draw();
+  }
+
+  function loadAndPlay(simStateJson, targetCv, playBtn) {
+    if (activePlayBtn && activePlayBtn !== playBtn) activePlayBtn.innerHTML = '&#9654;';
+    running = false; cancelAnimationFrame(animId);
+    let state;
+    try { state = JSON.parse(simStateJson); } catch(e) { return; }
+    cv = targetCv; cx = targetCv.getContext('2d'); activePlayBtn = playBtn;
+    fitBuffer(cv); applyState(state, cv);
+    if (activePlayBtn) activePlayBtn.innerHTML = '&#9646;&#9646;';
+    running = true; loop();
+  }
+
+  function toggle() {
+    if (!cv) return;
+    if (running) { stop(); }
+    else { running = true; if (activePlayBtn) activePlayBtn.innerHTML = '&#9646;&#9646;'; loop(); }
+  }
+
+  function isCurrentCanvas(targetCv) { return cv === targetCv; }
+
+  return { drawFirstFrame, loadAndPlay, toggle, isCurrentCanvas, stop };
+})();
+</script>
+</body>
+</html>

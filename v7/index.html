@@ -245,8 +245,8 @@
   </label>
   <!-- Strong offset slider -->
   <label class="toggle-label" style="gap:6px;">
-    <span style="color:#fb923c;font-size:12px;">SIE offset: <span id="sieOffsetVal">0</span></span>
-    <input type="range" id="sieOffsetSlider" min="0" max="1000" step="1" value="0" style="width:80px;accent-color:#fb923c;">
+    <span style="color:#fb923c;font-size:12px;">SIE offset:</span>
+    <input type="number" id="sieOffsetInput" value="0" step="1" style="width:60px;background:#1a1a2e;color:#fb923c;border:1px solid #fb923c55;border-radius:4px;padding:2px 4px;font-size:12px;">
   </label>
   <!-- Range + Speed sliders stacked -->
   <div style="display:flex;flex-direction:column;gap:4px;">
@@ -336,6 +336,12 @@ let fusionAnimFrame = 0;          // Current frame of the rearrangement animatio
 const FUSION_ANIM_FRAMES = 5;    // Frames to lerp into He-4 geometry
 let fusionStartPos = null;        // Particle positions at start of rearrangement animation
 let fusionTargets = null;         // Target positions/velocities for the rearrangement
+
+// ---- D+D → T+P fusion ----
+let ddFusionFired = false;
+let ddInitialTotal = 0;
+const DD_HIT_FRAMES = 25;
+let initialTotal = 0;          // universal: total energy snapped at start of every scenario
 
 // ---- Photon-capture reactions (P+N, P+D, P+T, N+D) ----
 let photonCaptureFired = false;   // True once firePhotonCapture() called
@@ -443,12 +449,22 @@ function setupScenario() {
     particles.push({ x: cx + sep + d.x, y: cy + d.y, vx: -approachSpeed, vy: 0, type: d.type });
   }
 
-  // Capture initial total energy for p+p energy conservation on escape
-  if (leftChoice === 'p' && rightChoice === 'p') {
-    ppInitialTotal = computeEnergy().total;
+  // Snap all multi-particle clusters to equilibrium geometry before snapshotting energy.
+  // This ensures within-cluster SIE starts at its true baseline for all scenarios.
+  {
+    const lSz = leftDef.length, rSz = rightDef.length;
+    if (lSz === 4) snapHe4Geometry(0, lSz);
+    if (rSz === 4) snapHe4Geometry(lSz, particles.length);
+    if (lSz === 3) snapTGeometry(0, lSz);
+    if (rSz === 3) snapTGeometry(lSz, particles.length);
   }
 
-  // Capture initial total energy for elastic scatter and N-N display pinning
+  // Universal energy snapshot — used for deriving SIE in the bar chart.
+  initialTotal = computeEnergy().total;
+
+  // Per-scenario snapshots still needed for escape-velocity physics (not display).
+  if (leftChoice === 'p' && rightChoice === 'p') ppInitialTotal = computeEnergy().total;
+  if (leftChoice === 'd' && rightChoice === 'd') ddInitialTotal = computeEnergy().total;
   if (isElasticScatter() || (leftChoice === 'n' && rightChoice === 'n')) {
     elasticInitialTotal = computeEnergy().total;
   }
@@ -458,8 +474,7 @@ function setupScenario() {
     pcInitialKE = computeEnergy().ke;
   }
 
-  // Lock camera to system CM at setup — stays fixed throughout so collision site
-  // is always at the center of the frame, even as products fly apart.
+  // Lock camera to system CM at setup (overridden each frame for He+proton collisions).
   cameraSiteX = particles.reduce((s, p) => s + p.x, 0) / particles.length;
   cameraSiteY = particles.reduce((s, p) => s + p.y, 0) / particles.length;
 }
@@ -519,8 +534,8 @@ function step(dt) {
   // Skip all intra-cluster interactions for elastic-scatter combos in escape phase.
   const rigidEscape = collisionPhase === 'escape' && isElasticScatter();
 
-  // Photon-capture escape: particles coast at constant velocity — no forces applied.
-  const pcEscape = collisionPhase === 'escape' && isPhotonCapture();
+  // Photon-capture / D+D escape: particles coast at constant velocity — no forces applied.
+  const pcEscape = collisionPhase === 'escape' && (isPhotonCapture() || (leftChoice==='d'&&rightChoice==='d'));
 
   for (let sub = 0; sub < SUBSTEPS; sub++) {
     // Pairwise forces (skipped entirely during photon-capture escape so KE stays constant)
@@ -900,18 +915,10 @@ function drawBarChart() {
   ctx.lineTo(gx, gy + H);
   ctx.stroke();
 
-  let displayKE = e.ke;
-  let displaySIE = e.sie + sieOffset;
-  const isPPScen = leftChoice === 'p' && rightChoice === 'p';
-  const pinnedE = (isPPScen && ppInitialTotal !== 0) ? ppInitialTotal
-                : ((isElasticScatter() || (leftChoice==='n'&&rightChoice==='n')) && elasticInitialTotal !== 0) ? elasticInitialTotal
-                : null;
-  if (pinnedE !== null) {
-    displaySIE = pinnedE - e.ke - e.eie + sieOffset;
-  }
-
-  const sie = displaySIE;
-  const pinnedTotal = pinnedE !== null ? pinnedE + sieOffset : displayKE + e.eie + displaySIE;
+  const displayKE  = e.ke;
+  // SIE is derived from conservation: Total − KE − EIE, plus any manual display offset.
+  const displaySIE  = initialTotal - e.ke - e.eie + sieOffset;
+  const pinnedTotal = initialTotal + sieOffset;
   const bars = splitIE
     ? [
         { label: 'KE',  value: Math.max(0, displayKE), color: '#f87171' },
@@ -1122,15 +1129,18 @@ function renderFrame(idx) {
   const liveCollided = hasCollided;
   const liveCollisionPhase = collisionPhase;
   const livePhoton = photon;
+  const liveCamX = cameraSiteX, liveCamY = cameraSiteY;
   particles = frame.p;
   hasCollided = (collisionFrame >= 0 && idx >= collisionFrame);
   collisionPhase = frame.collisionPhase || 'approach';
   photon = frame.photon || null;
+  if (frame.camX !== undefined) { cameraSiteX = frame.camX; cameraSiteY = frame.camY; }
   draw();
   particles = liveParticles;
   hasCollided = liveCollided;
   collisionPhase = liveCollisionPhase;
   photon = livePhoton;
+  cameraSiteX = liveCamX; cameraSiteY = liveCamY;
 }
 
 // ============================================================
@@ -1190,6 +1200,7 @@ replayBtn.addEventListener('click', () => {
   fusionAnimFrame = 0;
   fusionStartPos = null;
   fusionTargets = null;
+  ddFusionFired = false;
   photonCaptureFired = false;
   photon = null;
   photonEscapeFrames = 0;
@@ -1200,6 +1211,7 @@ replayBtn.addEventListener('click', () => {
   ppInitialTotal = 0;
   elasticInitialTotal = 0;
   pcInitialKE = 0;
+  initialTotal = 0;
   particleHistory = [];
   scrubFrame = -1;
   timeSlider.value = 0;
@@ -1270,6 +1282,7 @@ function resetAndSetup() {
   fusionAnimFrame = 0;
   fusionStartPos = null;
   fusionTargets = null;
+  ddFusionFired = false;
   photonCaptureFired = false;
   photon = null;
   photonEscapeFrames = 0;
@@ -1288,6 +1301,7 @@ function resetAndSetup() {
   ppInitialTotal = 0;
   elasticInitialTotal = 0;
   pcInitialKE = 0;
+  initialTotal = 0;
   setupScenario();
   draw();
 }
@@ -1297,9 +1311,8 @@ document.getElementById('splitIEToggle').addEventListener('change', function() {
   if (!running) draw();
 });
 
-document.getElementById('sieOffsetSlider').addEventListener('input', function() {
-  sieOffset = parseInt(this.value);
-  document.getElementById('sieOffsetVal').textContent = sieOffset;
+document.getElementById('sieOffsetInput').addEventListener('input', function() {
+  sieOffset = parseFloat(this.value) || 0;
   if (!running) draw();
 });
 
@@ -1308,12 +1321,22 @@ document.getElementById('v4SpeedSlider').addEventListener('input', function() {
   document.getElementById('v4SpeedVal').textContent = approachSpeed.toFixed(2);
 });
 
+// He + anything-with-a-proton collisions get slower default speed + rigid-cluster approach
+function isHeProtonCollision() {
+  const l = leftChoice, r = rightChoice;
+  const hasProton = c => c === 'p' || c === 'd' || c === 't' || c === 'he';
+  return (l === 'he' && hasProton(r)) || (r === 'he' && hasProton(l));
+}
+
 function applyComboDefaults() {
   const isDT = (leftChoice === 'd' && rightChoice === 't') ||
                (leftChoice === 't' && rightChoice === 'd');
   sieOffset = isDT ? 250 : 0;
-  document.getElementById('sieOffsetSlider').value = sieOffset;
-  document.getElementById('sieOffsetVal').textContent = sieOffset;
+  document.getElementById('sieOffsetInput').value = sieOffset;
+
+  approachSpeed = isHeProtonCollision() ? 1.1 : 2.0;
+  document.getElementById('v4SpeedSlider').value = approachSpeed;
+  document.getElementById('v4SpeedVal').textContent = approachSpeed.toFixed(2);
 }
 
 document.getElementById('leftChoice').addEventListener('change', function() {
@@ -1373,6 +1396,31 @@ function computeSIEForPositions(positions) {
 //  diamond geometry so it exits as a clean, non-jiggly nucleus.
 // ============================================================
 
+// Snap a tritium cluster (particles[startIdx..endIdx-1]) to its stable geometry
+// centered at its current CM, using the CLUSTER_DEFS.t offsets.
+function snapTGeometry(startIdx, endIdx) {
+  const count = endIdx - startIdx;
+  if (count !== 3) return;
+  let cx = 0, cy = 0;
+  for (let i = startIdx; i < endIdx; i++) { cx += particles[i].x; cy += particles[i].y; }
+  cx /= count; cy /= count;
+  // Find the proton and two neutrons within the cluster
+  const protonIdx = [], neutronIdx = [];
+  for (let i = startIdx; i < endIdx; i++) {
+    (particles[i].type === 'proton' ? protonIdx : neutronIdx).push(i);
+  }
+  const def = CLUSTER_DEFS.t; // [{type:'proton',x:-9,y:-5},{type:'neutron',x:9,y:5},{type:'neutron',x:9,y:-15}]
+  // CM of the def offsets
+  const defCx = (def[0].x + def[1].x + def[2].x) / 3;
+  const defCy = (def[0].y + def[1].y + def[2].y) / 3;
+  particles[protonIdx[0]].x  = cx + def[0].x - defCx;
+  particles[protonIdx[0]].y  = cy + def[0].y - defCy;
+  particles[neutronIdx[0]].x = cx + def[1].x - defCx;
+  particles[neutronIdx[0]].y = cy + def[1].y - defCy;
+  particles[neutronIdx[1]].x = cx + def[2].x - defCx;
+  particles[neutronIdx[1]].y = cy + def[2].y - defCy;
+}
+
 // Snap a He-4 cluster (particles[startIdx..endIdx-1]) to the stable diamond
 // geometry centered at its current CM. Protons go left/right, neutrons top/bottom.
 function snapHe4Geometry(startIdx, endIdx) {
@@ -1381,7 +1429,7 @@ function snapHe4Geometry(startIdx, endIdx) {
   let cx = 0, cy = 0;
   for (let i = startIdx; i < endIdx; i++) { cx += particles[i].x; cy += particles[i].y; }
   cx /= count; cy /= count;
-  const r = PARTICLE_RADIUS * 1.05;
+  const r = PARTICLE_RADIUS * Math.SQRT2; // adjacent spacing = r√2 = 1 diameter exactly
   const protonIdx = [], neutronIdx = [];
   for (let i = startIdx; i < endIdx; i++) {
     (particles[i].type === 'proton' ? protonIdx : neutronIdx).push(i);
@@ -1421,6 +1469,29 @@ function applyElasticEscape() {
     const safeDist = strongCutoff() * 1.15 + PARTICLE_RADIUS;
     particles[nIdx].x = hcx + nnx * safeDist;
     particles[nIdx].y = hcy + nny * safeDist;
+  }
+
+  // For N+T: same treatment — snap T to stable geometry, teleport neutron outside range.
+  const isNT = (lSize === 1 && rSize === 3) || (lSize === 3 && rSize === 1);
+  if (isNT) {
+    const tStart = (lSize === 3) ? 0 : lSize;
+    const tEnd   = (lSize === 3) ? lSize : n;
+    const nIdx   = (lSize === 1) ? 0 : lSize;
+    snapTGeometry(tStart, tEnd);
+
+    // T CM after snap
+    let tcx = 0, tcy = 0;
+    for (let i = tStart; i < tEnd; i++) { tcx += particles[i].x; tcy += particles[i].y; }
+    tcx /= 3; tcy /= 3;
+
+    // Direction from T CM to neutron, then teleport outside strong force range
+    let ndx = particles[nIdx].x - tcx, ndy = particles[nIdx].y - tcy;
+    const ndist = Math.sqrt(ndx * ndx + ndy * ndy);
+    const nnx = ndist > 0.01 ? ndx / ndist : 1;
+    const nny = ndist > 0.01 ? ndy / ndist : 0;
+    const safeDist = strongCutoff() * 1.15 + PARTICLE_RADIUS;
+    particles[nIdx].x = tcx + nnx * safeDist;
+    particles[nIdx].y = tcy + nny * safeDist;
   }
 
   // Cluster centroids (for separation axis only)
@@ -1484,6 +1555,61 @@ function applyElasticEscape() {
   for (let i = 0; i < rSize; i++) {
     particles[lSize + i].vx = newRvx; particles[lSize + i].vy = newRvy;
   }
+}
+
+// ============================================================
+//  D+D → T+P FUSION
+//  Rearranges 4 particles (2p+2n) into tritium (1p+2n) + proton.
+//  T exits as a single rigid body; P flies off opposite.
+// ============================================================
+function fireDDFusion() {
+  ddFusionFired = true;
+
+  // System CM position and velocity
+  let sumX = 0, sumY = 0, sumVx = 0, sumVy = 0;
+  for (const p of particles) { sumX += p.x; sumY += p.y; sumVx += p.vx; sumVy += p.vy; }
+  const cmx = sumX / 4, cmy = sumY / 4;
+  const cmvx = sumVx / 4, cmvy = sumVy / 4;
+
+  // Separate protons and neutrons
+  const protons  = particles.filter(p => p.type === 'proton');
+  const neutrons = particles.filter(p => p.type === 'neutron');
+  // T = protons[0] + neutrons[0] + neutrons[1]; P = protons[1]
+  const tParticles = [protons[0], neutrons[0], neutrons[1]];
+  const pParticle  = protons[1];
+
+  // Reorder particles array: T first (indices 0-2), P last (index 3)
+  particles[0] = tParticles[0]; particles[1] = tParticles[1];
+  particles[2] = tParticles[2]; particles[3] = pParticle;
+  leftClusterSize = 3; // T is now the "left" cluster
+
+  // Snap T to its stable geometry at the system CM
+  snapTGeometry(0, 3);
+
+  // Teleport P outside strong force range from T CM
+  const safeDist = strongCutoff() * 1.15 + PARTICLE_RADIUS;
+  const theta0 = Math.random() * 2 * Math.PI;
+  const scx = Math.cos(theta0), scy = Math.sin(theta0);
+  particles[3].x = cmx + scx * safeDist;
+  particles[3].y = cmy + scy * safeDist;
+
+  // Elastic momentum-conserving velocities: T mass=3, P mass=1
+  // In CM frame: |vP_cm| = 3*|vT_cm|, KE_cm = 6*|vT_cm|²
+  const currentSIE = computeEnergy().sie;
+  const targetCmKE = Math.max(0, ddInitialTotal - currentSIE);
+  const vT_cm = Math.sqrt(targetCmKE / 6);
+  const vP_cm = 3 * vT_cm;
+
+  // Random scatter direction
+  const theta = Math.random() * 2 * Math.PI;
+  const nx = Math.cos(theta), ny = Math.sin(theta);
+
+  const tvx = cmvx + nx * vT_cm,  tvy = cmvy + ny * vT_cm;
+  const pvx = cmvx - nx * vP_cm,  pvy = cmvy - ny * vP_cm;
+
+  // All T particles get the same velocity — rigid, no jiggling
+  for (let i = 0; i < 3; i++) { particles[i].vx = tvx; particles[i].vy = tvy; }
+  particles[3].vx = pvx; particles[3].vy = pvy;
 }
 
 function fireFusion() {
@@ -1670,6 +1796,64 @@ function loop() {
       // --- Normal physics ---
       step(speed);
 
+      // He+proton: update camera and rigid-cluster logic each frame.
+      // For T+He specifically, treat T as mass 2 (same as D) so the balance point
+      // and velocity equalization reflect that lighter effective mass.
+      if (isHeProtonCollision()) {
+        const lSize = leftClusterSize, n2 = particles.length, rSize = n2 - lSize;
+        const isTHe = (leftChoice==='t'&&rightChoice==='he') || (leftChoice==='he'&&rightChoice==='t');
+        // For T+He treat T as mass 2 (same as D) for camera balance and velocity weighting
+        const effL = (isTHe && leftChoice==='t')  ? 2 : lSize;
+        const effR = (isTHe && rightChoice==='t') ? 2 : rSize;
+
+        // Camera: weighted midpoint using effective masses
+        let lcx = 0, lcy = 0;
+        for (let i = 0; i < lSize; i++) { lcx += particles[i].x; lcy += particles[i].y; }
+        lcx /= lSize; lcy /= lSize;
+        let rcx = 0, rcy = 0;
+        for (let i = lSize; i < n2; i++) { rcx += particles[i].x; rcy += particles[i].y; }
+        rcx /= rSize; rcy /= rSize;
+        cameraSiteX = (effL * lcx + effR * rcx) / (effL + effR);
+        cameraSiteY = (effL * lcy + effR * rcy) / (effL + effR);
+
+        // Rigid cluster: lock each cluster to its own CM velocity
+        if (collisionPhase !== 'escape') {
+          let lvx = 0, lvy = 0;
+          for (let i = 0; i < lSize; i++) { lvx += particles[i].vx; lvy += particles[i].vy; }
+          lvx /= lSize; lvy /= lSize;
+          let rvx = 0, rvy = 0;
+          for (let i = lSize; i < n2; i++) { rvx += particles[i].vx; rvy += particles[i].vy; }
+          rvx /= rSize; rvy /= rSize;
+          for (let i = 0; i < lSize; i++) { particles[i].vx = lvx; particles[i].vy = lvy; }
+          for (let i = lSize; i < n2; i++) { particles[i].vx = rvx; particles[i].vy = rvy; }
+        }
+      }
+
+      // Elastic scatter (N+He, N+T): rigid-cluster lock + live camera midpoint.
+      if (isElasticScatter()) {
+        const lSize = leftClusterSize, n2 = particles.length, rSize = n2 - lSize;
+        // Camera: geometric midpoint between cluster centroids
+        let lcx = 0, lcy = 0;
+        for (let i = 0; i < lSize; i++) { lcx += particles[i].x; lcy += particles[i].y; }
+        lcx /= lSize; lcy /= lSize;
+        let rcx = 0, rcy = 0;
+        for (let i = lSize; i < n2; i++) { rcx += particles[i].x; rcy += particles[i].y; }
+        rcx /= rSize; rcy /= rSize;
+        cameraSiteX = (lcx + rcx) / 2;
+        cameraSiteY = (lcy + rcy) / 2;
+        // Rigid-cluster velocity lock during approach and hit
+        if (collisionPhase !== 'escape') {
+          let lvx = 0, lvy = 0;
+          for (let i = 0; i < lSize; i++) { lvx += particles[i].vx; lvy += particles[i].vy; }
+          lvx /= lSize; lvy /= lSize;
+          let rvx = 0, rvy = 0;
+          for (let i = lSize; i < n2; i++) { rvx += particles[i].vx; rvy += particles[i].vy; }
+          rvx /= rSize; rvy /= rSize;
+          for (let i = 0; i < lSize; i++) { particles[i].vx = lvx; particles[i].vy = lvy; }
+          for (let i = lSize; i < n2; i++) { particles[i].vx = rvx; particles[i].vy = rvy; }
+        }
+      }
+
       const isPP = leftChoice === 'p' && rightChoice === 'p';
 
       // ── Collision phase labeling: centroid closest-approach (all combos) ──
@@ -1760,8 +1944,12 @@ function loop() {
         if (isPC && !isPN && !photonCaptureFired && hitFrames >= HIT_FRAMES()) {
           firePhotonCapture();
         }
-        // D+T: stay in 'hit' until fusion fires; PC: stay until fired; others: timer-based
-        const readyToEscape = isDT ? fusionFired : (isPC ? photonCaptureFired : hitFrames >= HIT_FRAMES());
+        const isDD = leftChoice === 'd' && rightChoice === 'd';
+        if (isDD && !ddFusionFired && hitFrames >= DD_HIT_FRAMES) {
+          fireDDFusion();
+        }
+        // D+T: stay until fusion; D+D: stay until dd fusion; PC: stay until fired; others: timer
+        const readyToEscape = isDT ? fusionFired : (isDD ? ddFusionFired : (isPC ? photonCaptureFired : hitFrames >= HIT_FRAMES()));
         if (readyToEscape) {
           collisionPhase = 'escape';
           const isNN = leftChoice === 'n' && rightChoice === 'n';
@@ -1865,7 +2053,8 @@ function loop() {
 
     // Record history snapshot
     particleHistory.push({ p: particles.map(p => ({ ...p })), t: now, collisionPhase,
-                           photon: photon ? { ...photon } : null });
+                           photon: photon ? { ...photon } : null,
+                           camX: cameraSiteX, camY: cameraSiteY });
     if (particleHistory.length > MAX_HISTORY) particleHistory.shift();
 
     timeSlider.disabled = false;

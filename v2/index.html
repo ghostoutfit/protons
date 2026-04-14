@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Nuclear Force Simulation</title>
+<script src="sheets-api.js"></script>
 <style>
   /* ========================================
      RESET & BASE STYLES
@@ -199,101 +200,394 @@
   }
 
   /* ========================================
-     ENERGY PANEL (right sidebar)
+     NOTEPAD PANEL (right sidebar)
      ======================================== */
-  #energyPanel {
-    width: 260px;
-    min-width: 220px;
-    flex-shrink: 0;
+  #notepadPanel {
+    position: absolute;
+    top: 0; right: 0; bottom: 0;
+    width: 0;
+    overflow: hidden;
+    transition: width 0.22s ease;
     background: #12122a;
     border-left: 1px solid #2a2a4a;
     display: flex;
     flex-direction: column;
-    padding: 16px;
-    gap: 12px;
+    z-index: 20;
   }
+  #notepadPanel.open { width: 50%; }
 
-  #energyPanel h2 {
-    font-size: 14px;
+  .notepad-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid #2a2a4a;
+    flex-shrink: 0;
+    gap: 8px;
+  }
+  .notepad-header h2 {
+    font-size: 13px;
     font-weight: 600;
     color: #9ca3af;
     text-transform: uppercase;
     letter-spacing: 1px;
+    flex: 1;
   }
+  #userNameDisplay {
+    font-size: 11px;
+    color: #6b7280;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 110px;
+  }
+  .notepad-close {
+    background: none;
+    border: none;
+    color: #6b7280;
+    cursor: pointer;
+    font-size: 18px;
+    padding: 0 2px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .notepad-close:hover { color: #e0e0e0; }
 
-  .energy-row {
+  /* Auth form */
+  #authSection, #notepadContent {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+    min-width: 0;
+  }
+  .auth-form {
+    padding: 20px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .auth-form label {
+    font-size: 11px;
+    color: #9ca3af;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .auth-form input {
+    background: #0a0a1a;
+    border: 1px solid #3a3a5a;
+    border-radius: 6px;
+    color: #e0e0e0;
+    padding: 7px 10px;
+    font-size: 13px;
+    outline: none;
+    font-family: inherit;
+  }
+  .auth-form input:focus { border-color: #6366f1; }
+  .auth-form p.auth-hint {
+    font-size: 11px;
+    color: #4b5563;
+    line-height: 1.5;
+    margin-top: 4px;
+  }
+  #signInBtn { background: #4285f4; color: #fff; border: none; }
+  #signInBtn:hover { background: #3367d6; }
+
+  /* Tabs */
+  .notepad-tabs {
+    display: flex;
+    border-bottom: 1px solid #2a2a4a;
+    flex-shrink: 0;
+  }
+  .ntab {
+    flex: 1;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #6b7280;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 7px 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  .ntab:hover { color: #e0e0e0; }
+  .ntab.active { color: #e0e0e0; border-bottom-color: #6366f1; }
+
+  /* Observation list */
+  #myObsTab, #feedTab {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .obs-empty {
+    color: #4b5563;
+    font-size: 12px;
+    text-align: center;
+    padding: 24px 8px;
+    line-height: 1.6;
+  }
+  .obs-card {
+    background: #0a0a1a;
+    border: 1px solid #2a2a4a;
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .obs-thumb {
+    width: 100%;
+    height: 110px;
+    object-fit: cover;
+    display: block;
+    background: #0f0f1f;
+  }
+  .obs-thumb-placeholder {
+    height: 110px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0f0f1f;
+    color: #2a2a4a;
+    font-size: 11px;
+  }
+  .obs-meta {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 13px;
+    padding: 5px 9px;
+    font-size: 10px;
+    color: #4b5563;
   }
-
-  .energy-label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .energy-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-  }
-
-  .energy-value {
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-  }
-
-  #graphWrap {
-    position: relative;
-  }
-
-  #graphCanvas {
+  .obs-student { color: #9ca3af; font-weight: 600; }
+  .obs-annotation {
     width: 100%;
-    height: 160px;
-    border-radius: 6px;
+    min-height: 52px;
     background: #0a0a1a;
-    border: 1px solid #2a2a4a;
-    cursor: crosshair;
+    border: none;
+    border-top: 1px solid #1e1e3a;
+    color: #d1d5db;
+    font-size: 12px;
+    padding: 7px 9px;
+    resize: vertical;
+    font-family: inherit;
+    outline: none;
+    line-height: 1.5;
   }
-
-  #graphTooltip {
-    position: absolute;
-    pointer-events: none;
-    background: rgba(18, 18, 42, 0.92);
-    border: 1px solid #4a4a6a;
-    border-radius: 4px;
-    padding: 4px 8px;
-    font-size: 11px;
-    color: #e0e0e0;
-    white-space: nowrap;
-    display: none;
-    z-index: 10;
-    font-variant-numeric: tabular-nums;
+  .obs-annotation::placeholder { color: #2a2a4a; }
+  .obs-annotation-ro {
+    padding: 7px 9px;
+    font-size: 12px;
+    color: #9ca3af;
+    border-top: 1px solid #1e1e3a;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
-
-  #graphControls {
+  .obs-actions {
     display: flex;
+    gap: 5px;
+    padding: 5px 7px;
+    border-top: 1px solid #1e1e3a;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 6px;
-    margin-top: 4px;
   }
-
-  #graphControls button {
-    padding: 2px 8px;
-    font-size: 11px;
+  .obs-btn {
+    padding: 3px 9px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid #3a3a5a;
     background: #1e1e3a;
     color: #9ca3af;
-    border: 1px solid #3a3a5a;
-    border-radius: 4px;
-    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    font-family: inherit;
   }
-  #graphControls button:hover { background: #2a2a4a; color: #e0e0e0; }
+  .obs-btn:hover:not(:disabled) { background: #2a2a4a; color: #e0e0e0; }
+  .obs-btn:disabled { opacity: 0.38; cursor: not-allowed; }
+  .obs-btn-danger { border-color: #7f1d1d; color: #f87171; }
+  .obs-btn-danger:hover:not(:disabled) { background: #450a0a; }
+  .obs-btn-save { border-color: #164e63; color: #22d3ee; }
+  .obs-btn-save:hover:not(:disabled) { background: #083344; }
+  .obs-btn-share { border-color: #1e3a5f; color: #60a5fa; }
+  .obs-btn-share:hover:not(:disabled) { background: #0f2040; }
+  .obs-hint { font-size: 10px; color: #374151; flex: 1; }
 
-  #graphControls span {
-    font-size: 11px;
+  /* Toolbar notepad button */
+  #notepadBtn { background: #1e1e3a; color: #9ca3af; border: 1px solid #3a3a5a; }
+  #notepadBtn:hover { background: #2a2a4a; color: #e0e0e0; }
+
+  /* ========================================
+     ADD TO NOTEPAD FAB (bottom-right)
+     ======================================== */
+  #addNoteBtn {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 50;
+    background: #7c3aed;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    box-shadow: 0 2px 16px rgba(124,58,237,0.5);
+    transition: background 0.15s, right 0.22s ease;
+  }
+  #addNoteBtn:hover { background: #6d28d9; box-shadow: 0 2px 24px rgba(124,58,237,0.75); }
+  body.notepad-open #addNoteBtn { right: calc(50% + 24px); }
+
+  /* ========================================
+     IDENTITY MODAL
+     ======================================== */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(5, 5, 20, 0.88);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+  }
+  .modal-overlay.hidden { display: none; }
+
+  .modal-box {
+    background: #12122a;
+    border: 1px solid #3a3a5a;
+    border-radius: 12px;
+    padding: 28px 28px 24px;
+    width: 360px;
+    max-width: calc(100vw - 40px);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .modal-box h2 {
+    font-size: 16px;
+    font-weight: 700;
+    color: #e0e0e0;
+  }
+  .modal-box p.modal-hint {
+    font-size: 12px;
     color: #6b7280;
+    line-height: 1.5;
+    margin-top: -4px;
+  }
+  .modal-label {
+    font-size: 11px;
+    color: #9ca3af;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+  .modal-input, .modal-select {
+    background: #0a0a1a;
+    border: 1px solid #3a3a5a;
+    border-radius: 6px;
+    color: #e0e0e0;
+    padding: 8px 12px;
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    width: 100%;
+  }
+  .modal-input:focus, .modal-select:focus { border-color: #6366f1; }
+  .modal-select { cursor: pointer; }
+  .modal-error { font-size: 12px; color: #f87171; min-height: 16px; }
+  .modal-row { display: flex; gap: 8px; }
+  .modal-row .btn { flex: 1; }
+  #identLookupBtn { background: #6366f1; color: #fff; }
+  #identLookupBtn:hover { background: #4f46e5; }
+  #identStartBtn  { background: #22c55e; color: #fff; }
+  #identStartBtn:hover  { background: #16a34a; }
+
+  /* ========================================
+     CAPTURE MODAL
+     ======================================== */
+  #captureModal .modal-box {
+    width: 520px;
+    max-width: calc(100vw - 32px);
+  }
+  #capturePreviewImg {
+    width: 100%;
+    border-radius: 6px;
+    display: block;
+    border: 1px solid #2a2a4a;
+  }
+  #captureAnnotation {
+    width: 100%;
+    min-height: 72px;
+    background: #0a0a1a;
+    border: 1px solid #3a3a5a;
+    border-radius: 6px;
+    color: #e0e0e0;
+    padding: 9px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    resize: vertical;
+    outline: none;
+    line-height: 1.5;
+  }
+  #captureAnnotation:focus  { border-color: #6366f1; }
+  #captureAnnotation::placeholder { color: #374151; }
+  #captureSaveBtn   { background: #6366f1; color: #fff; }
+  #captureSaveBtn:hover   { background: #4f46e5; }
+  #captureShareBtn  { background: #0e7490; color: #fff; }
+  #captureShareBtn:hover  { background: #0891b2; }
+  #captureCancelBtn { background: #374151; color: #9ca3af; }
+  #captureCancelBtn:hover { background: #4b5563; color: #e0e0e0; }
+
+  /* ========================================
+     PLAY BUTTON OVERLAY ON OBS CARDS
+     ======================================== */
+  .obs-thumb-wrap {
+    position: relative;
+    display: block;
+    line-height: 0;
+  }
+  .obs-play-btn {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(10, 10, 26, 0.72);
+    border: 2px solid rgba(255,255,255,0.55);
+    color: #fff;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity 0.15s, background 0.15s;
+    padding-left: 3px;
+  }
+  .obs-thumb-wrap:hover .obs-play-btn { opacity: 1; }
+  .obs-play-btn:hover { background: rgba(99,102,241,0.8); border-color: #fff; }
+
+  /* ========================================
+     INLINE SIM CANVAS (per note card)
+     ======================================== */
+  .obs-sim-canvas {
+    width: 100%;
+    display: block;
+    background: #0a0a1a;
+    /* height is driven by aspect-ratio set inline per card */
   }
 
   /* ========================================
@@ -429,6 +723,7 @@
     <input type="radio" name="coulombViz" id="cvCloud" value="cloud"><label for="cvCloud">Cloud</label>
     <input type="radio" name="coulombViz" id="cvNone" value="none"><label for="cvNone">None</label>
   </span>
+  <button class="btn" id="notepadBtn">Notepad</button>
   <span id="stats">Protons: 0 &nbsp; Neutrons: 0</span>
 </div>
 
@@ -460,32 +755,31 @@
 <div id="main">
   <canvas id="canvas"></canvas>
 
-  <div id="energyPanel">
-    <h2>Energy</h2>
-    <div class="energy-row">
-      <span class="energy-label"><span class="energy-dot" style="background:#f59e0b"></span> Energy in motion</span>
-      <span class="energy-value" id="kineticVal">0</span>
+  <div id="notepadPanel">
+    <div id="authSection">
+      <div class="notepad-header">
+        <h2>Student Notepad</h2>
+        <button class="notepad-close" id="closeNotepadBtn">×</button>
+      </div>
+      <div class="auth-form">
+        <label>Class Code</label>
+        <input type="text" id="classCodeInput" placeholder="Paste class code here...">
+        <p class="auth-hint">Your teacher will give you a class code. Enter it above, then sign in with your Google account.</p>
+        <button class="btn" id="signInBtn">Sign in with Google</button>
+      </div>
     </div>
-    <div class="energy-row">
-      <span class="energy-label"><span class="energy-dot" style="background:#3b82f6"></span> Energy in interactions</span>
-      <span class="energy-value" id="potentialVal">0</span>
-    </div>
-    <div class="energy-row" style="border-top: 1px solid #2a2a4a; padding-top: 8px;">
-      <span class="energy-label"><span class="energy-dot" style="background:#22c55e"></span> Total</span>
-      <span class="energy-value" id="totalVal">0</span>
-    </div>
-    <div class="slider-group" style="margin-top: 10px;">
-      <label>IE offset: <span id="ieOffsetVal">0</span></label>
-      <input type="range" id="ieOffsetSlider" min="0" max="20000" step="1" value="0" style="flex:1">
-    </div>
-    <div id="graphWrap">
-      <canvas id="graphCanvas"></canvas>
-      <div id="graphTooltip"></div>
-    </div>
-    <div id="graphControls">
-      <button id="graphAutoFit">Auto-fit</button>
-      <button id="graphGoLive">Go live</button>
-      <span id="graphHint">Scroll: zoom Y &middot; Drag: pan time</span>
+    <div id="notepadContent" style="display:none">
+      <div class="notepad-header">
+        <h2>My Notepad</h2>
+        <span id="userNameDisplay"></span>
+        <button class="notepad-close" id="closeNotepadBtn2">×</button>
+      </div>
+      <div class="notepad-tabs">
+        <button class="ntab active" data-tab="my">My Observations</button>
+        <button class="ntab" data-tab="feed">Class Feed</button>
+      </div>
+      <div id="myObsTab"><div id="obsList"></div></div>
+      <div id="feedTab" style="display:none"><div id="feedList"></div></div>
     </div>
   </div>
 
@@ -507,14 +801,54 @@
   <div id="instructions">Click to place protons, drag from buckets, or drag existing particles to reposition.</div>
 </div>
 
+<!-- Add to Notepad FAB -->
+<button id="addNoteBtn">+ Notepad</button>
+
+<!-- Identity modal -->
+<div id="identityModal" class="modal-overlay hidden">
+  <div class="modal-box">
+    <h2>Join Your Class</h2>
+    <p class="modal-hint">Enter the class code your teacher gave you.</p>
+    <div>
+      <div class="modal-label">Class Code</div>
+      <input class="modal-input" id="identClassCode" placeholder="e.g. Chem202603" autocomplete="off">
+    </div>
+    <div id="identRosterWrap" style="display:none">
+      <div class="modal-label">Your name</div>
+      <select class="modal-select" id="identRosterSel"></select>
+    </div>
+    <div class="modal-error" id="identError"></div>
+    <div class="modal-row">
+      <button class="btn" id="identLookupBtn">Look up class</button>
+      <button class="btn" id="identStartBtn" style="display:none">Let's go →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Capture modal -->
+<div id="captureModal" class="modal-overlay hidden">
+  <div class="modal-box">
+    <h2>Add to Notepad</h2>
+    <img id="capturePreviewImg" alt="Sim capture">
+    <div>
+      <div class="modal-label">What did you notice?</div>
+      <textarea id="captureAnnotation" placeholder="Describe what you observed, or what you're wondering…"></textarea>
+    </div>
+    <div class="modal-error" id="captureError"></div>
+    <div class="modal-row">
+      <button class="btn" id="captureSaveBtn">Save</button>
+      <button class="btn" id="captureShareBtn">Save &amp; Share</button>
+      <button class="btn" id="captureCancelBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ============================================================
 //  DOM ELEMENT REFERENCES
 // ============================================================
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-const graphCanvas = document.getElementById('graphCanvas');
-const gctx = graphCanvas.getContext('2d');
 const goBtn = document.getElementById('goBtn');
 const clearBtn = document.getElementById('clearBtn');
 const addClusterBtn = document.getElementById('addClusterBtn');
@@ -524,9 +858,6 @@ const speedSlider = document.getElementById('speedSlider');
 const speedValEl = document.getElementById('speedVal');
 const statsEl = document.getElementById('stats');
 const instructionsEl = document.getElementById('instructions');
-const kineticVal = document.getElementById('kineticVal');
-const potentialVal = document.getElementById('potentialVal');
-const totalVal = document.getElementById('totalVal');
 const protonBucket = document.getElementById('protonBucket');
 const neutronBucket = document.getElementById('neutronBucket');
 const trashCan = document.getElementById('trashCan');
@@ -563,7 +894,6 @@ let strongForceStrength = 5;    // Scales strong nuclear force (all nucleon pair
 let strongForceRange = 1.5;     // Cutoff as multiplier on 2×radius
 let equilibriumRatio = 0.6;     // Where strong force = 0; below → repulsive, above → attractive
 let damping = 1.00;             // Velocity damping per frame (1.0 = no damping)
-let ieOffset = 0;               // Display-only offset added to IE and Total (not stored in history)
 const SUBSTEPS = 20;            // Subdivisions per frame for integration accuracy
 
 // ============================================================
@@ -583,37 +913,15 @@ let dragOffsetY = 0;
 let selectedBucketType = 'proton';  // Which particle type canvas clicks place
 
 // ============================================================
-//  ENERGY HISTORY (for graph)
-// ============================================================
-const MAX_HISTORY = 6000;  // Large buffer so we can scroll back in time
-let energyHistory = [];
-
-// ============================================================
-//  GRAPH INTERACTION STATE
-// ============================================================
-let graphViewEnd = -1;      // -1 = "live" (pinned to latest). Otherwise index into energyHistory
-const GRAPH_WINDOW = 600;   // How many samples are visible at once
-let graphYZoom = 1.0;       // Y-axis zoom multiplier (>1 = zoomed in)
-let graphYAutoFit = true;   // Auto-scale Y to fit visible data
-let graphDragging = false;
-let graphDragStartX = 0;
-let graphDragStartEnd = 0;
-let graphHoverX = -1;       // Mouse X position in CSS coords, -1 = not hovering
-
-// ============================================================
 //  LAYOUT / RESIZE
 // ============================================================
 function resize() {
   const toolbarH = document.getElementById('toolbar').offsetHeight +
                    document.getElementById('tuningRow').offsetHeight;
   const mainH = window.innerHeight - toolbarH;
-  const panelW = document.getElementById('energyPanel').offsetWidth;
-  canvas.width = Math.max(canvas.parentElement.offsetWidth - panelW, 200);
+  canvas.width = Math.max(canvas.parentElement.offsetWidth, 200);
   canvas.height = mainH;
-  graphCanvas.width = graphCanvas.offsetWidth * devicePixelRatio;   // HiDPI: scale canvas buffer
-  graphCanvas.height = graphCanvas.offsetHeight * devicePixelRatio;
-  gctx.scale(devicePixelRatio, devicePixelRatio);  // Match CSS pixel coords
-  if (!running) { draw(); drawGraph(); }
+  if (!running) { draw(); }
 }
 window.addEventListener('resize', resize);
 setTimeout(resize, 0);
@@ -753,7 +1061,7 @@ window.addEventListener('mousemove', (e) => {
   p.vy = 0;
   // Highlight trash can when dragging over it
   trashCan.classList.toggle('drag-hover', isOverTrash(e));
-  if (!running) { computeEnergy(); draw(); drawGraph(); }
+  if (!running) { draw(); }
 });
 
 // Click on empty canvas = place the selected particle type
@@ -764,9 +1072,7 @@ canvas.addEventListener('click', (e) => {
   particles.push(createParticle(pos.x, pos.y, selectedBucketType));
   separateOverlaps();
   updateStats();
-  computeEnergy();
   draw();
-  drawGraph();
   hideInstructions();
 });
 
@@ -779,7 +1085,7 @@ window.addEventListener('mouseup', (e) => {
     } else {
       separateOverlaps();
     }
-    if (!running) { computeEnergy(); draw(); drawGraph(); }
+    if (!running) { draw(); }
   }
   dragging = null;
   draggingNew = false;
@@ -829,7 +1135,7 @@ addClusterBtn.addEventListener('click', () => {
   }
   separateOverlaps();
   updateStats();
-  if (!running) { computeEnergy(); draw(); drawGraph(); }
+  if (!running) { draw(); }
   hideInstructions();
 });
 
@@ -873,16 +1179,10 @@ replayBtn.addEventListener('click', () => {
   cancelAnimationFrame(animId);
   goBtn.textContent = 'Go';
   goBtn.classList.remove('running');
-  // Restore particle state and clear energy data
+  // Restore particle state
   restoreSnapshot();
-  energyHistory = [];
-  graphViewEnd = -1;  // Reset graph to live mode
-  graphYAutoFit = true;
-  graphYZoom = 1.0;
   updateStats();
-  computeEnergy();
   draw();
-  drawGraph();
   // Auto-start the simulation
   running = true;
   goBtn.textContent = 'Stop';
@@ -895,20 +1195,14 @@ replayBtn.addEventListener('click', () => {
 // ============================================================
 clearBtn.addEventListener('click', () => {
   particles = [];
-  energyHistory = [];
   snapshot = null;
   replayBtn.disabled = true;
   running = false;
   goBtn.textContent = 'Go';
   goBtn.classList.remove('running');
   cancelAnimationFrame(animId);
-  graphViewEnd = -1;
-  graphYAutoFit = true;
-  graphYZoom = 1.0;
   updateStats();
-  computeEnergy();
   draw();
-  drawGraph();
 });
 
 // ============================================================
@@ -923,8 +1217,7 @@ clearOffscreenBtn.addEventListener('click', () => {
     p.y >= -margin && p.y <= h + margin
   );
   updateStats();
-  computeEnergy();
-  if (!running) { draw(); drawGraph(); }
+  if (!running) { draw(); }
 });
 
 // ============================================================
@@ -949,23 +1242,17 @@ speedSlider.addEventListener('input', applySpeedSlider);
 coulombSlider.addEventListener('input', () => {
   coulombStrength = parseFloat(coulombSlider.value);
   coulombValEl.textContent = coulombStrength;
-  if (!running) { computeEnergy(); draw(); drawGraph(); }
+  if (!running) { draw(); }
 });
 strongSlider.addEventListener('input', () => {
   strongForceStrength = parseFloat(strongSlider.value);
   strongValEl.textContent = strongForceStrength.toFixed(1);
-  if (!running) { computeEnergy(); draw(); drawGraph(); }
+  if (!running) { draw(); }
 });
 rangeSlider.addEventListener('input', () => {
   strongForceRange = parseFloat(rangeSlider.value);
   rangeValEl.textContent = strongForceRange.toFixed(2);
-  if (!running) { computeEnergy(); draw(); drawGraph(); }
-});
-document.getElementById('ieOffsetSlider').addEventListener('input', function() {
-  ieOffset = parseFloat(this.value);
-  document.getElementById('ieOffsetVal').textContent = ieOffset.toFixed(0);
-  if (!running) drawGraph();
-  computeEnergy();
+  if (!running) { draw(); }
 });
 
 dampSlider.addEventListener('input', () => {
@@ -1027,240 +1314,6 @@ function pairForce(dist, distSq, aType, bType) {
   }
   return force;
 }
-
-// ============================================================
-//  ENERGY COMPUTATION
-// ============================================================
-function computeEnergy() {
-  let kinetic = 0;
-  let potential = 0;
-  const n = particles.length;
-
-  for (let i = 0; i < n; i++) {
-    const p = particles[i];
-    kinetic += 0.5 * (p.vx * p.vx + p.vy * p.vy);  // KE = ½mv² (unit mass)
-  }
-
-  const cutoff = strongCutoff();
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 1; j < n; j++) {
-      const dx = particles[j].x - particles[i].x;
-      const dy = particles[j].y - particles[i].y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > 0) {
-        // Coulomb potential: between protons only (with softening)
-        if (particles[i].type === 'proton' && particles[j].type === 'proton') {
-          const softDist = Math.max(dist, PARTICLE_RADIUS);
-          potential += coulombStrength / softDist;
-        }
-        // Strong force potential: quadratic well (matches spring-like force)
-        // F = -(r - eq)/span * S, so V = S/(2*span) * [(r-eq)² - span²]
-        // Referenced so V(cutoff) = 0; V(eq) = -S*span/2 (well minimum)
-        if (dist < cutoff) {
-          const eqDist = Math.max(cutoff * equilibriumRatio, PARTICLE_RADIUS * 2);
-          const span = cutoff - eqDist;
-          const dr = dist - eqDist;
-          potential += strongForceStrength / (2 * span) * (dr * dr - span * span);
-        }
-      }
-    }
-  }
-
-  kineticVal.textContent = kinetic.toFixed(1);
-  potentialVal.textContent = (potential + ieOffset).toFixed(1);
-  totalVal.textContent = (kinetic + potential + ieOffset).toFixed(1);
-
-  energyHistory.push({ kinetic, potential, total: kinetic + potential });
-  if (energyHistory.length > MAX_HISTORY) energyHistory.shift();
-
-  return { kinetic, potential };
-}
-
-// ============================================================
-//  ENERGY GRAPH (interactive: pan, zoom, crosshair)
-// ============================================================
-const graphTooltip = document.getElementById('graphTooltip');
-const graphAutoFitBtn = document.getElementById('graphAutoFit');
-const graphGoLiveBtn = document.getElementById('graphGoLive');
-
-function getVisibleRange() {
-  const len = energyHistory.length;
-  if (len === 0) return { start: 0, end: 0 };
-  // "live" mode: show the latest GRAPH_WINDOW samples
-  let end = (graphViewEnd < 0) ? len - 1 : Math.min(graphViewEnd, len - 1);
-  let start = Math.max(0, end - GRAPH_WINDOW + 1);
-  end = start + Math.min(GRAPH_WINDOW, len) - 1;  // Clamp if fewer samples
-  return { start, end };
-}
-
-function drawGraph() {
-  const w = graphCanvas.offsetWidth;
-  const h = graphCanvas.offsetHeight;
-  gctx.clearRect(0, 0, w, h);
-
-  const len = energyHistory.length;
-  if (len < 2) return;
-
-  const { start, end } = getVisibleRange();
-  const visCount = end - start + 1;
-  if (visCount < 2) return;
-
-  // Y-axis scaling: auto-fit to visible data or use manual zoom
-  let maxVal = 1;
-  for (let i = start; i <= end; i++) {
-    const e = energyHistory[i];
-    maxVal = Math.max(maxVal, Math.abs(e.kinetic), Math.abs(e.potential + ieOffset), Math.abs(e.total + ieOffset));
-  }
-  maxVal *= 1.1;
-  if (!graphYAutoFit) {
-    maxVal /= graphYZoom;  // Manual zoom: smaller maxVal = more zoomed in
-  }
-
-  const xStep = w / (GRAPH_WINDOW - 1);
-  // Align so the visible samples fill from left to right
-  const xOff = (GRAPH_WINDOW - visCount) * xStep;
-
-  function drawLine(key, color, offset = 0) {
-    gctx.strokeStyle = color;
-    gctx.lineWidth = 1.5;
-    gctx.beginPath();
-    for (let i = 0; i < visCount; i++) {
-      const x = xOff + i * xStep;
-      const val = energyHistory[start + i][key] + offset;
-      const y = h - (val / maxVal) * (h - 8) - 4;
-      if (i === 0) gctx.moveTo(x, y);
-      else gctx.lineTo(x, y);
-    }
-    gctx.stroke();
-  }
-
-  drawLine('potential', '#3b82f6', ieOffset);
-  drawLine('kinetic', '#f59e0b');
-  drawLine('total', '#22c55e', ieOffset);
-
-  // Draw crosshair and tooltip at hover position
-  if (graphHoverX >= 0 && graphHoverX <= w) {
-    // Map mouse X to sample index
-    const sampleF = (graphHoverX - xOff) / xStep;
-    const sampleI = Math.round(sampleF);
-    if (sampleI >= 0 && sampleI < visCount) {
-      const e = energyHistory[start + sampleI];
-      const crossX = xOff + sampleI * xStep;
-
-      // Vertical crosshair line
-      gctx.strokeStyle = 'rgba(255,255,255,0.25)';
-      gctx.lineWidth = 1;
-      gctx.beginPath();
-      gctx.moveTo(crossX, 0);
-      gctx.lineTo(crossX, h);
-      gctx.stroke();
-
-      // Dots on each line
-      const lines = [
-        { key: 'kinetic',   color: '#f59e0b', offset: 0 },
-        { key: 'potential', color: '#3b82f6', offset: ieOffset },
-        { key: 'total',     color: '#22c55e', offset: ieOffset },
-      ];
-      for (const l of lines) {
-        const y = h - ((e[l.key] + l.offset) / maxVal) * (h - 8) - 4;
-        gctx.fillStyle = l.color;
-        gctx.beginPath();
-        gctx.arc(crossX, y, 3, 0, Math.PI * 2);
-        gctx.fill();
-      }
-
-      // Position tooltip
-      graphTooltip.style.display = 'block';
-      graphTooltip.innerHTML =
-        `<span style="color:#f59e0b">KE</span> ${e.kinetic.toFixed(1)}<br>` +
-        `<span style="color:#3b82f6">IE</span> ${(e.potential + ieOffset).toFixed(1)}<br>` +
-        `<span style="color:#22c55e">Tot</span> ${(e.total + ieOffset).toFixed(1)}<br>` +
-        `<span style="color:#6b7280">t=${start + sampleI}</span>`;
-      // Place tooltip: prefer right of cursor, flip if near edge
-      const tipW = graphTooltip.offsetWidth;
-      let tipX = graphHoverX + 12;
-      if (tipX + tipW > w) tipX = graphHoverX - tipW - 8;
-      graphTooltip.style.left = tipX + 'px';
-      graphTooltip.style.top = '4px';
-    } else {
-      graphTooltip.style.display = 'none';
-    }
-  } else {
-    graphTooltip.style.display = 'none';
-  }
-
-  // Show "not live" indicator when scrolled back
-  if (graphViewEnd >= 0 && graphViewEnd < len - 1) {
-    gctx.fillStyle = 'rgba(255,100,100,0.7)';
-    gctx.font = '10px sans-serif';
-    gctx.textAlign = 'right';
-    gctx.fillText('PAUSED', w - 4, 12);
-  }
-}
-
-// --- Graph mouse events ---
-graphCanvas.addEventListener('mousedown', (e) => {
-  graphDragging = true;
-  const rect = graphCanvas.getBoundingClientRect();
-  graphDragStartX = e.clientX - rect.left;
-  // If live, pin to current position so drag starts from here
-  if (graphViewEnd < 0) {
-    graphViewEnd = energyHistory.length - 1;
-  }
-  graphDragStartEnd = graphViewEnd;
-});
-
-graphCanvas.addEventListener('mousemove', (e) => {
-  const rect = graphCanvas.getBoundingClientRect();
-  const mx = e.clientX - rect.left;
-  graphHoverX = mx;
-
-  if (graphDragging) {
-    const dx = mx - graphDragStartX;
-    const w = graphCanvas.offsetWidth;
-    const xStep = w / (GRAPH_WINDOW - 1);
-    const sampleShift = Math.round(-dx / xStep);  // Drag left = go back in time
-    const len = energyHistory.length;
-    graphViewEnd = Math.max(GRAPH_WINDOW - 1, Math.min(len - 1, graphDragStartEnd + sampleShift));
-    // If dragged back to the latest, go live again
-    if (graphViewEnd >= len - 1) graphViewEnd = -1;
-  }
-
-  if (!running) drawGraph();
-});
-
-graphCanvas.addEventListener('mouseup', () => {
-  graphDragging = false;
-});
-
-graphCanvas.addEventListener('mouseleave', () => {
-  graphDragging = false;
-  graphHoverX = -1;
-  graphTooltip.style.display = 'none';
-  if (!running) drawGraph();
-});
-
-// Scroll to zoom Y axis
-graphCanvas.addEventListener('wheel', (e) => {
-  e.preventDefault();
-  graphYAutoFit = false;
-  const zoomFactor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-  graphYZoom = Math.max(0.1, Math.min(100, graphYZoom * zoomFactor));
-  if (!running) drawGraph();
-}, { passive: false });
-
-// Auto-fit button: reset Y zoom to auto-scale
-graphAutoFitBtn.addEventListener('click', () => {
-  graphYAutoFit = true;
-  graphYZoom = 1.0;
-  if (!running) drawGraph();
-});
-
-// Go live button: jump to latest and pin
-graphGoLiveBtn.addEventListener('click', () => {
-  graphViewEnd = -1;
-  if (!running) drawGraph();
-});
 
 // ============================================================
 //  PHYSICS STEP (Coulomb + Strong Force + Hard-Sphere Collisions)
@@ -1608,14 +1661,762 @@ function draw() {
 function loop() {
   if (!running) return;
   step(speed);
-  computeEnergy();
   draw();
-  drawGraph();
   animId = requestAnimationFrame(loop);
 }
 
 // Initial draw
 draw();
+
+// ============================================================
+//  NOTEPAD SYSTEM
+// ============================================================
+
+// --- State ---
+let currentStudentId   = localStorage.getItem('proton_student_id')   || '';
+let currentStudentName = localStorage.getItem('proton_student_name') || '';
+const localScreenshots = new Map();  // noteId → base64 JPEG (session memory only)
+let pendingCapture = null;           // set while capture modal is open
+let rosterCache = null;              // cached after first parseConfig call
+
+// --- UI refs ---
+const notepadPanel    = document.getElementById('notepadPanel');
+const notepadBtn      = document.getElementById('notepadBtn');
+const addNoteBtn      = document.getElementById('addNoteBtn');
+const authSection     = document.getElementById('authSection');
+const notepadContent  = document.getElementById('notepadContent');
+const closeNotepadBtn  = document.getElementById('closeNotepadBtn');
+const closeNotepadBtn2 = document.getElementById('closeNotepadBtn2');
+const userNameDisplay  = document.getElementById('userNameDisplay');
+const obsList  = document.getElementById('obsList');
+const feedList = document.getElementById('feedList');
+
+const identityModal   = document.getElementById('identityModal');
+const identClassCode  = document.getElementById('identClassCode');
+const identRosterWrap = document.getElementById('identRosterWrap');
+const identRosterSel  = document.getElementById('identRosterSel');
+const identError      = document.getElementById('identError');
+const identLookupBtn  = document.getElementById('identLookupBtn');
+const identStartBtn   = document.getElementById('identStartBtn');
+
+const captureModal      = document.getElementById('captureModal');
+const capturePreviewImg = document.getElementById('capturePreviewImg');
+const captureAnnotation = document.getElementById('captureAnnotation');
+const captureError      = document.getElementById('captureError');
+const captureSaveBtn    = document.getElementById('captureSaveBtn');
+const captureShareBtn   = document.getElementById('captureShareBtn');
+const captureCancelBtn  = document.getElementById('captureCancelBtn');
+
+// --- Init ---
+window.addEventListener('load', () => {
+  if (currentStudentId && currentStudentName) {
+    activateStudent();   // returning student — skip modal
+  } else {
+    identityModal.classList.remove('hidden');
+  }
+});
+
+function activateStudent() {
+  userNameDisplay.textContent = currentStudentName;
+  authSection.style.display    = 'none';
+  notepadContent.style.display = '';
+}
+
+// --- Notepad panel ---
+function openNotepadPanel() {
+  notepadPanel.classList.add('open');
+  document.body.classList.add('notepad-open');
+  resize();
+}
+function closePanel() {
+  notepadPanel.classList.remove('open');
+  document.body.classList.remove('notepad-open');
+  resize();
+}
+notepadBtn.addEventListener('click', () => {
+  if (notepadPanel.classList.contains('open')) {
+    closePanel();
+  } else {
+    if (!currentStudentId) { identityModal.classList.remove('hidden'); return; }
+    openNotepadPanel();
+    showMyTab();
+    loadMyNotes();
+  }
+});
+closeNotepadBtn.addEventListener('click', closePanel);
+closeNotepadBtn2.addEventListener('click', closePanel);
+
+// --- Tab switching ---
+document.querySelectorAll('.ntab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.ntab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const tab = btn.dataset.tab;
+    document.getElementById('myObsTab').style.display = tab === 'my'   ? '' : 'none';
+    document.getElementById('feedTab').style.display  = tab === 'feed' ? '' : 'none';
+    if (tab === 'my')   loadMyNotes();
+    if (tab === 'feed') loadClassFeed();
+  });
+});
+
+function showMyTab() {
+  document.querySelectorAll('.ntab').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === 'my');
+  });
+  document.getElementById('myObsTab').style.display = '';
+  document.getElementById('feedTab').style.display  = 'none';
+}
+
+// ── Identity modal ────────────────────────────────────────────
+let identRoster = [];
+
+identClassCode.addEventListener('keydown', e => { if (e.key === 'Enter') identLookupBtn.click(); });
+
+identLookupBtn.addEventListener('click', async () => {
+  const code = identClassCode.value.trim();
+  if (!code) { identError.textContent = 'Enter a class code.'; return; }
+  identError.textContent = '';
+  identLookupBtn.disabled = true;
+  identLookupBtn.textContent = 'Looking up…';
+  try {
+    const cfg = await SHEETS.parseConfig();
+    rosterCache = cfg.roster;
+    if (cfg.classCode !== code) {
+      throw new Error(`Code not found. Got "${cfg.classCode}" — check with your teacher.`);
+    }
+    identRoster = cfg.roster;
+    identRosterSel.innerHTML = '<option value="" disabled selected>— pick your name —</option>';
+    cfg.roster.forEach(({ id, name }) => {
+      const opt = document.createElement('option');
+      opt.value = id; opt.textContent = name;
+      identRosterSel.appendChild(opt);
+    });
+    identRosterWrap.style.display = '';
+    identStartBtn.style.display   = '';
+    identLookupBtn.textContent    = cfg.className ? `✓ ${cfg.className}` : '✓ Class found';
+    identLookupBtn.style.cssText  = 'background:#1e3a2a;color:#4ade80;border:1px solid #166534;flex:1';
+    identLookupBtn.disabled       = false;
+  } catch(e) {
+    identError.textContent = e.message;
+    identLookupBtn.disabled = false;
+    identLookupBtn.textContent = 'Look up class';
+  }
+});
+
+identStartBtn.addEventListener('click', () => {
+  if (!identRosterSel.value) { identError.textContent = 'Pick your name first.'; return; }
+  const chosen = identRoster.find(r => r.id === identRosterSel.value);
+  currentStudentId   = chosen.id;
+  currentStudentName = chosen.name;
+  localStorage.setItem('proton_student_id',   currentStudentId);
+  localStorage.setItem('proton_student_name', currentStudentName);
+  identityModal.classList.add('hidden');
+  activateStudent();
+  openNotepadPanel();
+  loadMyNotes();
+});
+
+// Close identity modal by clicking backdrop (only if already identified)
+identityModal.addEventListener('click', e => {
+  if (e.target === identityModal && currentStudentId) {
+    identityModal.classList.add('hidden');
+  }
+});
+
+// ── Capture ───────────────────────────────────────────────────
+addNoteBtn.addEventListener('click', () => {
+  if (!currentStudentId) { identityModal.classList.remove('hidden'); return; }
+  openCaptureModal();
+});
+
+function captureCanvasAtWidth(src, maxW) {
+  const scale = Math.min(1, maxW / src.width);
+  const w = Math.round(src.width  * scale);
+  const h = Math.round(src.height * scale);
+  const tmp = document.createElement('canvas');
+  tmp.width = w; tmp.height = h;
+  tmp.getContext('2d').drawImage(src, 0, 0, w, h);
+  return tmp.toDataURL('image/jpeg', 0.88);
+}
+
+function openCaptureModal() {
+  const screenshot = captureCanvasAtWidth(canvas, 800);
+  const simState = JSON.stringify(captureSimState());
+  pendingCapture = { id: SHEETS.generateId(), simState, screenshot };
+  capturePreviewImg.src = screenshot;
+  captureAnnotation.value = '';
+  captureError.textContent = '';
+  captureSaveBtn.disabled = false;
+  captureShareBtn.disabled = false;
+  captureSaveBtn.textContent  = 'Save';
+  captureShareBtn.textContent = 'Save & Share';
+  captureModal.classList.remove('hidden');
+  captureAnnotation.focus();
+}
+
+captureModal.addEventListener('click', e => {
+  if (e.target === captureModal) closeCaptureModal();
+});
+captureCancelBtn.addEventListener('click', closeCaptureModal);
+function closeCaptureModal() {
+  captureModal.classList.add('hidden');
+  pendingCapture = null;
+}
+
+async function doSave(isPublic) {
+  if (!pendingCapture) return;
+  captureSaveBtn.disabled  = true;
+  captureShareBtn.disabled = true;
+  captureSaveBtn.textContent = 'Saving…';
+  captureError.textContent = '';
+
+  const note = {
+    id:          pendingCapture.id,
+    student_id:  currentStudentId,
+    timestamp:   new Date().toISOString(),
+    sim_version: 'v2',
+    sim_state:   pendingCapture.simState,
+    text:        captureAnnotation.value.trim(),
+    is_public:   isPublic,
+  };
+
+  // Keep screenshot in session memory — not sent to sheet (URL param size limit)
+  localScreenshots.set(note.id, pendingCapture.screenshot);
+
+  try {
+    await SHEETS.appendNote(note);
+  } catch(e) {
+    // "Failed to fetch" = CORS response dropped, but the write still landed.
+    // Any other error (non-200 status) is a real failure.
+    if (!e.message.includes('Failed to fetch')) {
+      captureError.textContent = 'Save failed: ' + e.message;
+      captureSaveBtn.disabled  = false;
+      captureShareBtn.disabled = false;
+      captureSaveBtn.textContent = 'Save';
+      return;
+    }
+  }
+  closeCaptureModal();
+  openNotepadPanel();
+  showMyTab();
+  // Optimistic: show note immediately while sheet catches up
+  obsList.innerHTML = '';
+  obsList.appendChild(buildNoteCard(note, true));
+  const hint = document.createElement('div');
+  hint.className = 'obs-empty';
+  hint.style.cssText = 'font-size:10px;padding:8px;';
+  hint.textContent = 'Saved! Loading the rest of your notes…';
+  obsList.appendChild(hint);
+  // Then verify by reloading from sheet after gviz cache window
+  setTimeout(() => loadMyNotes(note.id), 1800);
+}
+
+captureSaveBtn.addEventListener('click',  () => doSave(false));
+captureShareBtn.addEventListener('click', () => doSave(true));
+
+// ── Note loading ──────────────────────────────────────────────
+// confirmId: if set, show a banner reporting whether that note ID appeared in the sheet
+async function loadMyNotes(confirmId) {
+  if (!confirmId) obsList.innerHTML = '<div class="obs-empty">Loading…</div>';
+  try {
+    const notes = await SHEETS.readStudentNotes(currentStudentId);
+    if (notes.length === 0) {
+      obsList.innerHTML = '<div class="obs-empty">No observations yet.<br>Press <strong>+ Notepad</strong> to capture your first one.</div>';
+      return;
+    }
+    obsList.innerHTML = '';
+    if (confirmId) {
+      const confirmed = notes.some(n => n.id === confirmId);
+      const banner = document.createElement('div');
+      banner.className = 'obs-empty';
+      banner.style.cssText = `font-size:11px;padding:6px 8px;color:${confirmed ? '#4ade80' : '#f87171'}`;
+      banner.textContent = confirmed ? '✓ Saved!' : '⚠ Note may not have saved — try again.';
+      obsList.appendChild(banner);
+    }
+    for (const note of notes) {
+      obsList.appendChild(buildNoteCard(note, true));
+    }
+  } catch(e) {
+    obsList.innerHTML = `<div class="obs-empty">Couldn't load: ${e.message}</div>`;
+  }
+}
+
+async function loadClassFeed() {
+  feedList.innerHTML = '<div class="obs-empty">Loading…</div>';
+  try {
+    const notes = await SHEETS.readPublicNotes();
+    if (notes.length === 0) {
+      feedList.innerHTML = '<div class="obs-empty">No shared observations yet.</div>';
+      return;
+    }
+    feedList.innerHTML = '';
+    for (const note of notes) {
+      feedList.appendChild(buildNoteCard(note, false));
+    }
+  } catch(e) {
+    feedList.innerHTML = `<div class="obs-empty">Couldn't load feed: ${e.message}</div>`;
+  }
+}
+
+// ── Card builder ──────────────────────────────────────────────
+// isOwn=true → editable share/delete actions; isOwn=false → read-only feed card
+function buildNoteCard(note, isOwn) {
+  const card = document.createElement('div');
+  card.className = 'obs-card';
+
+  // Inline sim canvas — shows first frame as still, plays on tap
+  const wrap = document.createElement('div');
+  wrap.className = 'obs-thumb-wrap';
+
+  let parsedState = null;
+  try { if (note.sim_state) parsedState = JSON.parse(note.sim_state); } catch(e) {}
+
+  if (parsedState) {
+    const srcW = parsedState.canvasWidth  || 800;
+    const srcH = parsedState.canvasHeight || 600;
+
+    const simCv = document.createElement('canvas');
+    simCv.className = 'obs-sim-canvas';
+    simCv.style.aspectRatio = `${srcW} / ${srcH}`;
+    wrap.appendChild(simCv);
+
+    // Draw first frame once layout has resolved
+    requestAnimationFrame(() => SideSim.drawFirstFrame(simCv, parsedState));
+
+    const play = document.createElement('button');
+    play.className = 'obs-play-btn';
+    play.title = 'Play / pause';
+    play.innerHTML = '&#9654;';
+    play.addEventListener('click', () => {
+      if (SideSim.isCurrentCanvas(simCv)) {
+        SideSim.toggle();
+      } else {
+        SideSim.loadAndPlay(note.sim_state, simCv, play);
+      }
+    });
+    wrap.appendChild(play);
+  } else {
+    // Fallback for notes without sim state
+    const ph = document.createElement('div');
+    ph.className = 'obs-thumb-placeholder';
+    ph.style.height = '90px';
+    ph.textContent = isOwn ? '' : getStudentName(note.student_id);
+    wrap.appendChild(ph);
+  }
+
+  card.appendChild(wrap);
+
+  // Meta row
+  const meta = document.createElement('div');
+  meta.className = 'obs-meta';
+  if (!isOwn) {
+    const nm = document.createElement('span');
+    nm.className = 'obs-student';
+    nm.textContent = getStudentName(note.student_id);
+    meta.appendChild(nm);
+  }
+  const ts = document.createElement('span');
+  ts.textContent = new Date(note.timestamp).toLocaleString();
+  meta.appendChild(ts);
+  if (isOwn && note.is_public) {
+    const badge = document.createElement('span');
+    badge.style.cssText = 'color:#60a5fa;font-size:10px';
+    badge.textContent = '✓ Shared';
+    meta.appendChild(badge);
+  }
+  card.appendChild(meta);
+
+  // Annotation text
+  if (note.text) {
+    const ro = document.createElement('div');
+    ro.className = 'obs-annotation-ro';
+    ro.textContent = note.text;
+    card.appendChild(ro);
+  }
+
+  // Actions (own notes only)
+  if (isOwn && !note.is_public) {
+    const actions = document.createElement('div');
+    actions.className = 'obs-actions';
+    const shareBtn = document.createElement('button');
+    shareBtn.className = 'obs-btn obs-btn-share';
+    shareBtn.textContent = 'Share to class feed';
+    shareBtn.addEventListener('click', async () => {
+      shareBtn.disabled = true;
+      shareBtn.textContent = 'Sharing…';
+      try {
+        await SHEETS.updateNote(note.id, { is_public: true });
+        note.is_public = true;
+        card.replaceWith(buildNoteCard(note, true));
+      } catch(e) {
+        shareBtn.disabled = false;
+        shareBtn.textContent = 'Share to class feed';
+      }
+    });
+    actions.appendChild(shareBtn);
+    card.appendChild(actions);
+  }
+
+  return card;
+}
+
+// ── Roster name lookup ────────────────────────────────────────
+function getStudentName(studentId) {
+  if (rosterCache) {
+    const found = rosterCache.find(r => r.id === studentId);
+    if (found) return found.name;
+  }
+  return studentId;
+}
+
+// ── SideSim: inline simulation player, one instance shared across all cards ──
+//
+//  Only one card plays at a time.  loadAndPlay() attaches to a specific card
+//  canvas; clicking play on a different card stops the previous one first.
+//  drawFirstFrame() renders a still to any canvas without disrupting playback.
+//
+const SideSim = (() => {
+  let cv = null, cx = null;
+  let hmCv = document.createElement('canvas'), hmCx = hmCv.getContext('2d');
+  let parts = [], running = false, animId = null;
+  let activePlayBtn = null;   // button on the currently playing card
+  let coulomb = 30, strong = 5, range = 1.5, eq = 0.6, damp = 1.0, spd = 1.5;
+  let vizMode = 'heatmap';
+  const R = 10, SUB = 20;
+
+  function pairForce(dist, dSq, at, bt) {
+    let f = 0;
+    if (at === 'proton' && bt === 'proton') f += coulomb / Math.max(dSq, R * R);
+    const cut = R * 2 * range;
+    if (dist < cut) {
+      const eqDist = Math.max(cut * eq, R * 2);
+      f -= ((dist - eqDist) / (cut - eqDist)) * strong;
+    }
+    return f;
+  }
+
+  function step(dt) {
+    const n = parts.length, subDt = dt / SUB;
+    for (let s = 0; s < SUB; s++) {
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const a = parts[i], b = parts[j];
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const dSq = dx * dx + dy * dy, d = Math.sqrt(dSq);
+          if (d < 0.01) continue;
+          const force = pairForce(d, dSq, a.type, b.type);
+          const fx = force * (dx / d), fy = force * (dy / d);
+          a.vx -= fx * subDt; a.vy -= fy * subDt;
+          b.vx += fx * subDt; b.vy += fy * subDt;
+        }
+      }
+      for (let i = 0; i < n; i++) { parts[i].x += parts[i].vx * subDt; parts[i].y += parts[i].vy * subDt; }
+      const minSep = R * 2;
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const a = parts[i], b = parts[j];
+          let dx = b.x - a.x, dy = b.y - a.y, dSq = dx * dx + dy * dy;
+          if (dSq >= minSep * minSep) continue;
+          let d = Math.sqrt(dSq);
+          if (d < 0.001) { dx = 1; dy = 0; d = 0.001; }
+          const nx = dx / d, ny = dy / d, ov = minSep - d;
+          a.x -= nx * ov * 0.5; a.y -= ny * ov * 0.5;
+          b.x += nx * ov * 0.5; b.y += ny * ov * 0.5;
+          const dvn = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+          if (dvn < 0) {
+            const h = dvn * 0.5;
+            a.vx += h * nx; a.vy += h * ny; b.vx -= h * nx; b.vy -= h * ny;
+          }
+        }
+      }
+    }
+    if (damp < 1.0) for (let i = 0; i < n; i++) { parts[i].vx *= damp; parts[i].vy *= damp; }
+  }
+
+  function drawHeatmap() {
+    const fw = cv.width, fh = cv.height, sc = 0.5, inv = 2;
+    const w = Math.ceil(fw * sc), h = Math.ceil(fh * sc);
+    hmCv.width = w; hmCv.height = h;
+    const id = hmCx.createImageData(w, h), data = id.data;
+    const pl = parts.filter(p => p.type === 'proton'), np = pl.length;
+    if (np < 2) return;
+    const ex = new Float32Array(np), ey = new Float32Array(np);
+    const minRSq = R * R, sens = 5000, iln = 1 / Math.log(1 + sens * 0.02);
+    for (let py = 0; py < h; py++) {
+      const wy = py * inv;
+      for (let px = 0; px < w; px++) {
+        const wx = px * inv;
+        for (let i = 0; i < np; i++) {
+          const ddx = wx - pl[i].x, ddy = wy - pl[i].y;
+          let rSq = ddx * ddx + ddy * ddy;
+          if (rSq < minRSq) rSq = minRSq;
+          const r = Math.sqrt(rSq), fm = coulomb / (rSq * r);
+          ex[i] = ddx * fm; ey[i] = ddy * fm;
+        }
+        let inter = 0;
+        for (let i = 0; i < np; i++) for (let j = i + 1; j < np; j++) inter += 2 * (ex[i] * ex[j] + ey[i] * ey[j]);
+        if (inter < 0) {
+          let mag = Math.log(1 + sens * (-inter)) * iln;
+          if (mag > 1) mag = 1;
+          const ci = (mag * 255) | 0, di = (py * w + px) * 4, ci4 = ci * 4;
+          data[di] = COLORMAP[ci4]; data[di+1] = COLORMAP[ci4+1]; data[di+2] = COLORMAP[ci4+2]; data[di+3] = COLORMAP[ci4+3];
+        }
+      }
+    }
+    hmCx.putImageData(id, 0, 0);
+    cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'high';
+    cx.drawImage(hmCv, 0, 0, fw, fh);
+  }
+
+  function drawViz() {
+    const pl = parts.filter(p => p.type === 'proton');
+    if (pl.length < 2) return;
+    const ref = coulomb / (R * 2);
+    for (let i = 0; i < pl.length; i++) {
+      for (let j = i + 1; j < pl.length; j++) {
+        const a = pl[i], b = pl[j];
+        const dx = b.x - a.x, dy = b.y - a.y, dist = Math.sqrt(dx * dx + dy * dy);
+        if (!dist) continue;
+        const mag = Math.min(1, (coulomb / dist) / ref);
+        if (mag < 0.005) continue;
+        if (vizMode === 'ribbon') {
+          cx.lineWidth = dist <= 30 ? R * 2 : Math.max(0.5, R * 2 - (dist - 30) * (15 / 270));
+          cx.strokeStyle = `rgba(120,190,255,${Math.min(1, mag * 3)})`;
+          cx.beginPath(); cx.moveTo(a.x, a.y); cx.lineTo(b.x, b.y); cx.stroke();
+        } else {
+          const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, br = dist * 0.8 + 40;
+          const ce = Math.min(0.92, 20 / br), ca = Math.min(1, mag * mag * mag * 20), cla = Math.min(0.45, mag * 1.8);
+          const g = cx.createRadialGradient(mx, my, 0, mx, my, br);
+          g.addColorStop(0, `rgba(220,240,255,${Math.max(ca, cla)})`);
+          g.addColorStop(ce, `rgba(140,200,255,${cla})`);
+          g.addColorStop(0.55, `rgba(70,140,240,${cla * 0.2})`);
+          g.addColorStop(0.75, 'rgba(30,80,200,0)');
+          cx.fillStyle = g; cx.beginPath(); cx.arc(mx, my, br, 0, Math.PI * 2); cx.fill();
+        }
+      }
+    }
+  }
+
+  function draw() {
+    if (!cv) return;
+    cx.clearRect(0, 0, cv.width, cv.height);
+    if (vizMode === 'heatmap' && parts.length > 0) drawHeatmap();
+    else if ((vizMode === 'ribbon' || vizMode === 'cloud') && parts.length >= 2) drawViz();
+    for (const p of parts) {
+      const ip = p.type === 'proton';
+      const g = cx.createRadialGradient(p.x, p.y, 0, p.x, p.y, R * 2.5);
+      g.addColorStop(0, ip ? 'rgba(255,80,80,0.4)' : 'rgba(160,160,200,0.3)');
+      g.addColorStop(1, ip ? 'rgba(255,80,80,0)' : 'rgba(160,160,200,0)');
+      cx.fillStyle = g; cx.beginPath(); cx.arc(p.x, p.y, R * 2.5, 0, Math.PI * 2); cx.fill();
+      const bg = cx.createRadialGradient(p.x - 3, p.y - 3, 1, p.x, p.y, R);
+      if (ip) { bg.addColorStop(0, '#ff9999'); bg.addColorStop(0.7, '#ff4444'); bg.addColorStop(1, '#cc2222'); }
+      else    { bg.addColorStop(0, '#ccccdd'); bg.addColorStop(0.7, '#8888aa'); bg.addColorStop(1, '#666688'); }
+      cx.fillStyle = bg; cx.beginPath(); cx.arc(p.x, p.y, R, 0, Math.PI * 2); cx.fill();
+      cx.fillStyle = '#fff'; cx.font = 'bold 12px sans-serif';
+      cx.textAlign = 'center'; cx.textBaseline = 'middle';
+      cx.fillText(ip ? '+' : 'n', p.x, p.y + 1);
+    }
+  }
+
+  function loop() { if (!running) return; step(spd); draw(); animId = requestAnimationFrame(loop); }
+
+  // Apply sim state onto a given canvas (scales particles to fit)
+  function applyState(state, targetCv) {
+    coulomb = state.coulombStrength     ?? 30;
+    strong  = state.strongForceStrength ?? 5;
+    range   = state.strongForceRange    ?? 1.5;
+    eq      = state.equilibriumRatio    ?? 0.6;
+    damp    = state.damping             ?? 1.0;
+    spd     = state.speed               ?? 1.5;
+    vizMode = state.coulombVizMode      ?? 'heatmap';
+    const srcW = state.canvasWidth  || targetCv.width;
+    const srcH = state.canvasHeight || targetCv.height;
+    const scale = Math.min(targetCv.width / srcW, targetCv.height / srcH);
+    const offX  = (targetCv.width  - srcW * scale) / 2;
+    const offY  = (targetCv.height - srcH * scale) / 2;
+    parts = (state.particles || []).map(p => ({
+      x:  p.x  * scale + offX,
+      y:  p.y  * scale + offY,
+      vx: (p.vx || 0) * scale,
+      vy: (p.vy || 0) * scale,
+      type: p.type || 'proton',
+    }));
+  }
+
+  // Size a canvas buffer to match its current CSS layout dimensions
+  function fitBuffer(targetCv) {
+    const w = targetCv.offsetWidth, h = targetCv.offsetHeight;
+    if (w > 0 && h > 0 && (targetCv.width !== w || targetCv.height !== h)) {
+      targetCv.width = w; targetCv.height = h;
+    }
+  }
+
+  // Render one still frame onto any canvas without disrupting active playback
+  function drawFirstFrame(targetCv, state) {
+    if (running && cv === targetCv) return; // already live on this canvas
+    fitBuffer(targetCv);
+    if (!targetCv.width || !targetCv.height) return; // not laid out yet
+    const savedCv = cv, savedCx = cx;
+    cv = targetCv; cx = targetCv.getContext('2d');
+    applyState(state, targetCv);
+    draw();
+    cv = savedCv; cx = savedCx;
+    // Note: parts/params now reflect this card's state.
+    // They'll be fully overridden by the next loadAndPlay() call.
+  }
+
+  function stop() {
+    running = false;
+    cancelAnimationFrame(animId);
+    if (activePlayBtn) activePlayBtn.innerHTML = '&#9654;';
+    // Keep activePlayBtn set so toggle() can resume on the same card
+    if (cv) draw(); // freeze on last rendered frame
+  }
+
+  // Attach to a specific card's canvas and start playing
+  function loadAndPlay(simStateJson, targetCv, playBtn) {
+    // Reset the previous card's button before switching
+    if (activePlayBtn && activePlayBtn !== playBtn) activePlayBtn.innerHTML = '&#9654;';
+    running = false;
+    cancelAnimationFrame(animId);
+
+    let state;
+    try { state = JSON.parse(simStateJson); } catch(e) { return; }
+
+    cv = targetCv;
+    cx = targetCv.getContext('2d');
+    activePlayBtn = playBtn;
+
+    fitBuffer(cv);
+    applyState(state, cv);
+
+    if (activePlayBtn) activePlayBtn.innerHTML = '&#9646;&#9646;';
+    running = true;
+    loop();
+  }
+
+  // Toggle pause/resume on the currently attached canvas
+  function toggle() {
+    if (!cv) return;
+    if (running) {
+      stop();
+    } else {
+      running = true;
+      if (activePlayBtn) activePlayBtn.innerHTML = '&#9646;&#9646;';
+      loop();
+    }
+  }
+
+  function isCurrentCanvas(targetCv) { return cv === targetCv; }
+
+  return { drawFirstFrame, loadAndPlay, toggle, isCurrentCanvas, stop };
+})();
+
+// ── captureSimState / applySimState ──────────────────────────
+//
+//  Single source of truth for what goes into and comes out of a
+//  saved note's simState JSON.  To add a new parameter:
+//    1. Add it to captureSimState() return value.
+//    2. Add the matching restore line in applySimState().
+//    3. Add the matching restore line in SideSim.loadAndPlay().
+//
+function captureSimState() {
+  const r2 = v => Math.round(v * 100) / 100;
+  return {
+    // ── Canvas dimensions (used to scale particles on playback) ──
+    canvasWidth:  canvas.width,
+    canvasHeight: canvas.height,
+
+    // ── Physics ──────────────────────────────────────────────────
+    coulombStrength,        // Coulomb repulsion strength (proton-proton)
+    strongForceStrength,    // Strong force attraction strength
+    strongForceRange,       // Strong force cutoff as multiplier on 2×radius
+    equilibriumRatio,       // Fraction of cutoff where strong force = 0
+    damping,                // Velocity damping per frame (1.0 = none)
+    speed,                  // Internal dt (display speed = speed × 2)
+
+    // ── Visualization ─────────────────────────────────────────────
+    coulombVizMode,         // "heatmap" | "ribbon" | "cloud" | "none"
+
+    // ── Particles ─────────────────────────────────────────────────
+    particles: particles.map(p => ({
+      x:    r2(p.x),
+      y:    r2(p.y),
+      vx:   r2(p.vx),
+      vy:   r2(p.vy),
+      type: p.type,         // "proton" | "neutron"
+    })),
+  };
+}
+
+// Restore all sim state onto the main canvas and its UI controls.
+// Each block is intentionally independent so partial states still work.
+function applySimState(state) {
+  // Physics
+  if (state.coulombStrength !== undefined) {
+    coulombStrength = state.coulombStrength;
+    coulombSlider.value = coulombStrength;
+    coulombValEl.textContent = coulombStrength;
+  }
+  if (state.strongForceStrength !== undefined) {
+    strongForceStrength = state.strongForceStrength;
+    strongSlider.value = strongForceStrength;
+    strongValEl.textContent = strongForceStrength.toFixed(1);
+  }
+  if (state.strongForceRange !== undefined) {
+    strongForceRange = state.strongForceRange;
+    rangeSlider.value = strongForceRange;
+    rangeValEl.textContent = strongForceRange.toFixed(2);
+  }
+  if (state.equilibriumRatio !== undefined) {
+    equilibriumRatio = state.equilibriumRatio;
+    // (no UI control for this in v2 — physics-only)
+  }
+  if (state.damping !== undefined) {
+    damping = state.damping;
+    dampSlider.value = damping;
+    dampValEl.textContent = damping.toFixed(2);
+  }
+  if (state.speed !== undefined) {
+    speed = state.speed;
+    const idx = SPEED_STOPS.reduce((best, s, i) =>
+      Math.abs(s - speed * 2) < Math.abs(SPEED_STOPS[best] - speed * 2) ? i : best, 0);
+    speedSlider.value = idx;
+    speedValEl.textContent = (speed * 2).toFixed(1);
+  }
+  // Visualization
+  if (state.coulombVizMode !== undefined) {
+    coulombVizMode = state.coulombVizMode;
+    const radio = document.querySelector(`input[name="coulombViz"][value="${coulombVizMode}"]`);
+    if (radio) radio.checked = true;
+  }
+  // Particles
+  particles = (state.particles || []).map(p => ({
+    x: p.x, y: p.y, vx: p.vx || 0, vy: p.vy || 0, type: p.type || 'proton',
+  }));
+  updateStats();
+  draw();
+}
+
+// ── Load sim state from a note into the main canvas ───────────
+function loadSimState(simStateJson) {
+  try {
+    const state = JSON.parse(simStateJson);
+    running = false;
+    cancelAnimationFrame(animId);
+    goBtn.textContent = 'Go';
+    goBtn.classList.remove('running');
+    applySimState(state);
+    running = true;
+    goBtn.textContent = 'Stop';
+    goBtn.classList.add('running');
+    takeSnapshot();
+    loop();
+    closePanel();
+  } catch(e) {
+    console.error('loadSimState failed:', e);
+  }
+}
 </script>
 </body>
 </html>
