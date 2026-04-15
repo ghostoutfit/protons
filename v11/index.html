@@ -50,14 +50,13 @@
      ======================================== */
   #main {
     position: fixed;
-    inset: 0;
+    top: 0; left: 0; right: 0;
+    bottom: 38px;  /* stop above scrubBar so the slider receives events */
     z-index: 0;
   }
 
   #canvas {
     display: block;
-    width: 100%;
-    height: 100%;
     cursor: default;
   }
 
@@ -587,26 +586,6 @@
   }
 
   /* ========================================
-     INSTRUCTIONS OVERLAY
-     ======================================== */
-  #instructions {
-    position: absolute;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--ui-bg);
-    backdrop-filter: blur(10px);
-    border: 1px solid var(--ui-border);
-    border-radius: 8px;
-    padding: 8px 18px;
-    font-size: 12px;
-    color: var(--text-dim);
-    pointer-events: none;
-    text-align: center;
-    transition: opacity 0.5s;
-    white-space: nowrap;
-  }
-
   .cluster-inputs { display: flex; align-items: center; gap: 6px; }
   .cluster-label {
     font-size: 12px; color: var(--text-dim);
@@ -703,7 +682,7 @@
 <div id="main">
   <canvas id="canvas"></canvas>
 
-  <div id="instructions">Drag particles to reposition. Use "Add Cluster" to place particles.</div>
+
 </div>
 
 <div id="scrubBar">
@@ -722,7 +701,6 @@ const goBtn = document.getElementById('goBtn');
 const replayBtn = document.getElementById('replayBtn');
 const speedSlider = document.getElementById('speedSlider');
 const statsEl = document.getElementById('stats');
-const instructionsEl = document.getElementById('instructions');
 const timeSlider  = document.getElementById('timeSlider');
 const timeLabelEl = document.getElementById('timeLabel');
 
@@ -740,6 +718,7 @@ let speed = 1.5;  // Internal dt per frame (display speed = speed * 2)
 const MAX_HISTORY = 4000;
 let particleHistory = [];
 let scrubFrame = -1;
+let replaying = false;  // true while auto-playing back recorded history
 
 // ---- Visualization toggles ----
 let showElectricField = true;   // Toggle for Coulomb heatmap
@@ -756,10 +735,18 @@ let currentTab = 'proton';    // 'proton' | 'nucleus'
 // ============================================================
 //  QUANTUM: NUCLEAR STABILITY + NEUTRON DECAY CASCADE
 // ============================================================
-const STABILITY_TABLE = { 1:2, 2:2, 3:4, 4:6, 5:6, 6:8, 7:8, 8:10, 9:10, 10:12 };
+// Max stable neutrons per proton count — excess triggers neutron decay
+const STABILITY_TABLE = { 1:2, 2:2, 3:4, 4:6, 5:6, 6:7, 7:8, 8:10, 9:10, 10:12, 20:28, 36:50 };
 function maxStableNeutrons(z) {
   if (z <= 0) return 0;
   return STABILITY_TABLE[z] !== undefined ? STABILITY_TABLE[z] : Math.floor(z * 1.5);
+}
+
+// Min stable neutrons per proton count — deficit weakens the strong force
+const MIN_STABLE_TABLE = { 1:0, 2:1, 6:6, 20:20, 36:42 };
+function minStableNeutrons(z) {
+  if (z <= 0) return 0;
+  return MIN_STABLE_TABLE[z] !== undefined ? MIN_STABLE_TABLE[z] : 0;
 }
 
 const QUANTUM_ESCAPE_SPEED = 4.0;  // px/frame for ejected neutron
@@ -935,8 +922,9 @@ let dragOffsetY = 0;
 //  LAYOUT / RESIZE
 // ============================================================
 function resize() {
+  const scrubH = document.getElementById('scrubBar').offsetHeight;
   canvas.width  = window.innerWidth;
-  canvas.height = window.innerHeight;
+  canvas.height = window.innerHeight - scrubH;
   if (!running) draw();
 }
 window.addEventListener('resize', resize);
@@ -1164,6 +1152,7 @@ function buildRandomProtons(n) {
 // ============================================================
 function resetSim() {
   running = false;
+  replaying = false;
   cancelAnimationFrame(animId);
   goBtn.textContent = 'Go';
   goBtn.classList.remove('running');
@@ -1181,8 +1170,15 @@ function resetSim() {
 function placeCluster(numProtons, numNeutrons, spacing) {
   resetSim();
 
-  const nzRatio = numProtons > 0 ? numNeutrons / numProtons : 1.0;
-  strongForceStrength = Math.min(1.0, Math.max(0.01, 2 * nzRatio - 1));
+  const deficit = minStableNeutrons(numProtons) - numNeutrons;
+  if (deficit > 0) {
+    // Too few neutrons for this proton count: weaken strong force so the nucleus
+    // falls apart. deficit 1–3 → 0.5, deficit 4–6 → 0.4, deficit 7–9 → 0.3, …
+    strongForceStrength = Math.max(0.05, 0.5 - Math.floor((deficit - 1) / 3) * 0.1);
+  } else {
+    const nzRatio = numProtons > 0 ? numNeutrons / numProtons : 1.0;
+    strongForceStrength = Math.min(1.0, Math.max(0.01, 2 * nzRatio - 1));
+  }
 
   const cx = canvas.width / 2, cy = canvas.height / 2;
   const cluster = buildPackedCluster(numProtons, numNeutrons, spacing);
@@ -1231,11 +1227,16 @@ function restoreSnapshot() {
 //  GO / STOP BUTTON
 // ============================================================
 goBtn.addEventListener('click', () => {
+  replaying = false;
   running = !running;
   goBtn.textContent = running ? 'Stop' : 'Go';
   goBtn.classList.toggle('running', running);
   if (running) {
-    takeSnapshot();  // Snapshot state at simulation start
+    particleHistory = [];
+    scrubFrame = -1;
+    timeSlider.disabled = true;
+    timeLabelEl.textContent = '–';
+    takeSnapshot();
     loop();
   } else {
     cancelAnimationFrame(animId);
@@ -1246,22 +1247,20 @@ goBtn.addEventListener('click', () => {
 //  REPLAY BUTTON
 // ============================================================
 replayBtn.addEventListener('click', () => {
-  if (!snapshot) return;
-  // Stop current simulation if running
-  running = false;
+  if (!particleHistory.length) return;
   cancelAnimationFrame(animId);
-  goBtn.textContent = 'Go';
-  goBtn.classList.remove('running');
-  // Restore particle state
-  restoreSnapshot();
-  updateStats();
-  computeEnergy();
-  draw();
-  // Auto-start the simulation
+  running = false;
+  replaying = false;
+  scrubFrame = 0;
+  timeSlider.value = 0;
+  timeLabelEl.textContent = `1 / ${particleHistory.length}`;
+  renderFrame(0);
+  // Auto-play through recorded history
+  replaying = true;
   running = true;
   goBtn.textContent = 'Stop';
   goBtn.classList.add('running');
-  loop();
+  animId = requestAnimationFrame(loop);
 });
 
 
@@ -1477,10 +1476,7 @@ document.querySelectorAll('.awheel-item[data-mode]').forEach(btn => {
 // ============================================================
 //  UI HELPERS
 // ============================================================
-function hideInstructions() {
-  instructionsEl.style.opacity = '0';
-  setTimeout(() => instructionsEl.style.display = 'none', 500);
-}
+function hideInstructions() { /* removed */ }
 
 function updateStats() {
   const np = particles.filter(p => p.type === 'proton').length;
@@ -2243,34 +2239,6 @@ function draw() {
   if (currentTabIsProton) drawProtonForceArrows();
 
   ctx.restore();
-
-  // Remove ejected neutrons once off-screen. Non-ejected particles
-  // (the nucleus, even if drifted off-screen) are always kept.
-  if (currentTab === 'nucleus') {
-    const margin = PARTICLE_RADIUS * 4;
-    particles = particles.filter(p =>
-      !p.ejected ||
-      (p.x > -margin && p.x < canvas.width  + margin &&
-       p.y > -margin && p.y < canvas.height + margin)
-    );
-  }
-
-  // In proton tab: auto-remove particles that have flown very far off-screen
-  if (currentTab !== 'nucleus') {
-    const farMargin = Math.max(canvas.width, canvas.height) * 2;
-    const kept = [];
-    let newDragging = null;
-    for (let i = 0; i < particles.length; i++) {
-      const p = particles[i];
-      if (p.x > -farMargin && p.x < canvas.width  + farMargin &&
-          p.y > -farMargin && p.y < canvas.height + farMargin) {
-        if (i === dragging) newDragging = kept.length;
-        kept.push(p);
-      }
-    }
-    particles = kept;
-    dragging  = newDragging;
-  }
 }
 
 // ============================================================
@@ -2279,39 +2247,63 @@ function draw() {
 function renderFrame(idx) {
   const frame = particleHistory[idx];
   if (!frame) return;
-  const saved = particles;
+  const savedParticles = particles;
+  const savedDragging  = dragging;
   particles = frame.p.map(p => ({ ...p }));
+  dragging  = null;
   draw();
-  particles = saved;
+  particles = savedParticles;
+  dragging  = savedDragging;
 }
 
 timeSlider.addEventListener('input', () => {
-  const val = parseInt(timeSlider.value);
-  if (val >= particleHistory.length - 1) {
-    scrubFrame = -1;
-    timeLabelEl.textContent = `${particleHistory.length}`;
-  } else {
-    scrubFrame = val;
-    timeLabelEl.textContent = `${val + 1} / ${particleHistory.length}`;
-    if (!running) renderFrame(val);
+  // Stop any running animation so the user can scrub freely
+  if (running || replaying) {
+    running = false;
+    replaying = false;
+    cancelAnimationFrame(animId);
+    goBtn.textContent = 'Go';
+    goBtn.classList.remove('running');
   }
+  const val = parseInt(timeSlider.value);
+  scrubFrame = val;
+  timeLabelEl.textContent = `${val + 1} / ${particleHistory.length}`;
+  renderFrame(val);
 });
 
 // ============================================================
 //  ANIMATION LOOP
-//  Called once per animation frame while running.
-//  Order: physics → energy → visuals → schedule next frame.
+//  Three modes:
+//    replaying  — auto-advance scrubFrame through recorded history
+//    scrubFrame >= 0 (unused in normal flow; kept for safety)
+//    live physics — step sim, record history, auto-stop when empty
 // ============================================================
 function loop() {
   if (!running) return;
 
-  if (scrubFrame >= 0) {
+  // ── Replay mode: play back recorded history automatically ──
+  if (replaying) {
+    scrubFrame++;
+    if (scrubFrame >= particleHistory.length) {
+      // Reached end of recording — stop
+      scrubFrame = particleHistory.length - 1;
+      running = false;
+      replaying = false;
+      goBtn.textContent = 'Go';
+      goBtn.classList.remove('running');
+      timeSlider.value = scrubFrame;
+      timeLabelEl.textContent = `${scrubFrame + 1} / ${particleHistory.length}`;
+      renderFrame(scrubFrame);
+      return;
+    }
+    timeSlider.value = scrubFrame;
     timeLabelEl.textContent = `${scrubFrame + 1} / ${particleHistory.length}`;
     renderFrame(scrubFrame);
     animId = requestAnimationFrame(loop);
     return;
   }
 
+  // ── Live physics ──
   updateQuantumStability();
   step(speed);
   computeEnergy();
@@ -2326,6 +2318,49 @@ function loop() {
   timeLabelEl.textContent = `${particleHistory.length}`;
 
   draw();
+
+  // Remove particles that have left the visible screen by more than 30%.
+  // Threshold is in screen space so zoom level determines how far particles
+  // travel in physics coords before being culled.
+  {
+    const cx = canvas.width / 2, cy = canvas.height / 2;
+    const mw = canvas.width  * 0.3;
+    const mh = canvas.height * 0.3;
+    if (currentTab === 'nucleus') {
+      // Never remove bound (non-ejected) nucleus particles even if they drift off-screen
+      particles = particles.filter(p => {
+        if (!p.ejected) return true;
+        const sx = zoom * (p.x - cx) + cx;
+        const sy = zoom * (p.y - cy) + cy;
+        return sx > -mw && sx < canvas.width  + mw &&
+               sy > -mh && sy < canvas.height + mh;
+      });
+    } else {
+      const kept = [];
+      let newDragging = null;
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+        const sx = zoom * (p.x - cx) + cx;
+        const sy = zoom * (p.y - cy) + cy;
+        if (sx > -mw && sx < canvas.width  + mw &&
+            sy > -mh && sy < canvas.height + mh) {
+          if (i === dragging) newDragging = kept.length;
+          kept.push(p);
+        }
+      }
+      particles = kept;
+      dragging  = newDragging;
+    }
+  }
+
+  // Auto-stop when all particles have escaped off-screen
+  if (particles.length === 0) {
+    running = false;
+    goBtn.textContent = 'Go';
+    goBtn.classList.remove('running');
+    return;
+  }
+
   animId = requestAnimationFrame(loop);
 }
 
@@ -2649,7 +2684,13 @@ function ambientLoop() {
   refreshParticleGrain();
   updateJitter(); // always update, applied in draw() regardless of running state
   if (!running) {
-    draw();
+    // When showing a historical frame, re-render it so jitter stays live.
+    // When no history is loaded, just draw the current particle state.
+    if (scrubFrame >= 0) {
+      renderFrame(scrubFrame);
+    } else {
+      draw();
+    }
   }
   ambientId = requestAnimationFrame(ambientLoop);
 }
