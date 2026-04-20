@@ -1,0 +1,1478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nuclear Fission — v13</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  /* ── Variables ─────────────────────────────────────────────────────────── */
+  :root {
+    --accent1:      #ff2d78;
+    --accent1-dim:  rgba(255,45,120,0.22);
+    --accent1-glow: rgba(255,45,120,0.55);
+    --accent2:      #1a6eff;
+    --accent2-dim:  rgba(26,110,255,0.18);
+    --accent2-glow: rgba(26,110,255,0.45);
+    --ui-bg:        rgba(8,6,24,0.42);
+    --ui-border:    rgba(255,255,255,0.07);
+    --text-dim:     rgba(220,215,255,0.55);
+    --text-bright:  rgba(240,235,255,0.92);
+  }
+
+  /* ── Reset & base ──────────────────────────────────────────────────────── */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #05040f;
+    color: var(--text-bright);
+    font-family: 'JetBrains Mono', monospace;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+  }
+  button, input, select {
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ── Full-viewport canvas ──────────────────────────────────────────────── */
+  #canvas {
+    position: fixed;
+    top: 0; left: 0;
+    display: block;
+    z-index: 0;
+  }
+
+  /* ── Toolbar — floating glass overlay ─────────────────────────────────── */
+  #toolbar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 20px 12px;
+    background: var(--ui-bg);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.55);
+  }
+
+  .toolbar-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+
+  /* ── Tab bar ───────────────────────────────────────────────────────────── */
+  #tabBar {
+    display: flex;
+    gap: 8px;
+  }
+  .tab-btn {
+    padding: 4px 16px;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    color: rgba(255,255,255,0.18);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: none;
+    text-shadow: none;
+    font-family: inherit;
+  }
+  .tab-btn:hover {
+    color: rgba(255,255,255,0.38);
+    border-color: rgba(255,255,255,0.12);
+  }
+  .tab-btn.active {
+    color: #fff;
+    border-color: var(--accent1);
+    background: var(--accent1-dim);
+    box-shadow:
+      inset 0 0 6px var(--accent1-dim),
+      0 0 2px var(--accent1),
+      0 0 8px var(--accent1),
+      0 0 18px var(--accent1-glow),
+      0 0 40px var(--accent1-dim),
+      0 0 70px var(--accent1-dim);
+    text-shadow:
+      0 0 4px #fff,
+      0 0 10px var(--accent1),
+      0 0 22px var(--accent1-glow),
+      0 0 44px var(--accent1-dim);
+  }
+
+  /* ── Buttons ───────────────────────────────────────────────────────────── */
+  .btn {
+    padding: 4px 14px;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: transparent;
+    color: rgba(255,255,255,0.18);
+    box-shadow: none;
+    text-shadow: none;
+    white-space: nowrap;
+    font-family: inherit;
+  }
+  .btn:hover {
+    color: rgba(255,255,255,0.38);
+    border-color: rgba(255,255,255,0.12);
+  }
+
+  /* Go — neon pink */
+  #goBtn {
+    border-color: var(--accent1);
+    color: rgba(255,255,255,0.5);
+    background: var(--accent1-dim);
+    box-shadow:
+      inset 0 0 6px var(--accent1-dim),
+      0 0 2px var(--accent1),
+      0 0 8px var(--accent1),
+      0 0 18px var(--accent1-glow),
+      0 0 40px var(--accent1-dim),
+      0 0 70px var(--accent1-dim);
+    text-shadow:
+      0 0 4px rgba(255,255,255,0.5),
+      0 0 10px var(--accent1),
+      0 0 22px var(--accent1-glow),
+      0 0 44px var(--accent1-dim);
+  }
+  #goBtn:hover {
+    background: var(--accent1-glow);
+    box-shadow:
+      inset 0 0 10px var(--accent1-glow),
+      0 0 4px var(--accent1),
+      0 0 14px var(--accent1),
+      0 0 28px var(--accent1-glow),
+      0 0 60px var(--accent1-dim),
+      0 0 100px var(--accent1-dim);
+  }
+  /* Running / reset state — neon red */
+  #goBtn.running {
+    border-color: #ff4040;
+    color: rgba(255,255,255,0.5);
+    background: rgba(255,40,40,0.15);
+    box-shadow:
+      inset 0 0 6px rgba(255,40,40,0.2),
+      0 0 2px #ff4040,
+      0 0 8px #ff4040,
+      0 0 18px rgba(255,40,40,0.5),
+      0 0 40px rgba(255,40,40,0.2);
+    text-shadow:
+      0 0 4px rgba(255,255,255,0.5),
+      0 0 10px #ff4040,
+      0 0 22px rgba(255,80,80,0.6);
+  }
+  #goBtn.running:hover { background: rgba(255,40,40,0.3); }
+
+  /* ── Sliders ───────────────────────────────────────────────────────────── */
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.10);
+    box-shadow:
+      0 0 4px var(--accent2),
+      0 0 12px var(--accent2-glow),
+      0 0 28px var(--accent2-dim);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 10px;
+    height: 24px;
+    border-radius: 3px;
+    background: var(--accent2);
+    border: none;
+    box-shadow:
+      0 0 3px var(--accent2),
+      0 0 10px var(--accent2-glow),
+      0 0 24px var(--accent2-dim),
+      0 0 44px var(--accent2-dim);
+    cursor: grab;
+    transition: box-shadow 0.15s;
+  }
+  input[type="range"]::-webkit-slider-thumb:active {
+    cursor: grabbing;
+    box-shadow:
+      0 0 4px var(--accent2),
+      0 0 18px var(--accent2-glow),
+      0 0 40px var(--accent2-dim),
+      0 0 70px var(--accent2-dim);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 10px; height: 24px;
+    border-radius: 3px;
+    background: var(--accent2);
+    border: none;
+    box-shadow: 0 0 3px var(--accent2), 0 0 10px var(--accent2-glow);
+    cursor: grab;
+  }
+
+  .slider-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .slider-group label {
+    font-size: 10px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    letter-spacing: 0.5px;
+  }
+  .slider-group label span {
+    display: inline-block;
+    min-width: 3em;
+    text-align: right;
+    color: var(--accent2);
+    text-shadow: 0 0 5px var(--accent2-glow);
+  }
+  .slider-group input[type="range"] { width: 80px; }
+
+  .slider-icon {
+    font-size: 18px;
+    line-height: 1;
+    user-select: none;
+    filter:
+      brightness(0) invert(1)
+      blur(0.5px)
+      opacity(0.65)
+      drop-shadow(0 0 4px var(--accent2))
+      drop-shadow(0 0 12px var(--accent2))
+      drop-shadow(0 0 24px var(--accent2-glow));
+  }
+
+  /* ── Toggle labels ─────────────────────────────────────────────────────── */
+  .toggle-label {
+    font-size: 10px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+  }
+  .toggle-label input[type="checkbox"] { accent-color: var(--accent1); }
+
+  .field-label-electric {
+    color: var(--accent2);
+    text-shadow:
+      0 0 4px var(--accent2),
+      0 0 10px var(--accent2-glow),
+      0 0 22px var(--accent2-dim);
+  }
+
+  /* ── Scrub bar — floating glass at bottom ──────────────────────────────── */
+  #scrubBar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 10;
+    display: none;
+    flex-direction: column;
+    background: var(--ui-bg);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border-top: 1px solid var(--ui-border);
+    box-shadow: 0 -1px 0 var(--accent1-dim), 0 -4px 20px rgba(0,0,0,0.5);
+  }
+  #scrubBar.visible { display: flex; }
+  #energyGraph {
+    display: block;
+    width: 100%;
+    height: 56px;
+    pointer-events: none;
+  }
+  #scrubRow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 40px;
+    padding: 0 20px;
+  }
+  #scrubBar .scrub-label {
+    font-size: 10px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  #scrubSlider { flex: 1; }
+  #scrubPct {
+    font-size: 10px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    min-width: 3.5em;
+    text-align: right;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+
+<div id="toolbar">
+  <div class="toolbar-row">
+    <div id="tabBar">
+      <button class="tab-btn active">Fission</button>
+    </div>
+  </div>
+  <div class="toolbar-row">
+    <button id="goBtn" class="btn">Go</button>
+    <div class="slider-group">
+      <span class="slider-icon">🐢</span>
+      <label><span id="playbackSpeedVal">1.0×</span></label>
+      <input type="range" id="playbackSpeed" min="0.1" max="4.0" step="0.1" value="1.0">
+      <span class="slider-icon">🐇</span>
+    </div>
+    <div class="slider-group">
+      <canvas id="neutronIconCanvas" width="28" height="28" style="display:block;flex-shrink:0;image-rendering:pixelated"></canvas>
+      <label><span id="neutronSpeedVal">4.0×</span></label>
+      <input type="range" id="neutronSpeed" min="0.2" max="8.0" step="0.1" value="4.0">
+    </div>
+    <div class="slider-group">
+      <span class="slider-icon">🔭</span>
+      <input type="range" id="zoomSlider" min="0.1" max="1.0" step="0.05" value="1.0" style="width:70px">
+      <span class="slider-icon">🔬</span>
+    </div>
+    <label class="toggle-label">
+      <input type="checkbox" id="showElectric" checked>
+      <span class="field-label-electric">Electric field</span>
+    </label>
+    <button id="particleToggle" class="btn">Particles</button>
+  </div>
+</div>
+
+<div id="scrubBar">
+  <canvas id="energyGraph" width="100" height="56"></canvas>
+  <div id="scrubRow">
+    <button id="replayBtn" class="btn">Replay</button>
+    <input type="range" id="scrubSlider" min="0" max="1000" value="0">
+    <span id="scrubPct">0%</span>
+  </div>
+</div>
+
+<script>
+// ─── Constants ────────────────────────────────────────────────────────────────
+const PARTICLE_RADIUS = 10;
+const coulombStrength = 150;
+
+// ─── Canvas ───────────────────────────────────────────────────────────────────
+const canvas   = document.getElementById('canvas');
+const ctx      = canvas.getContext('2d');
+const egCanvas = document.getElementById('energyGraph');
+const egCtx    = egCanvas.getContext('2d');
+
+// ─── Heatmap buffers ──────────────────────────────────────────────────────────
+const hmCanvas    = document.createElement('canvas');
+const hmCtx       = hmCanvas.getContext('2d');
+const hmComposite = document.createElement('canvas');
+const hmcCtx      = hmComposite.getContext('2d');
+
+let hmW = 0, hmH = 0;
+let hmDataElec = null;
+let hmImgElec  = null;
+let heatmapDirty = true;
+
+function resize() {
+  canvas.width   = window.innerWidth;
+  canvas.height  = window.innerHeight;
+  egCanvas.width = window.innerWidth;
+  heatmapDirty   = true;
+}
+resize();
+window.addEventListener('resize', () => {
+  resize();
+  if (neutronRAF) { cancelAnimationFrame(neutronRAF); neutronRAF = null; }
+  neutronState = 'idle';
+  document.getElementById('goBtn').textContent = 'Go';
+  document.getElementById('goBtn').classList.remove('running');
+  document.getElementById('scrubBar').classList.remove('visible');
+  initNuclei();
+  heatmapDirty = true;
+  drawStaticFrame();
+});
+
+function ensureHmBuffers(w, h) {
+  if (hmW === w && hmH === h) return;
+  hmW = w; hmH = h;
+  hmCanvas.width    = w; hmCanvas.height = h;
+  hmDataElec = new Uint8ClampedArray(w * h * 4);
+  hmImgElec  = new ImageData(hmDataElec, w, h);
+}
+
+// ─── Colormaps ────────────────────────────────────────────────────────────────
+function buildColorstops(stops, out) {
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    let s0 = stops[0], s1 = stops[1];
+    for (let s = 0; s < stops.length - 1; s++) {
+      if (t >= stops[s].t && t <= stops[s+1].t) { s0 = stops[s]; s1 = stops[s+1]; break; }
+    }
+    const f   = (s1.t === s0.t) ? 0 : (t - s0.t) / (s1.t - s0.t);
+    const idx = i * 4;
+    out[idx]   = s0.r + (s1.r - s0.r) * f;
+    out[idx+1] = s0.g + (s1.g - s0.g) * f;
+    out[idx+2] = s0.b + (s1.b - s0.b) * f;
+    out[idx+3] = s0.a + (s1.a - s0.a) * f;
+  }
+}
+
+const COLORMAP = new Uint8Array(256 * 4);
+buildColorstops([
+  { t: 0.0,  r: 0,   g: 0,   b: 0,   a: 0   },
+  { t: 0.12, r: 10,  g: 35,  b: 170, a: 140 },
+  { t: 0.4,  r: 25,  g: 85,  b: 235, a: 210 },
+  { t: 0.7,  r: 70,  g: 165, b: 255, a: 245 },
+  { t: 1.0,  r: 210, g: 238, b: 255, a: 255 },
+], COLORMAP);
+
+// ─── Particle generation — 3D sphere packing ──────────────────────────────────
+function generateNucleus(nProtons, nNeutrons, cx, cy, seed) {
+  // Seeded LCG so the same seed always produces the same layout
+  let s = (seed >>> 0) || 1;
+  const rand = () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; };
+
+  const nTotal = nProtons + nNeutrons;
+
+  const packFrac = 0.62;
+  const vol      = nTotal * (4/3 * Math.PI * PARTICLE_RADIUS ** 3) / packFrac;
+  const sphereR  = Math.cbrt(vol * 3 / (4 * Math.PI)) * 1.05;
+
+  const minDist   = PARTICLE_RADIUS * 2.08;
+  const minDistSq = minDist * minDist;
+
+  const pts = [];
+  for (let i = 0; i < nTotal; i++) {
+    let placed = false;
+    for (let attempt = 0; attempt < 8000; attempt++) {
+      const r   = sphereR * Math.cbrt(rand());
+      const th  = Math.acos(2 * rand() - 1);
+      const phi = 2 * Math.PI * rand();
+      const lx  = r * Math.sin(th) * Math.cos(phi);
+      const ly  = r * Math.sin(th) * Math.sin(phi);
+      const lz  = r * Math.cos(th);
+      let ok = true;
+      for (const p of pts) {
+        const dx = p.lx-lx, dy = p.ly-ly, dz = p.lz-lz;
+        if (dx*dx + dy*dy + dz*dz < minDistSq) { ok = false; break; }
+      }
+      if (ok) { pts.push({ lx, ly, lz }); placed = true; break; }
+    }
+    if (!placed) {
+      // Force-place at a random spot rather than stacking at center
+      const r   = sphereR * 0.6 * rand();
+      const th  = Math.acos(2 * rand() - 1);
+      const phi = 2 * Math.PI * rand();
+      pts.push({ lx: r*Math.sin(th)*Math.cos(phi), ly: r*Math.sin(th)*Math.sin(phi), lz: r*Math.cos(th) });
+    }
+  }
+
+  const adjThresh2 = (PARTICLE_RADIUS * 2.9) ** 2;
+  const adj = Array.from({ length: nTotal }, () => []);
+  for (let i = 0; i < nTotal; i++) {
+    for (let j = i+1; j < nTotal; j++) {
+      const dx = pts[i].lx-pts[j].lx, dy = pts[i].ly-pts[j].ly, dz = pts[i].lz-pts[j].lz;
+      if (dx*dx + dy*dy + dz*dz < adjThresh2) { adj[i].push(j); adj[j].push(i); }
+    }
+  }
+
+  const types         = new Array(nTotal).fill('neutron');
+  const protonNbCount = new Array(nTotal).fill(0);
+  const order         = Array.from({ length: nTotal }, (_, i) => i).sort(() => rand() - 0.5);
+  let placed = 0;
+  for (let priority = 0; priority <= 6 && placed < nProtons; priority++) {
+    for (const i of order) {
+      if (placed >= nProtons) break;
+      if (types[i] === 'proton' || protonNbCount[i] !== priority) continue;
+      types[i] = 'proton';
+      placed++;
+      for (const nb of adj[i]) protonNbCount[nb]++;
+    }
+  }
+
+  const particles = pts.map((p, i) => ({
+    x: cx + p.lx, y: cy + p.ly, z: p.lz, type: types[i], i,
+  }));
+
+  return { particles, sphereR, cx, cy };
+}
+
+// ─── Electric field heatmap ───────────────────────────────────────────────────
+// masks: [{cx, cy, r}] — soft radial clipping; alpha fades to 0 at r + PARTICLE_RADIUS*2
+function drawElectricHeatmap(particleList, sampleFrac = 0.5, sigmaScale = 1.0, masks = null) {
+  const fullW = canvas.width, fullH = canvas.height;
+
+  if (!heatmapDirty &&
+      hmComposite.width === fullW && hmComposite.height === fullH) {
+    ctx.drawImage(hmComposite, 0, 0);
+    return;
+  }
+
+  const scale    = 0.25;
+  const w        = Math.ceil(fullW * scale);
+  const h        = Math.ceil(fullH * scale);
+  const invScale = 1 / scale;
+
+  let protons = particleList.filter(p =>
+    p.type === 'proton' &&
+    p.x > -50 && p.x < fullW + 50 && p.y > -50 && p.y < fullH + 50
+  );
+  if (sampleFrac < 1.0) {
+    protons = protons.filter((_, i) => i % Math.round(1 / sampleFrac) === 0);
+  }
+
+  const refEnergy = coulombStrength / (PARTICLE_RADIUS * 2);
+  const logRef    = Math.log(2);
+  const elecPairs = [];
+  for (let i = 0; i < protons.length; i++) {
+    for (let j = i+1; j < protons.length; j++) {
+      const a = protons[i], b = protons[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < 0.01) continue;
+      const energy   = coulombStrength / dist;
+      const sigma    = Math.max(3.5, 28 / Math.sqrt(dist)) * sigmaScale;
+      const distFade = Math.exp(-dist / 350);
+      const mag      = Math.min(1, Math.log(1 + energy / refEnergy) / logRef) * distFade;
+      const cullSq   = 16 * (sigma*2) * (sigma*2);
+      elecPairs.push({ ax: a.x, ay: a.y, ux: dx/dist, uy: dy/dist, dist, sigma, mag, cullSq });
+    }
+  }
+  elecPairs.sort((a, b) => b.mag - a.mag);
+  if (elecPairs.length === 0) return;
+
+  ensureHmBuffers(w, h);
+  hmDataElec.fill(0);
+
+  for (let py = 0; py < h; py++) {
+    const worldY = py * invScale;
+    for (let px = 0; px < w; px++) {
+      const worldX = px * invScale;
+      let total = 0;
+      for (let k = 0; k < elecPairs.length; k++) {
+        const p    = elecPairs[k];
+        const rx   = worldX - p.ax, ry = worldY - p.ay;
+        const para = rx*p.ux + ry*p.uy;
+        const e1   = para > 0 ? Math.min(1, para/8) : 0;
+        const e2   = para < p.dist ? Math.min(1, (p.dist-para)/8) : 0;
+        const ef   = e1 * e2;
+        if (ef <= 0) continue;
+        const perpSq = Math.max(0, rx*rx + ry*ry - para*para);
+        if (perpSq > p.cullSq) continue;
+        const t      = para / p.dist;
+        const sigmaT = p.sigma * (1 + Math.sin(Math.PI * t));
+        total += p.mag * Math.exp(-perpSq / (2*sigmaT*sigmaT)) * ef;
+        if (total >= 1/3) break;
+      }
+      if (total > 0.002) {
+        // Soft radial mask — clamp heatmap to nucleus boundary.
+        // Supports two mask types:
+        //   circle  { cx, cy, r, bleed }
+        //   capsule { type:'capsule', cx1,cy1,r1, cx2,cy2,r2, bleed }
+        //     — tapered hull between two spheres; fills the gap with no dark seam.
+        let maskAlpha = 1;
+        if (masks) {
+          maskAlpha = 0;
+          const defaultBleed = PARTICLE_RADIUS * 2;
+          for (const m of masks) {
+            if (maskAlpha >= 1) break;
+            const bleed = m.bleed !== undefined ? m.bleed : defaultBleed;
+            if (m.type === 'capsule') {
+              // Project pixel onto the segment cx1→cx2, interpolate radius
+              const sdx = m.cx2 - m.cx1, sdy = m.cy2 - m.cy1;
+              const lenSq = sdx*sdx + sdy*sdy;
+              const st = lenSq > 0
+                ? Math.max(0, Math.min(1, ((worldX-m.cx1)*sdx + (worldY-m.cy1)*sdy) / lenSq))
+                : 0;
+              const projX = m.cx1 + st*sdx, projY = m.cy1 + st*sdy;
+              const perpDist = Math.sqrt((worldX-projX)**2 + (worldY-projY)**2);
+              const capsR = m.r1 + (m.r2 - m.r1) * st;
+              if (perpDist <= capsR) { maskAlpha = 1; break; }
+              const mt = (perpDist - capsR) / bleed;
+              maskAlpha = Math.max(maskAlpha, mt < 1 ? 1 - mt : 0);
+            } else {
+              const mdx = worldX - m.cx, mdy = worldY - m.cy;
+              const mdist = Math.sqrt(mdx*mdx + mdy*mdy);
+              if (mdist <= m.r) { maskAlpha = 1; break; }
+              const mt = (mdist - m.r) / bleed;
+              maskAlpha = Math.max(maskAlpha, mt < 1 ? 1 - mt : 0);
+            }
+          }
+        }
+        if (maskAlpha > 0) {
+          const ci = Math.min(255, (total * 3.0 * 255)|0);
+          const c4 = ci * 4;
+          const di = (py * w + px) * 4;
+          hmDataElec[di]   = COLORMAP[c4];   hmDataElec[di+1] = COLORMAP[c4+1];
+          hmDataElec[di+2] = COLORMAP[c4+2];
+          hmDataElec[di+3] = (COLORMAP[c4+3] * maskAlpha + 0.5) | 0;
+        }
+      }
+    }
+  }
+
+  if (hmComposite.width !== fullW || hmComposite.height !== fullH) {
+    hmComposite.width = fullW; hmComposite.height = fullH;
+  }
+  hmcCtx.clearRect(0, 0, fullW, fullH);
+  hmcCtx.imageSmoothingEnabled = true;
+  hmcCtx.imageSmoothingQuality = 'high';
+  hmCtx.putImageData(hmImgElec, 0, 0);
+  hmcCtx.drawImage(hmCanvas, 0, 0, fullW, fullH);
+  ctx.drawImage(hmComposite, 0, 0);
+  heatmapDirty = false;
+}
+
+// ─── Cloud outline — evenly-spaced scallop circles on a ring ─────────────────
+function outerIntersection(c1, c2, R, ncx, ncy) {
+  const dx = c2.x - c1.x, dy = c2.y - c1.y;
+  const d  = Math.sqrt(dx * dx + dy * dy);
+  const h  = Math.sqrt(Math.max(0, R * R - (d / 2) * (d / 2)));
+  const mx = (c1.x + c2.x) / 2, my = (c1.y + c2.y) / 2;
+  const px = -dy / d * h,  py =  dx / d * h;
+  const p1 = { x: mx + px, y: my + py };
+  const p2 = { x: mx - px, y: my - py };
+  const d1 = (p1.x - ncx) ** 2 + (p1.y - ncy) ** 2;
+  const d2 = (p2.x - ncx) ** 2 + (p2.y - ncy) ** 2;
+  return d1 > d2 ? p1 : p2;
+}
+
+function drawCloudOutline(cx, cy, sphereR) {
+  const R = PARTICLE_RADIUS;
+  const N = Math.max(6, Math.round(2 * Math.PI * sphereR / (R * 1.5)));
+
+  const centers = Array.from({ length: N }, (_, k) => {
+    const a = k * 2 * Math.PI / N;
+    return { x: cx + sphereR * Math.cos(a), y: cy + sphereR * Math.sin(a) };
+  });
+
+  const arcs = centers.map((c, k) => {
+    const prev = centers[(k - 1 + N) % N];
+    const next = centers[(k + 1)     % N];
+    const sp   = outerIntersection(c, prev, R, cx, cy);
+    const ep   = outerIntersection(c, next, R, cx, cy);
+    return {
+      cx: c.x, cy: c.y,
+      startAngle: Math.atan2(sp.y - c.y, sp.x - c.x),
+      endAngle:   Math.atan2(ep.y - c.y, ep.x - c.x),
+    };
+  });
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(80,160,255,0.9)';
+  ctx.shadowBlur  = 22;
+  ctx.strokeStyle = 'rgba(160,215,255,0.95)';
+  ctx.lineWidth   = 4;
+  ctx.beginPath();
+
+  ctx.moveTo(arcs[0].cx + R * Math.cos(arcs[0].startAngle),
+             arcs[0].cy + R * Math.sin(arcs[0].startAngle));
+
+  for (const arc of arcs) {
+    ctx.arc(arc.cx, arc.cy, R, arc.startAngle, arc.endAngle, false);
+  }
+
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ─── Fission outline — union-of-two-circles scalloped boundary ───────────────
+function sampleUnionBoundary(cx1, cy1, r1, cx2, cy2, r2) {
+  const R = PARTICLE_RADIUS;
+  const ddx = cx2 - cx1, ddy = cy2 - cy1;
+  const d = Math.sqrt(ddx * ddx + ddy * ddy);
+  const frame = Math.atan2(ddy, ddx);
+
+  if (d < 1) {
+    const avgR = (r1 + r2) / 2;
+    const N = Math.max(6, Math.round(2 * Math.PI * avgR / (R * 1.5)));
+    return Array.from({ length: N }, (_, k) => {
+      const a = k * 2 * Math.PI / N;
+      return { x: cx1 + avgR * Math.cos(a), y: cy1 + avgR * Math.sin(a),
+               refCx: cx1, refCy: cy1 };
+    });
+  }
+
+  const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d);
+  const h = Math.sqrt(Math.max(0, r1 * r1 - a * a));
+  if (h < 1) return null;
+
+  const r1bot = Math.atan2(-h, a); const r1top = Math.atan2(h, a);
+  const span1 = 2 * Math.PI - (r1top - r1bot);
+  const start1 = r1top;
+
+  const r2top = Math.atan2(h, a - d); const r2bot = Math.atan2(-h, a - d);
+  const span2 = r2top - r2bot;
+  const start2 = r2bot;
+
+  const len1 = span1 * r1, len2 = span2 * r2;
+  const n1 = Math.max(3, Math.round(len1 / (R * 1.5)));
+  const n2 = Math.max(3, Math.round(len2 / (R * 1.5)));
+
+  const pts = [];
+  for (let k = 0; k < n1; k++) {
+    const wa = frame + start1 + (k / n1) * span1;
+    pts.push({ x: cx1 + r1 * Math.cos(wa), y: cy1 + r1 * Math.sin(wa), refCx: cx1, refCy: cy1 });
+  }
+  for (let k = 0; k < n2; k++) {
+    const wa = frame + start2 + (k / n2) * span2;
+    pts.push({ x: cx2 + r2 * Math.cos(wa), y: cy2 + r2 * Math.sin(wa), refCx: cx2, refCy: cy2 });
+  }
+  return pts;
+}
+
+function drawFissionOutline(cx1, cy1, r1, cx2, cy2, r2) {
+  const R = PARTICLE_RADIUS;
+  const d = Math.sqrt((cx2-cx1)**2 + (cy2-cy1)**2);
+
+  if (d >= r1 + r2) {
+    drawCloudOutline(cx1, cy1, r1);
+    drawCloudOutline(cx2, cy2, r2);
+    return;
+  }
+
+  const pts = sampleUnionBoundary(cx1, cy1, r1, cx2, cy2, r2);
+  if (!pts) { drawCloudOutline(cx1, cy1, r1); drawCloudOutline(cx2, cy2, r2); return; }
+  const N = pts.length;
+
+  const arcs = pts.map((c, k) => {
+    const prev = pts[(k - 1 + N) % N];
+    const next = pts[(k + 1)     % N];
+    const sp   = outerIntersection(c, prev, R, c.refCx, c.refCy);
+    const ep   = outerIntersection(c, next, R, c.refCx, c.refCy);
+    return {
+      cx: c.x, cy: c.y,
+      startAngle: Math.atan2(sp.y - c.y, sp.x - c.x),
+      endAngle:   Math.atan2(ep.y - c.y, ep.x - c.x),
+    };
+  });
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(80,160,255,0.9)';
+  ctx.shadowBlur  = 22;
+  ctx.strokeStyle = 'rgba(160,215,255,0.95)';
+  ctx.lineWidth   = 4;
+  ctx.beginPath();
+
+  ctx.moveTo(arcs[0].cx + R * Math.cos(arcs[0].startAngle),
+             arcs[0].cy + R * Math.sin(arcs[0].startAngle));
+  for (const arc of arcs) {
+    ctx.arc(arc.cx, arc.cy, R, arc.startAngle, arc.endAngle, false);
+  }
+
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ─── Neutron — plain circle outline matching the cloud border style ───────────
+function drawNeutronOutline(x, y) {
+  const R = PARTICLE_RADIUS;
+  ctx.save();
+  ctx.shadowColor = 'rgba(80,160,255,0.9)';
+  ctx.shadowBlur  = 22;
+  ctx.strokeStyle = 'rgba(160,215,255,0.95)';
+  ctx.lineWidth   = 4;
+  ctx.beginPath();
+  ctx.arc(x, y, R, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawNeutron(x, y) {
+  if (showParticles) {
+    // Full particle viz — same style as drawParticles for neutrons
+    const R = PARTICLE_RADIUS;
+    const baseGrad = ctx.createRadialGradient(x, y, 0, x, y, R * 1.1);
+    baseGrad.addColorStop(0, '#70707f'); baseGrad.addColorStop(0.82, '#70707f'); baseGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = baseGrad;
+    ctx.beginPath(); ctx.arc(x, y, R * 1.1, 0, Math.PI * 2); ctx.fill();
+    const innerGlow = ctx.createRadialGradient(x, y, 0, x, y, R);
+    innerGlow.addColorStop(0, '#b0b0c4'); innerGlow.addColorStop(0.5, '#b0b0c4'); innerGlow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.save(); ctx.shadowColor = '#b0b0c4'; ctx.shadowBlur = 8; ctx.globalAlpha = 0.82;
+    ctx.fillStyle = innerGlow; ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.fill();
+    ctx.restore(); ctx.globalAlpha = 1;
+  } else {
+    drawNeutronOutline(x, y);
+  }
+}
+
+// ─── v11-style particle renderer — stochastic jitter + fuzzy glow ────────────
+const particleJitter = [];
+function updateParticleJitter(count, strength = 1) {
+  while (particleJitter.length < count) particleJitter.push({ x: 0, y: 0 });
+  for (let i = 0; i < count; i++) {
+    particleJitter[i].x += (Math.random() - 0.5) * 1.8 * strength;
+    particleJitter[i].y += (Math.random() - 0.5) * 1.8 * strength;
+    particleJitter[i].x *= 0.72;
+    particleJitter[i].y *= 0.72;
+  }
+}
+
+function drawParticles(particles, jitterScale = 1) {
+  const R = PARTICLE_RADIUS;
+  // z ascending = back to front; protons after neutrons at same depth
+  const sorted = [...particles].sort((a, b) =>
+    ((a.z || 0) - (b.z || 0)) || ((a.type === 'proton') - (b.type === 'proton'))
+  );
+  for (const p of sorted) {
+    const j  = (p.i != null && particleJitter[p.i]) ? particleJitter[p.i] : { x: 0, y: 0 };
+    const px = p.x + j.x * jitterScale, py = p.y + j.y * jitterScale;
+    const isProton = p.type === 'proton';
+    const mid  = isProton ? '#ff1a65' : '#70707f';
+    const core = isProton ? '#ff80b0' : '#b0b0c4';
+
+    // Base fill — soft edge fade
+    const baseGrad = ctx.createRadialGradient(px, py, 0, px, py, R * 1.1);
+    baseGrad.addColorStop(0,    mid);
+    baseGrad.addColorStop(0.82, mid);
+    baseGrad.addColorStop(1,    'rgba(0,0,0,0)');
+    ctx.fillStyle = baseGrad;
+    ctx.beginPath(); ctx.arc(px, py, R * 1.1, 0, Math.PI * 2); ctx.fill();
+
+    // Inner glow with shadowBlur for fuzzy halo
+    const innerGlow = ctx.createRadialGradient(px, py, 0, px, py, R);
+    innerGlow.addColorStop(0,   core);
+    innerGlow.addColorStop(0.5, core);
+    innerGlow.addColorStop(1,   'rgba(0,0,0,0)');
+    ctx.save();
+    ctx.shadowColor = core;
+    ctx.shadowBlur  = 8;
+    ctx.globalAlpha = 0.82;
+    ctx.fillStyle = innerGlow;
+    ctx.beginPath(); ctx.arc(px, py, R, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    ctx.globalAlpha = 1;
+
+    // + label on protons
+    if (isProton) {
+      ctx.fillStyle = 'rgba(255,255,255,0.88)';
+      ctx.font = 'bold 11px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('+', px, py + 1);
+    }
+  }
+}
+
+// ─── Excited nucleus glow ─────────────────────────────────────────────────────
+// 30 stable pseudo-random positions inside the nucleus, seeded once.
+// Each spot fires continuously — each cycle is 0.1–0.8s, chosen fresh each time.
+const EXCITED_SPOTS = (() => {
+  const spots = [];
+  let s = 0xdeadbeef;
+  const rand = () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; };
+  for (let i = 0; i < 30; i++) {
+    spots.push({
+      angle:  rand() * Math.PI * 2,
+      radius: Math.sqrt(rand()) * 0.82,
+      cycleStart: null,
+      cycleDur:   null,
+    });
+  }
+  return spots;
+})();
+
+function resetExcitedSpots() {
+  for (const sp of EXCITED_SPOTS) { sp.cycleStart = null; sp.cycleDur = null; }
+}
+
+function drawExcitedGlow(cx, cy, sphereR, intensity) {
+  if (intensity <= 0) return;
+  const now = performance.now();
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  const glowRadius = PARTICLE_RADIUS * 2.8;
+  for (const sp of EXCITED_SPOTS) {
+    // Initialise with a random stagger so they don't all peak at once
+    if (sp.cycleStart === null) {
+      sp.cycleDur   = 100 + Math.random() * 700;
+      sp.cycleStart = now - Math.random() * sp.cycleDur;  // start mid-cycle
+    }
+
+    let elapsed = now - sp.cycleStart;
+    // Roll over into the next cycle whenever one finishes
+    while (elapsed >= sp.cycleDur) {
+      elapsed      -= sp.cycleDur;
+      sp.cycleStart = now - elapsed;
+      sp.cycleDur   = 100 + Math.random() * 700;
+    }
+
+    const flashT = elapsed / sp.cycleDur;
+    const pulse  = Math.sin(flashT * Math.PI);
+    const alpha  = Math.min(1, (0.5 + pulse * 0.7) * intensity);
+    const sx = cx + Math.cos(sp.angle) * sp.radius * sphereR;
+    const sy = cy + Math.sin(sp.angle) * sp.radius * sphereR;
+    const r  = glowRadius * (0.8 + pulse * 0.7);
+    const g  = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
+    g.addColorStop(0,   `rgba(255,100,40,${Math.min(1, alpha)})`);
+    g.addColorStop(0.5, `rgba(255,40,0,${Math.min(1, alpha * 0.6)})`);
+    g.addColorStop(1,   'rgba(255,0,0,0)');
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, Math.PI * 2);
+    ctx.fillStyle = g;
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ─── Animation state ──────────────────────────────────────────────────────────
+let currentSeed = Math.floor(Math.random() * 1e9);
+let viewZoom = 1.0;
+let showParticles = false;
+let currentScrubFrac = 0;
+let animParent = null, animProd1 = null, animProd2 = null;
+let animMap = [];
+let prod1R = 0, prod2R = 0;  // daughter radii, fixed at product size
+
+// Phase boundaries (t = 0..1)
+const PH1_END = 0.30;
+const PH2_END = 0.375;
+
+const ANIM_T_START = 0.27;
+const ANIM_T_END   = 0.47;
+const ANIM_RANGE   = ANIM_T_END - ANIM_T_START;
+const NORMAL_DURATION = 2000;  // ms — phase 3 fission separation
+let SHAKE_DURATION  = 1100;  // ms — phase 2 excited glow, randomised on each hit
+
+function initNuclei() {
+  const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2;
+
+  animParent = generateNucleus(78, 172, cx, cy, currentSeed);
+  animProd1  = generateNucleus(47, 103, cx, cy, currentSeed * 1001 + 7);
+  animProd2  = generateNucleus(31,  69, cx, cy, currentSeed * 1003 + 13);
+
+  // Daughter radii are fixed — no shrinking as they fly
+  prod1R = animProd1.sphereR * 0.7;
+  prod2R = animProd2.sphereR * 0.7;
+
+  const byX = (type) => animParent.particles
+    .map((p, i) => ({ i, x: p.x }))
+    .filter(({i}) => animParent.particles[i].type === type)
+    .sort((a, b) => a.x - b.x);
+
+  const toIdx = (prod, type) => prod.particles
+    .map((p, i) => ({ i, x: p.x }))
+    .filter(({i}) => prod.particles[i].type === type)
+    .sort((a, b) => a.x - b.x)
+    .map(({i}) => i);
+
+  const parentP = byX('proton');
+  const parentN = byX('neutron');
+  const p1P = toIdx(animProd1, 'proton');
+  const p1N = toIdx(animProd1, 'neutron');
+  const p2P = toIdx(animProd2, 'proton');
+  const p2N = toIdx(animProd2, 'neutron');
+
+  animMap = [];
+  for (let k = 0; k < 47; k++)  animMap.push({ fromIdx: parentP[k].i,      prod: 1, toIdx: p1P[k] });
+  for (let k = 0; k < 31; k++)  animMap.push({ fromIdx: parentP[47+k].i,   prod: 2, toIdx: p2P[k] });
+  for (let k = 0; k < 103; k++) animMap.push({ fromIdx: parentN[k].i,      prod: 1, toIdx: p1N[k] });
+  for (let k = 0; k < 69; k++)  animMap.push({ fromIdx: parentN[103+k].i,  prod: 2, toIdx: p2N[k] });
+}
+
+// ─── Frame content renderer — called inside renderAtFrac's zoom transform ─────
+function drawAnimContent(t) {
+  const showElec = document.getElementById('showElectric').checked;
+  const parentMask = [{ cx: animParent.cx, cy: animParent.cy, r: animParent.sphereR + PARTICLE_RADIUS * 3.5 }];
+
+  // Phase 1: still
+  if (t <= PH1_END) {
+    if (showElec) drawElectricHeatmap(animParent.particles, 0.5, 1.0, parentMask);
+    if (!showParticles) drawCloudOutline(animParent.cx, animParent.cy, animParent.sphereR);
+    if (showParticles) drawParticles(animParent.particles, 0.25);
+    return;
+  }
+
+  // Phase 2: excited state
+  if (t <= PH2_END) {
+    const ph2Frac = (t - PH1_END) / (PH2_END - PH1_END);
+    if (showElec) drawElectricHeatmap(animParent.particles, 0.5, 1.0, parentMask);
+    const outAmp = PARTICLE_RADIUS * 0.08 * Math.min(1, ph2Frac / 0.12);
+    const jx = outAmp * Math.sin(t * 180);
+    const jy = outAmp * Math.cos(t * 150);
+    const glowIntensity = Math.min(1, ph2Frac / 0.3);
+    if (showParticles && neutronState === 'fission') drawExcitedGlow(animParent.cx, animParent.cy, animParent.sphereR, glowIntensity);
+    ctx.save(); ctx.translate(jx, jy);
+    if (!showParticles) drawCloudOutline(animParent.cx, animParent.cy, animParent.sphereR);
+    if (showParticles) drawParticles(animParent.particles, 0.25);
+    ctx.restore();
+    return;
+  }
+
+  // Phase 3: separation
+  const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2;
+  const sepT      = (t - PH2_END) / (1.0 - PH2_END);
+  const shootT    = Math.min(1, sepT / 0.075);
+  const shootEase = shootT;  // linear — Coulomb daughters already have ~50% KE at separation
+  const rearT     = Math.min(1, sepT / 0.05);
+  const rearEase  = rearT * rearT * (3 - 2 * rearT);
+
+  const cosA = Math.cos(staticFissAngle), sinA = Math.sin(staticFissAngle);
+  // Scale shoot distance so daughters exit the visible area at any zoom level
+  const exitDiag = Math.sqrt(W * W + H * H);
+  const base1 = Math.max(cx + prod1R + PARTICLE_RADIUS + 30 + W * 0.2,
+                         exitDiag / (2 * viewZoom) + prod1R + PARTICLE_RADIUS + 30);
+  const base2 = Math.max(cx + prod2R + PARTICLE_RADIUS + 30 + W * 0.2,
+                         exitDiag / (2 * viewZoom) + prod2R + PARTICLE_RADIUS + 30);
+  const sh1dx = -cosA * base1, sh1dy = -sinA * base1;
+  const sh2dx =  cosA * base2, sh2dy =  sinA * base2;
+
+  const grp1cx = cx + sh1dx * shootEase;
+  const grp1cy = cy + sh1dy * shootEase;
+  const grp2cx = cx + sh2dx * shootEase;
+  const grp2cy = cy + sh2dy * shootEase;
+
+  const radiusT    = Math.min(1, sepT / 0.0075);
+  const radiusEase = radiusT * radiusT * (3 - 2 * radiusT);
+  const r1 = animParent.sphereR + (prod1R - animParent.sphereR) * radiusEase;
+  const r2 = animParent.sphereR + (prod2R - animParent.sphereR) * radiusEase;
+
+  const pos1 = [], pos2 = [];
+  for (const m of animMap) {
+    const from = animParent.particles[m.fromIdx];
+    const to   = m.prod === 1 ? animProd1.particles[m.toIdx] : animProd2.particles[m.toIdx];
+    const sdx  = m.prod === 1 ? sh1dx : sh2dx;
+    const sdy  = m.prod === 1 ? sh1dy : sh2dy;
+    let x = from.x + (to.x - from.x) * rearEase + sdx * shootEase;
+    let y = from.y + (to.y - from.y) * rearEase + sdy * shootEase;
+    const residualAmp = PARTICLE_RADIUS * 0.275 * Math.max(0, 1 - sepT / 0.15);
+    if (residualAmp > 0) {
+      const i = m.fromIdx;
+      x += residualAmp * (Math.sin(t*157+i*1.73)*0.45 + Math.sin(t*241+i*3.07)*0.35 + Math.sin(t*389+i*5.31)*0.20);
+      y += residualAmp * (Math.sin(t*179+i*2.39)*0.45 + Math.sin(t*263+i*4.13)*0.35 + Math.sin(t*421+i*6.71)*0.20);
+    }
+    const toZ = (m.prod === 1 ? animProd1 : animProd2).particles[m.toIdx].z;
+    const z   = from.z + (toZ - from.z) * rearEase;
+    (m.prod === 1 ? pos1 : pos2).push({ x, y, z, type: from.type, i: m.fromIdx });
+  }
+
+  if (showElec) {
+    heatmapDirty = true;
+    const sigmaScale = 1.0;
+    const capsuleMask = [{
+      type: 'capsule',
+      cx1: grp1cx, cy1: grp1cy, r1: r1 + PARTICLE_RADIUS * 3.5,
+      cx2: grp2cx, cy2: grp2cy, r2: r2 + PARTICLE_RADIUS * 3.5,
+      bleed: PARTICLE_RADIUS * 2.5,
+    }];
+    drawElectricHeatmap([...pos1, ...pos2], 0.5, sigmaScale, capsuleMask);
+  }
+
+  if (!showParticles) drawFissionOutline(grp1cx, grp1cy, r1, grp2cx, grp2cy, r2);
+  if (showParticles) drawParticles([...pos1, ...pos2]);
+
+  const PHASE3_MAX_SEPT = (ANIM_T_END - PH2_END) / (1.0 - PH2_END);
+  const neutronFrac = sepT / PHASE3_MAX_SEPT;
+  const screenDiag  = Math.max(canvas.width, canvas.height);
+  for (const n of fissionNeutrons) {
+    const dist = neutronFrac * n.speed * screenDiag;
+    const nx = cx + Math.cos(n.angle) * dist;
+    const ny = cy + Math.sin(n.angle) * dist;
+    const margin = PARTICLE_RADIUS * 2;
+    const halfVW = canvas.width  / (2 * viewZoom);
+    const halfVH = canvas.height / (2 * viewZoom);
+    if (nx > cx - halfVW - margin && nx < cx + halfVW + margin &&
+        ny > cy - halfVH - margin && ny < cy + halfVH + margin) {
+      drawNeutron(nx, ny);
+    }
+  }
+}
+
+// ─── Canonical renderer — single source of truth for any scrub position ───────
+function renderAtFrac(frac) {
+  ctx.fillStyle = '#05040f';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (!animParent) { drawEnergyGraph(); return; }
+
+  ctx.save();
+  const _W = canvas.width, _H = canvas.height;
+  ctx.translate(_W / 2, _H / 2);
+  ctx.scale(viewZoom, viewZoom);
+  ctx.translate(-_W / 2, -_H / 2);
+
+  const showElec = document.getElementById('showElectric').checked;
+  const parentMask = [{ cx: animParent.cx, cy: animParent.cy, r: animParent.sphereR + PARTICLE_RADIUS * 3.5 }];
+
+  if (frac < NEUTRON_FRAC) {
+    // Neutron flying zone
+    if (showElec) drawElectricHeatmap(animParent.particles, 0.5, 1.0, parentMask);
+    if (!showParticles) drawCloudOutline(animParent.cx, animParent.cy, animParent.sphereR);
+    if (neutronState !== 'idle') {
+      const nf = frac / NEUTRON_FRAC;
+      const nx = (-PARTICLE_RADIUS - 5) + nf * (neutronImpactX() - (-PARTICLE_RADIUS - 5));
+      drawNeutron(nx, animParent.cy);
+    }
+    if (showParticles) drawParticles(animParent.particles, 0.25);
+  } else {
+    // Fission zone
+    const ff = (frac - NEUTRON_FRAC) / (1 - NEUTRON_FRAC);
+    const t = PH1_END + ff * (ANIM_T_END - PH1_END);
+    drawAnimContent(t);
+  }
+
+  ctx.restore();
+  drawEnergyGraph();
+}
+
+// ─── Prompt fission neutrons ──────────────────────────────────────────────────
+let fissionNeutrons = [];  // [{angle, speed}] — generated fresh each Go press
+
+function genFissionNeutrons() {
+  const count = Math.random() < 0.5 ? 2 : 3;
+  fissionNeutrons = [];
+  for (let i = 0; i < count; i++) {
+    fissionNeutrons.push({
+      angle: Math.random() * Math.PI * 2,
+      speed: 2.5 + Math.random() * 1.5,   // 2.5–4.0× normalized, off-screen in first ~25–40%
+    });
+  }
+}
+
+// ─── Neutron state machine ────────────────────────────────────────────────────
+let neutronState    = 'idle';
+let neutronX        = 0;
+let neutronY        = 0;
+let neutronLast     = 0;
+let neutronRAF      = null;
+let staticFissStart = 0;
+let staticFissT     = 0;
+let staticFissAngle = 0;
+let staticNeutronIX = 0;
+let staticNeutronIY = 0;
+
+const NEUTRON_FRAC = 0.2;
+
+function neutronImpactX() {
+  return animParent.cx - animParent.sphereR - PARTICLE_RADIUS;
+}
+
+function drawStaticFrame() {
+  renderAtFrac(currentScrubFrac);
+}
+
+function scrubVal(frac) { return Math.round(frac * 1000); }
+function scrubPct(frac) { return Math.round(frac * 100) + '%'; }
+
+
+function neutronTick(now) {
+  if (neutronState !== 'flying') return;
+  const dt    = neutronLast ? now - neutronLast : 16;
+  neutronLast = now;
+  const speed = parseFloat(document.getElementById('neutronSpeed').value);
+  neutronX   += speed * 0.25 * dt;
+
+  const nf = Math.max(0, Math.min(1, (neutronX - (-PARTICLE_RADIUS - 5)) /
+                                     (neutronImpactX() - (-PARTICLE_RADIUS - 5))));
+  currentScrubFrac = nf * NEUTRON_FRAC;
+  document.getElementById('scrubSlider').value = scrubVal(currentScrubFrac);
+  document.getElementById('scrubPct').textContent = scrubPct(currentScrubFrac);
+
+  if (neutronX + PARTICLE_RADIUS >= animParent.cx - animParent.sphereR) {
+    staticNeutronIX  = animParent.cx - animParent.sphereR * 0.85;
+    staticNeutronIY  = animParent.cy;
+    neutronState     = 'fission';
+    staticFissStart  = now;
+    SHAKE_DURATION   = 100 + Math.random() * 1000;
+    resetExcitedSpots();
+    staticFissT      = PH1_END;
+    currentScrubFrac = NEUTRON_FRAC;
+    document.getElementById('scrubSlider').value = scrubVal(NEUTRON_FRAC);
+    document.getElementById('scrubPct').textContent = scrubPct(NEUTRON_FRAC);
+    neutronRAF = requestAnimationFrame(fissionTick);
+    return;
+  }
+
+  updateParticleJitter(animParent.particles.length);
+  renderAtFrac(currentScrubFrac);
+  neutronRAF = requestAnimationFrame(neutronTick);
+}
+
+function fissionTick(now) {
+  if (neutronState !== 'fission') return;
+  updateParticleJitter(animParent.particles.length);
+  const playbackSpeed = parseFloat(document.getElementById('playbackSpeed').value);
+  const elapsed = (now - staticFissStart) * playbackSpeed;
+  if (elapsed < SHAKE_DURATION) {
+    staticFissT = PH1_END + (elapsed / SHAKE_DURATION) * (PH2_END - PH1_END);
+  } else {
+    staticFissT = PH2_END + Math.min(1, (elapsed - SHAKE_DURATION) / NORMAL_DURATION) * (ANIM_T_END - PH2_END);
+  }
+  const ff = (staticFissT - PH1_END) / (ANIM_T_END - PH1_END);
+  currentScrubFrac = NEUTRON_FRAC + ff * (1 - NEUTRON_FRAC);
+  document.getElementById('scrubSlider').value = scrubVal(currentScrubFrac);
+  document.getElementById('scrubPct').textContent = scrubPct(currentScrubFrac);
+  renderAtFrac(currentScrubFrac);
+  if (staticFissT < ANIM_T_END) {
+    neutronRAF = requestAnimationFrame(fissionTick);
+  } else {
+    neutronState = 'done';
+    document.getElementById('goBtn').textContent = 'Go';
+    document.getElementById('goBtn').classList.remove('running');
+  }
+}
+
+// ─── Neutron icon ─────────────────────────────────────────────────────────────
+const neutronIconJitter = { x: 0, y: 0 };
+
+function drawNeutronIcon() {
+  const canvas = document.getElementById('neutronIconCanvas');
+  if (!canvas) return;
+  const c = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  const R  = 9;
+  const cx = w / 2 + neutronIconJitter.x;
+  const cy = h / 2 + neutronIconJitter.y;
+
+  c.clearRect(0, 0, w, h);
+
+  // Base fill
+  const baseGrad = c.createRadialGradient(cx, cy, 0, cx, cy, R * 1.1);
+  baseGrad.addColorStop(0,    '#70707f');
+  baseGrad.addColorStop(0.82, '#70707f');
+  baseGrad.addColorStop(1,    'rgba(0,0,0,0)');
+  c.fillStyle = baseGrad;
+  c.beginPath(); c.arc(cx, cy, R * 1.1, 0, Math.PI * 2); c.fill();
+
+  // Inner glow
+  const innerGlow = c.createRadialGradient(cx, cy, 0, cx, cy, R);
+  innerGlow.addColorStop(0,   '#b0b0c4');
+  innerGlow.addColorStop(0.5, '#b0b0c4');
+  innerGlow.addColorStop(1,   'rgba(0,0,0,0)');
+  c.globalAlpha = 0.82;
+  c.fillStyle = innerGlow;
+  c.beginPath(); c.arc(cx, cy, R, 0, Math.PI * 2); c.fill();
+  c.globalAlpha = 1;
+}
+
+function neutronIconLoop() {
+  neutronIconJitter.x += (Math.random() - 0.5) * 0.7;
+  neutronIconJitter.y += (Math.random() - 0.5) * 0.7;
+  neutronIconJitter.x *= 0.78;
+  neutronIconJitter.y *= 0.78;
+  drawNeutronIcon();
+  requestAnimationFrame(neutronIconLoop);
+}
+neutronIconLoop();
+
+// ─── Controls ─────────────────────────────────────────────────────────────────
+document.getElementById('goBtn').addEventListener('click', () => {
+  if (neutronState !== 'idle') {
+    if (neutronRAF) { cancelAnimationFrame(neutronRAF); neutronRAF = null; }
+    neutronState     = 'idle';
+    neutronLast      = 0;
+    currentScrubFrac = 0;
+    document.getElementById('goBtn').textContent = 'Go';
+    document.getElementById('goBtn').classList.remove('running');
+    document.getElementById('scrubBar').classList.remove('visible');
+    heatmapDirty = true;
+    drawStaticFrame();
+    return;
+  }
+  currentSeed = Math.floor(Math.random() * 1e9);
+  initNuclei();
+  heatmapDirty = true;
+  staticFissAngle = (Math.random() - 0.5) * Math.PI;
+  genFissionNeutrons();
+  neutronState = 'flying';
+  neutronX     = -PARTICLE_RADIUS - 5;
+  neutronY     = animParent.cy;
+  neutronLast  = 0;
+  document.getElementById('goBtn').classList.add('running');
+  document.getElementById('goBtn').textContent = 'Reset';
+  document.getElementById('scrubBar').classList.add('visible');
+  document.getElementById('scrubSlider').value = 0;
+  document.getElementById('scrubPct').textContent = '0%';
+  neutronRAF = requestAnimationFrame(neutronTick);
+});
+
+document.getElementById('neutronSpeed').addEventListener('input', function () {
+  document.getElementById('neutronSpeedVal').textContent = parseFloat(this.value).toFixed(1) + '×';
+});
+
+document.getElementById('playbackSpeed').addEventListener('input', function () {
+  document.getElementById('playbackSpeedVal').textContent = parseFloat(this.value).toFixed(1) + '×';
+});
+
+document.getElementById('replayBtn').addEventListener('click', () => {
+  if (!animParent) return;
+  if (neutronRAF) { cancelAnimationFrame(neutronRAF); neutronRAF = null; }
+
+  const frac = currentScrubFrac;
+  const now  = performance.now();
+
+  if (frac < NEUTRON_FRAC) {
+    // Resume neutron flight from current wiper position
+    const nf = frac / NEUTRON_FRAC;
+    neutronX    = (-PARTICLE_RADIUS - 5) + nf * (neutronImpactX() - (-PARTICLE_RADIUS - 5));
+    neutronY    = animParent.cy;
+    neutronLast = 0;
+    neutronState = 'flying';
+  } else {
+    // Resume fission animation from current wiper position
+    const ff = (frac - NEUTRON_FRAC) / (1 - NEUTRON_FRAC);
+    staticFissT = PH1_END + ff * (ANIM_T_END - PH1_END);
+
+    // Back-compute the elapsed time that corresponds to this t value
+    let elapsedAtPos;
+    if (staticFissT <= PH2_END) {
+      elapsedAtPos = (staticFissT - PH1_END) / (PH2_END - PH1_END) * SHAKE_DURATION;
+    } else {
+      elapsedAtPos = SHAKE_DURATION + (staticFissT - PH2_END) / (ANIM_T_END - PH2_END) * NORMAL_DURATION;
+    }
+    const playbackSpeed = parseFloat(document.getElementById('playbackSpeed').value);
+    staticFissStart = now - elapsedAtPos / playbackSpeed;
+    neutronState = 'fission';
+  }
+
+  document.getElementById('goBtn').classList.add('running');
+  document.getElementById('goBtn').textContent = 'Reset';
+  neutronRAF = requestAnimationFrame(frac < NEUTRON_FRAC ? neutronTick : fissionTick);
+});
+
+document.getElementById('scrubSlider').addEventListener('input', function () {
+  if (neutronRAF) { cancelAnimationFrame(neutronRAF); neutronRAF = null; }
+  if (neutronState === 'flying' || neutronState === 'fission') neutronState = 'done';
+  currentScrubFrac = parseInt(this.value) / 1000;
+  document.getElementById('scrubPct').textContent = scrubPct(currentScrubFrac);
+  heatmapDirty = true;
+  renderAtFrac(currentScrubFrac);
+});
+
+document.getElementById('zoomSlider').addEventListener('input', function () {
+  viewZoom = parseFloat(this.value);
+  heatmapDirty = true;
+  drawStaticFrame();
+});
+
+document.getElementById('showElectric').addEventListener('change', () => {
+  heatmapDirty = true;
+  drawStaticFrame();
+});
+
+let idleParticleRAF = null;
+function idleParticleLoop() {
+  // Only runs when particles are on and no main animation loop is active
+  if (!showParticles) { idleParticleRAF = null; return; }
+  if (neutronState === 'idle' || neutronState === 'done') {
+    if (animParent) updateParticleJitter(animParent.particles.length);
+    drawStaticFrame();
+  }
+  idleParticleRAF = requestAnimationFrame(idleParticleLoop);
+}
+
+document.getElementById('particleToggle').addEventListener('click', function () {
+  showParticles = !showParticles;
+  this.textContent = showParticles ? 'Outline' : 'Particles';
+  this.classList.toggle('running', showParticles);
+  if (showParticles && !idleParticleRAF) idleParticleLoop();
+  else drawStaticFrame();
+});
+
+// ─── Energy model ─────────────────────────────────────────────────────────────
+// Analytical KE / EIE as a function of scrub fraction.
+// Total energy = 1.0 (normalised). EIE = 1 − KE throughout.
+//
+// Shape:
+//   Neutron flying  (frac 0 → NEUTRON_FRAC): tiny KE ramp, peaks at ~2%
+//   Phase 1/2       (absorbed / excited)    : KE ≈ 1–4%, nucleus still together
+//   Phase 3 start   (fission)               : KE JUMPS to 50%, EIE drops to 50%
+//   Phase 3 cont.   (daughters separate)    : KE rises to ~77% by animation end
+function computeEnergy(frac) {
+  if (frac < NEUTRON_FRAC) {
+    const ke = 0.02 * Math.sqrt(frac / NEUTRON_FRAC);
+    return { ke, eie: 1 - ke };
+  }
+  const ff = (frac - NEUTRON_FRAC) / (1 - NEUTRON_FRAC);
+  const t  = PH1_END + ff * (ANIM_T_END - PH1_END);
+  if (t <= PH2_END) {
+    const ph2 = (t - PH1_END) / (PH2_END - PH1_END);
+    const ke  = 0.01 + 0.03 * ph2 * ph2;
+    return { ke, eie: 1 - ke };
+  }
+  // Phase 3: Coulomb KE curve — continuous from phase 2 end (~4%), steep rise then flattening
+  // Uses shape: ke_start + range * (1 - 1/(1 + A*ph3))
+  // ph3=0 → 0.04 (matches phase 2 end),  ph3=1 → ~0.75
+  const ph3 = (t - PH2_END) / (ANIM_T_END - PH2_END);
+  const ke  = 0.04 + 0.88 * (1 - 1 / (1 + 6 * ph3));
+  return { ke, eie: Math.max(0.03, 1 - ke) };
+}
+
+function drawEnergyGraph() {
+  const W = egCanvas.width, H = egCanvas.height;
+  const PAD = 5;
+  const gH  = H - PAD * 2;
+
+  egCtx.clearRect(0, 0, W, H);
+
+  // Faint horizontal grid at 25 / 50 / 75%
+  egCtx.strokeStyle = 'rgba(255,255,255,0.07)';
+  egCtx.lineWidth = 1;
+  for (let i = 1; i <= 3; i++) {
+    const y = PAD + gH * (1 - i / 4);
+    egCtx.beginPath(); egCtx.moveTo(0, y); egCtx.lineTo(W, y); egCtx.stroke();
+  }
+
+  // Dashed phase-boundary markers: neutron impact + fission split
+  const ph2EndFrac = NEUTRON_FRAC +
+    ((PH2_END - PH1_END) / (ANIM_T_END - PH1_END)) * (1 - NEUTRON_FRAC);
+  egCtx.setLineDash([2, 3]);
+  egCtx.strokeStyle = 'rgba(255,200,50,0.22)';
+  egCtx.lineWidth = 1;
+  for (const fx of [NEUTRON_FRAC, ph2EndFrac]) {
+    const x = fx * W;
+    egCtx.beginPath(); egCtx.moveTo(x, PAD); egCtx.lineTo(x, H - PAD); egCtx.stroke();
+  }
+  egCtx.setLineDash([]);
+
+  // One sample per pixel column
+  function plotLine(color, getVal) {
+    egCtx.beginPath();
+    for (let px = 0; px < W; px++) {
+      const frac = px / (W - 1);
+      const y    = PAD + gH * (1 - getVal(computeEnergy(frac)));
+      if (px === 0) egCtx.moveTo(px, y); else egCtx.lineTo(px, y);
+    }
+    egCtx.strokeStyle = color;
+    egCtx.lineWidth   = 1.5;
+    egCtx.stroke();
+  }
+
+  plotLine('#22c55e', () => 1.0);   // Total energy — green (flat)
+  plotLine('#818cf8', e => e.eie);  // EIE — indigo
+  plotLine('#f87171', e => e.ke);   // KE  — red
+
+  // Cursor at current scrub position
+  const cx = currentScrubFrac * (W - 1);
+  egCtx.strokeStyle = 'rgba(255,255,255,0.42)';
+  egCtx.lineWidth = 1;
+  egCtx.beginPath(); egCtx.moveTo(cx, 0); egCtx.lineTo(cx, H); egCtx.stroke();
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+initNuclei();
+drawStaticFrame();
+</script>
+</body>
+</html>
