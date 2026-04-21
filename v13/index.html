@@ -1048,9 +1048,9 @@ const PH2_END = 0.375;
 const ANIM_T_START = 0.27;
 const ANIM_T_END   = 0.47;
 const ANIM_RANGE   = ANIM_T_END - ANIM_T_START;
-const NORMAL_DURATION       = 2000;  // ms — main nucleus phase 3 separation
-const CHAIN_NORMAL_DURATION = 5000;  // ms — chain-site daughters (slower, ≈ neutron speed)
-let SHAKE_DURATION  = 1100;  // ms — phase 2 excited glow, randomised on each hit
+const NORMAL_DURATION       = 5000;  // ms — main nucleus phase 3 separation
+const CHAIN_NORMAL_DURATION = 5000;  // ms — chain-site daughters
+let SHAKE_DURATION  = 600;   // ms — phase 2 excited glow, randomised on each hit (200–1000)
 
 function initNuclei() {
   const W = canvas.width, H = canvas.height;
@@ -1207,6 +1207,7 @@ function drawAnimContent(t) {
   const neutronFrac = sepT / PHASE3_MAX_SEPT;
   const screenDiag  = Math.max(canvas.width, canvas.height);
   for (const n of fissionNeutrons) {
+    if (n.absorbed) continue;
     const dist = neutronFrac * n.speed * screenDiag;
     const nx = cx + Math.cos(n.angle) * dist;
     const ny = cy + Math.sin(n.angle) * dist;
@@ -1267,6 +1268,7 @@ function genFissionNeutrons() {
     fissionNeutrons.push({
       angle: Math.random() * Math.PI * 2,
       speed: 2.5 + Math.random() * 1.5,   // 2.5–4.0× normalized, off-screen in first ~25–40%
+      absorbed: false,
     });
   }
 }
@@ -1292,20 +1294,17 @@ let chainNeutrons = [];    // [{sourceCx,sourceCy,angle,speed,startTime,x,y}]
 let chainRAF      = null;
 let mainNeutronsEmitted = false;
 
-function emitChainNeutrons(cx, cy, angles = null) {
-  // angles: optional array to reuse directions from visual fission neutrons;
-  // otherwise pick a fresh random count (2 or 3) for chain-only reactions.
-  const now = performance.now();
-  const dirs = angles ?? Array.from(
+function emitChainNeutrons(cx, cy) {
+  const now  = performance.now();
+  const dirs = Array.from(
     { length: 2 + (Math.random() < 0.5 ? 1 : 0) },
     () => Math.random() * Math.PI * 2
   );
-  const fromMain = !!(angles);  // main-nucleus neutrons share angles with fissionNeutrons
   for (const angle of dirs) {
     chainNeutrons.push({
       sourceCx: cx, sourceCy: cy, angle,
       speed: 0.25 + Math.random() * 0.25,  // world px/ms
-      startTime: now, x: cx, y: cy, fromMain,
+      startTime: now, x: cx, y: cy,
     });
   }
   ensureChainLoop();
@@ -1315,7 +1314,7 @@ function triggerEnrichSite(site) {
   site.state          = 'fission';
   site.fissStart      = performance.now();
   site.angle          = Math.random() * Math.PI * 2;
-  site.shakeDur       = 150 + Math.random() * 400;
+  site.shakeDur       = 200 + Math.random() * 800;
   site.fissT          = PH1_END;
   site.neutronsEmitted = false;
 }
@@ -1329,6 +1328,7 @@ function updateChain(now) {
   // Update neutron positions + check collisions
   for (let i = chainNeutrons.length - 1; i >= 0; i--) {
     const n = chainNeutrons[i];
+
     const age = now - n.startTime;
     n.x = n.sourceCx + Math.cos(n.angle) * n.speed * age;
     n.y = n.sourceCy + Math.sin(n.angle) * n.speed * age;
@@ -1408,12 +1408,7 @@ function drawChainOverlay() {
     }
   }
 
-  // Chain neutrons — skip main-nucleus neutrons while fission animation plays
-  // (fissionNeutrons in drawAnimContent already draws them visually)
-  for (const n of chainNeutrons) {
-    if (n.fromMain && neutronState === 'fission') continue;
-    drawNeutron(n.x, n.y);
-  }
+  for (const n of chainNeutrons) drawNeutron(n.x, n.y);
 }
 
 function ensureChainLoop() {
@@ -1458,7 +1453,7 @@ function neutronTick(now) {
     staticNeutronIY  = animParent.cy;
     neutronState     = 'fission';
     staticFissStart  = now;
-    SHAKE_DURATION   = 100 + Math.random() * 1000;
+    SHAKE_DURATION   = 200 + Math.random() * 800;
     resetExcitedSpots();
     staticFissT      = PH1_END;
     currentScrubFrac = NEUTRON_FRAC;
@@ -1483,10 +1478,29 @@ function fissionTick(now) {
   } else {
     staticFissT = PH2_END + Math.min(1, (elapsed - SHAKE_DURATION) / NORMAL_DURATION) * (ANIM_T_END - PH2_END);
   }
-  // Emit chain neutrons once when fission splits (PH2_END)
-  if (!mainNeutronsEmitted && staticFissT >= PH2_END) {
-    mainNeutronsEmitted = true;
-    emitChainNeutrons(animParent.cx, animParent.cy, fissionNeutrons.map(n => n.angle));
+  // Check fission neutron collisions with enriched sites every frame after split
+  if (staticFissT > PH2_END) {
+    const sepT2 = (staticFissT - PH2_END) / (1.0 - PH2_END);
+    const PMAX  = (ANIM_T_END - PH2_END) / (1.0 - PH2_END);
+    const nFrac = Math.min(1, sepT2 / PMAX);
+    const ncx   = canvas.width / 2, ncy = canvas.height / 2;
+    const nDiag = Math.max(canvas.width, canvas.height);
+    const sphR  = animParent.sphereR;
+    const capR  = sphR + PARTICLE_RADIUS * 2;
+    for (const n of fissionNeutrons) {
+      if (n.absorbed) continue;
+      const dist = nFrac * n.speed * nDiag;
+      const nx = ncx + Math.cos(n.angle) * dist;
+      const ny = ncy + Math.sin(n.angle) * dist;
+      for (const site of enrichSites) {
+        if (site.state !== 'idle') continue;
+        if (Math.hypot(nx - site.cx, ny - site.cy) < capR) {
+          n.absorbed = true;
+          triggerEnrichSite(site);
+          break;
+        }
+      }
+    }
   }
   updateChain(now);
   const ff = (staticFissT - PH1_END) / (ANIM_T_END - PH1_END);
@@ -1663,7 +1677,7 @@ document.getElementById('enrichBtn').addEventListener('click', () => {
   // Also avoid other enriched sites
   const tooClose = enrichSites.some(s => Math.hypot(cx - s.cx, cy - s.cy) < minDist);
   if (!tooClose) enrichSites.push({ cx, cy, state: 'idle', fissStart: 0, fissT: PH1_END,
-                                    angle: 0, shakeDur: 300, neutronsEmitted: false });
+                                    angle: 0, shakeDur: 600, neutronsEmitted: false });
   drawStaticFrame();
 });
 
