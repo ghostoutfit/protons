@@ -179,6 +179,93 @@
   }
   #goBtn.running:hover { background: rgba(255,40,40,0.3); }
 
+  /* Replay — same neon pink as Go */
+  #replayBtn {
+    border-color: var(--accent1);
+    color: rgba(255,255,255,0.5);
+    background: var(--accent1-dim);
+    box-shadow:
+      inset 0 0 6px var(--accent1-dim),
+      0 0 2px var(--accent1),
+      0 0 8px var(--accent1),
+      0 0 18px var(--accent1-glow),
+      0 0 40px var(--accent1-dim),
+      0 0 70px var(--accent1-dim);
+    text-shadow:
+      0 0 4px rgba(255,255,255,0.5),
+      0 0 10px var(--accent1),
+      0 0 22px var(--accent1-glow),
+      0 0 44px var(--accent1-dim);
+  }
+  #replayBtn:hover {
+    background: var(--accent1-glow);
+    box-shadow:
+      inset 0 0 10px var(--accent1-glow),
+      0 0 4px var(--accent1),
+      0 0 14px var(--accent1),
+      0 0 28px var(--accent1-glow),
+      0 0 60px var(--accent1-dim),
+      0 0 100px var(--accent1-dim);
+  }
+
+  /* Particles — neon blue (accent2), matching slider aesthetic */
+  #particleToggle {
+    border-color: var(--accent2);
+    color: rgba(255,255,255,0.5);
+    background: var(--accent2-dim);
+    box-shadow:
+      inset 0 0 6px var(--accent2-dim),
+      0 0 2px var(--accent2),
+      0 0 8px var(--accent2),
+      0 0 18px var(--accent2-glow),
+      0 0 40px var(--accent2-dim),
+      0 0 70px var(--accent2-dim);
+    text-shadow:
+      0 0 4px rgba(255,255,255,0.5),
+      0 0 10px var(--accent2),
+      0 0 22px var(--accent2-glow),
+      0 0 44px var(--accent2-dim);
+  }
+  #particleToggle:hover {
+    background: var(--accent2-glow);
+    box-shadow:
+      inset 0 0 10px var(--accent2-glow),
+      0 0 4px var(--accent2),
+      0 0 14px var(--accent2),
+      0 0 28px var(--accent2-glow),
+      0 0 60px var(--accent2-dim),
+      0 0 100px var(--accent2-dim);
+  }
+
+  /* Enrich — neon green */
+  #enrichBtn {
+    border-color: #00ffaa;
+    color: rgba(255,255,255,0.5);
+    background: rgba(0,255,170,0.07);
+    box-shadow:
+      inset 0 0 6px rgba(0,255,170,0.12),
+      0 0 2px #00ffaa,
+      0 0 8px #00ffaa,
+      0 0 18px rgba(0,255,170,0.5),
+      0 0 40px rgba(0,255,170,0.2),
+      0 0 70px rgba(0,255,170,0.1);
+    text-shadow:
+      0 0 4px rgba(255,255,255,0.5),
+      0 0 10px #00ffaa,
+      0 0 22px rgba(0,255,170,0.7),
+      0 0 44px rgba(0,255,170,0.3);
+  }
+  #enrichBtn:hover {
+    background: rgba(0,255,170,0.18);
+    box-shadow:
+      inset 0 0 10px rgba(0,255,170,0.25),
+      0 0 4px #00ffaa,
+      0 0 14px #00ffaa,
+      0 0 28px rgba(0,255,170,0.6),
+      0 0 60px rgba(0,255,170,0.25),
+      0 0 100px rgba(0,255,170,0.12);
+  }
+
   /* ── Sliders ───────────────────────────────────────────────────────────── */
   input[type="range"] {
     -webkit-appearance: none;
@@ -296,8 +383,9 @@
   #energyGraph {
     display: block;
     width: 100%;
-    height: 56px;
-    pointer-events: none;
+    height: 110px;
+    border-bottom: 1px solid var(--ui-border);
+    cursor: crosshair;
   }
   #scrubRow {
     display: flex;
@@ -348,10 +436,10 @@
       <input type="range" id="neutronSpeed" min="0.2" max="8.0" step="0.1" value="4.0">
     </div>
     <div class="slider-group">
-      <span class="slider-icon">🔭</span>
       <input type="range" id="zoomSlider" min="0.1" max="1.0" step="0.05" value="1.0" style="width:70px">
-      <span class="slider-icon">🔬</span>
+      <span class="slider-icon">🔍</span>
     </div>
+    <button id="enrichBtn" class="btn" style="display:none">Enrich</button>
     <label class="toggle-label">
       <input type="checkbox" id="showElectric" checked>
       <span class="field-label-electric">Electric field</span>
@@ -361,7 +449,7 @@
 </div>
 
 <div id="scrubBar">
-  <canvas id="energyGraph" width="100" height="56"></canvas>
+  <canvas id="energyGraph" width="100" height="110"></canvas>
   <div id="scrubRow">
     <button id="replayBtn" class="btn">Replay</button>
     <input type="range" id="scrubSlider" min="0" max="1000" value="0">
@@ -389,19 +477,25 @@ const hmcCtx      = hmComposite.getContext('2d');
 let hmW = 0, hmH = 0;
 let hmDataElec = null;
 let hmImgElec  = null;
-let heatmapDirty = true;
+let heatmapDirty    = true;
+let hmFrameCounter  = 0;
 
 function resize() {
   canvas.width   = window.innerWidth;
   canvas.height  = window.innerHeight;
-  egCanvas.width = window.innerWidth;
+  egCanvas.width  = window.innerWidth;
+  egCanvas.height = 110;
   heatmapDirty   = true;
 }
 resize();
 window.addEventListener('resize', () => {
   resize();
   if (neutronRAF) { cancelAnimationFrame(neutronRAF); neutronRAF = null; }
-  neutronState = 'idle';
+  if (chainRAF)   { cancelAnimationFrame(chainRAF);   chainRAF = null; }
+  neutronState        = 'idle';
+  chainNeutrons       = [];
+  enrichSites         = [];
+  mainNeutronsEmitted = false;
   document.getElementById('goBtn').textContent = 'Go';
   document.getElementById('goBtn').classList.remove('running');
   document.getElementById('scrubBar').classList.remove('visible');
@@ -517,7 +611,7 @@ function generateNucleus(nProtons, nNeutrons, cx, cy, seed) {
 
 // ─── Electric field heatmap ───────────────────────────────────────────────────
 // masks: [{cx, cy, r}] — soft radial clipping; alpha fades to 0 at r + PARTICLE_RADIUS*2
-function drawElectricHeatmap(particleList, sampleFrac = 0.5, sigmaScale = 1.0, masks = null) {
+function drawElectricHeatmap(particleList, sampleFrac = 0.5, sigmaScale = 1.0, masks = null, boundsExpand = 50) {
   const fullW = canvas.width, fullH = canvas.height;
 
   if (!heatmapDirty &&
@@ -533,7 +627,8 @@ function drawElectricHeatmap(particleList, sampleFrac = 0.5, sigmaScale = 1.0, m
 
   let protons = particleList.filter(p =>
     p.type === 'proton' &&
-    p.x > -50 && p.x < fullW + 50 && p.y > -50 && p.y < fullH + 50
+    p.x > -boundsExpand && p.x < fullW + boundsExpand &&
+    p.y > -boundsExpand && p.y < fullH + boundsExpand
   );
   if (sampleFrac < 1.0) {
     protons = protons.filter((_, i) => i % Math.round(1 / sampleFrac) === 0);
@@ -940,6 +1035,8 @@ let currentSeed = Math.floor(Math.random() * 1e9);
 let viewZoom = 1.0;
 let showParticles = false;
 let currentScrubFrac = 0;
+let egZoomStart = 0, egZoomEnd = 1;
+let egDragStartPx = null, egDragCurPx = null;
 let animParent = null, animProd1 = null, animProd2 = null;
 let animMap = [];
 let prod1R = 0, prod2R = 0;  // daughter radii, fixed at product size
@@ -951,7 +1048,8 @@ const PH2_END = 0.375;
 const ANIM_T_START = 0.27;
 const ANIM_T_END   = 0.47;
 const ANIM_RANGE   = ANIM_T_END - ANIM_T_START;
-const NORMAL_DURATION = 2000;  // ms — phase 3 fission separation
+const NORMAL_DURATION       = 2000;  // ms — main nucleus phase 3 separation
+const CHAIN_NORMAL_DURATION = 5000;  // ms — chain-site daughters (slower, ≈ neutron speed)
 let SHAKE_DURATION  = 1100;  // ms — phase 2 excited glow, randomised on each hit
 
 function initNuclei() {
@@ -989,6 +1087,7 @@ function initNuclei() {
   for (let k = 0; k < 31; k++)  animMap.push({ fromIdx: parentP[47+k].i,   prod: 2, toIdx: p2P[k] });
   for (let k = 0; k < 103; k++) animMap.push({ fromIdx: parentN[k].i,      prod: 1, toIdx: p1N[k] });
   for (let k = 0; k < 69; k++)  animMap.push({ fromIdx: parentN[103+k].i,  prod: 2, toIdx: p2N[k] });
+
 }
 
 // ─── Frame content renderer — called inside renderAtFrac's zoom transform ─────
@@ -1069,15 +1168,36 @@ function drawAnimContent(t) {
   }
 
   if (showElec) {
+    // Per-daughter field — translate trick keeps viz visible even when off-screen
+    const sh1x = cx - grp1cx, sh1y = cy - grp1cy;
+    const pos1c = pos1.map(p => ({ ...p, x: p.x + sh1x, y: p.y + sh1y }));
+    const mask1 = [{ cx, cy, r: r1 + PARTICLE_RADIUS * 3.5, bleed: PARTICLE_RADIUS * 2.5 }];
     heatmapDirty = true;
-    const sigmaScale = 1.0;
-    const capsuleMask = [{
+    ctx.save(); ctx.translate(-sh1x, -sh1y);
+    drawElectricHeatmap(pos1c, 0.5, 1.0, mask1);
+    ctx.restore();
+
+    const sh2x = cx - grp2cx, sh2y = cy - grp2cy;
+    const pos2c = pos2.map(p => ({ ...p, x: p.x + sh2x, y: p.y + sh2y }));
+    const mask2 = [{ cx, cy, r: r2 + PARTICLE_RADIUS * 3.5, bleed: PARTICLE_RADIUS * 2.5 }];
+    heatmapDirty = true;
+    ctx.save(); ctx.translate(-sh2x, -sh2y);
+    drawElectricHeatmap(pos2c, 0.5, 1.0, mask2);
+    ctx.restore();
+
+    // Cross-daughter interaction — combined field in the gap between daughters.
+    // Uses expanded bounds so off-screen particles still contribute to visible pixels.
+    // 'screen' compositing adds this layer without erasing the per-daughter fields above.
+    heatmapDirty = true;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    drawElectricHeatmap([...pos1, ...pos2], 0.5, 1.0, [{
       type: 'capsule',
-      cx1: grp1cx, cy1: grp1cy, r1: r1 + PARTICLE_RADIUS * 3.5,
-      cx2: grp2cx, cy2: grp2cy, r2: r2 + PARTICLE_RADIUS * 3.5,
-      bleed: PARTICLE_RADIUS * 2.5,
-    }];
-    drawElectricHeatmap([...pos1, ...pos2], 0.5, sigmaScale, capsuleMask);
+      cx1: grp1cx, cy1: grp1cy, r1: r1 + PARTICLE_RADIUS * 2,
+      cx2: grp2cx, cy2: grp2cy, r2: r2 + PARTICLE_RADIUS * 2,
+      bleed: PARTICLE_RADIUS * 5
+    }], canvas.width);
+    ctx.restore();
   }
 
   if (!showParticles) drawFissionOutline(grp1cx, grp1cy, r1, grp2cx, grp2cy, r2);
@@ -1132,6 +1252,7 @@ function renderAtFrac(frac) {
     drawAnimContent(t);
   }
 
+  drawChainOverlay();
   ctx.restore();
   drawEnergyGraph();
 }
@@ -1163,6 +1284,149 @@ let staticNeutronIX = 0;
 let staticNeutronIY = 0;
 
 const NEUTRON_FRAC = 0.2;
+const ENRICH_ZOOM_SHOW = 0.6;  // show Enrich button at this zoom or below
+
+// ─── Enrich / chain-reaction system ──────────────────────────────────────────
+let enrichSites   = [];    // [{cx,cy,state,fissStart,fissT,angle,shakeDur,neutronsEmitted}]
+let chainNeutrons = [];    // [{sourceCx,sourceCy,angle,speed,startTime,x,y}]
+let chainRAF      = null;
+let mainNeutronsEmitted = false;
+
+function emitChainNeutrons(cx, cy, angles = null) {
+  // angles: optional array to reuse directions from visual fission neutrons;
+  // otherwise pick a fresh random count (2 or 3) for chain-only reactions.
+  const now = performance.now();
+  const dirs = angles ?? Array.from(
+    { length: 2 + (Math.random() < 0.5 ? 1 : 0) },
+    () => Math.random() * Math.PI * 2
+  );
+  const fromMain = !!(angles);  // main-nucleus neutrons share angles with fissionNeutrons
+  for (const angle of dirs) {
+    chainNeutrons.push({
+      sourceCx: cx, sourceCy: cy, angle,
+      speed: 0.25 + Math.random() * 0.25,  // world px/ms
+      startTime: now, x: cx, y: cy, fromMain,
+    });
+  }
+  ensureChainLoop();
+}
+
+function triggerEnrichSite(site) {
+  site.state          = 'fission';
+  site.fissStart      = performance.now();
+  site.angle          = Math.random() * Math.PI * 2;
+  site.shakeDur       = 150 + Math.random() * 400;
+  site.fissT          = PH1_END;
+  site.neutronsEmitted = false;
+}
+
+function updateChain(now) {
+  const W = canvas.width, H = canvas.height;
+  const sphereR  = animParent ? animParent.sphereR : 40;
+  const captureR = sphereR + PARTICLE_RADIUS * 2;
+  const playbackSpeed = parseFloat(document.getElementById('playbackSpeed').value);
+
+  // Update neutron positions + check collisions
+  for (let i = chainNeutrons.length - 1; i >= 0; i--) {
+    const n = chainNeutrons[i];
+    const age = now - n.startTime;
+    n.x = n.sourceCx + Math.cos(n.angle) * n.speed * age;
+    n.y = n.sourceCy + Math.sin(n.angle) * n.speed * age;
+
+    // Remove when well off the visible world
+    const margin = 300;
+    const vHalfW = W / (2 * viewZoom), vHalfH = H / (2 * viewZoom);
+    if (n.x < W/2 - vHalfW - margin || n.x > W/2 + vHalfW + margin ||
+        n.y < H/2 - vHalfH - margin || n.y > H/2 + vHalfH + margin) {
+      chainNeutrons.splice(i, 1); continue;
+    }
+
+    // Check collision with idle enriched sites
+    for (const site of enrichSites) {
+      if (site.state !== 'idle') continue;
+      if (Math.hypot(n.x - site.cx, n.y - site.cy) < captureR) {
+        triggerEnrichSite(site);
+        chainNeutrons.splice(i, 1);
+        break;
+      }
+    }
+  }
+
+  // Advance enriched site fission animations
+  for (const site of enrichSites) {
+    if (site.state !== 'fission') continue;
+    const elapsed = (now - site.fissStart) * playbackSpeed;
+    if (elapsed < site.shakeDur) {
+      site.fissT = PH1_END + (elapsed / site.shakeDur) * (PH2_END - PH1_END);
+    } else {
+      site.fissT = PH2_END + Math.min(1, (elapsed - site.shakeDur) / CHAIN_NORMAL_DURATION)
+                           * (ANIM_T_END - PH2_END);
+    }
+    if (!site.neutronsEmitted && site.fissT >= PH2_END) {
+      site.neutronsEmitted = true;
+      emitChainNeutrons(site.cx, site.cy);
+    }
+    if (site.fissT >= ANIM_T_END) site.state = 'done';
+  }
+}
+
+function drawChainOverlay() {
+  const sphereR = animParent ? animParent.sphereR : 40;
+
+  for (const site of enrichSites) {
+    if (site.state === 'idle') {
+      drawCloudOutline(site.cx, site.cy, sphereR);
+    } else if (site.state === 'fission') {
+      const t = site.fissT;
+      const cx = site.cx, cy = site.cy;
+      if (t <= PH2_END) {
+        const ph2 = (t - PH1_END) / (PH2_END - PH1_END);
+        const glowR = sphereR * (1 + ph2 * 0.12);
+        drawCloudOutline(cx, cy, glowR);
+        // excited glow ring
+        ctx.save();
+        ctx.beginPath(); ctx.arc(cx, cy, glowR, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255,45,120,${0.3 + ph2 * 0.5})`;
+        ctx.lineWidth   = 3 + ph2 * 5;
+        ctx.shadowBlur  = 18 * ph2;
+        ctx.shadowColor = '#ff2d78';
+        ctx.stroke();
+        ctx.restore();
+      } else {
+        const sepT = (t - PH2_END) / (ANIM_T_END - PH2_END);
+        const shootEase = Math.min(1, sepT);  // ramp over full CHAIN_NORMAL_DURATION
+        const W = canvas.width, H = canvas.height;
+        const exitDiag = Math.sqrt(W * W + H * H);
+        const base = Math.max(cx + sphereR * 0.7 + 30 + W * 0.2,
+                              exitDiag / (2 * viewZoom) + sphereR * 0.7 + 30);
+        const d1cx = cx + Math.cos(site.angle + Math.PI) * base * shootEase;
+        const d1cy = cy + Math.sin(site.angle + Math.PI) * base * shootEase;
+        const d2cx = cx + Math.cos(site.angle)           * base * shootEase;
+        const d2cy = cy + Math.sin(site.angle)           * base * shootEase;
+        drawFissionOutline(d1cx, d1cy, sphereR * 0.7, d2cx, d2cy, sphereR * 0.6);
+      }
+    }
+  }
+
+  // Chain neutrons — skip main-nucleus neutrons while fission animation plays
+  // (fissionNeutrons in drawAnimContent already draws them visually)
+  for (const n of chainNeutrons) {
+    if (n.fromMain && neutronState === 'fission') continue;
+    drawNeutron(n.x, n.y);
+  }
+}
+
+function ensureChainLoop() {
+  if (chainRAF || (neutronState === 'flying' || neutronState === 'fission')) return;
+  function chainTick(now) {
+    updateChain(now);
+    drawStaticFrame();
+    const stillActive = chainNeutrons.length > 0 ||
+                        enrichSites.some(s => s.state === 'fission');
+    chainRAF = stillActive ? requestAnimationFrame(chainTick) : null;
+  }
+  chainRAF = requestAnimationFrame(chainTick);
+}
 
 function neutronImpactX() {
   return animParent.cx - animParent.sphereR - PARTICLE_RADIUS;
@@ -1219,6 +1483,12 @@ function fissionTick(now) {
   } else {
     staticFissT = PH2_END + Math.min(1, (elapsed - SHAKE_DURATION) / NORMAL_DURATION) * (ANIM_T_END - PH2_END);
   }
+  // Emit chain neutrons once when fission splits (PH2_END)
+  if (!mainNeutronsEmitted && staticFissT >= PH2_END) {
+    mainNeutronsEmitted = true;
+    emitChainNeutrons(animParent.cx, animParent.cy, fissionNeutrons.map(n => n.angle));
+  }
+  updateChain(now);
   const ff = (staticFissT - PH1_END) / (ANIM_T_END - PH1_END);
   currentScrubFrac = NEUTRON_FRAC + ff * (1 - NEUTRON_FRAC);
   document.getElementById('scrubSlider').value = scrubVal(currentScrubFrac);
@@ -1230,6 +1500,7 @@ function fissionTick(now) {
     neutronState = 'done';
     document.getElementById('goBtn').textContent = 'Go';
     document.getElementById('goBtn').classList.remove('running');
+    ensureChainLoop();
   }
 }
 
@@ -1280,9 +1551,16 @@ neutronIconLoop();
 document.getElementById('goBtn').addEventListener('click', () => {
   if (neutronState !== 'idle') {
     if (neutronRAF) { cancelAnimationFrame(neutronRAF); neutronRAF = null; }
-    neutronState     = 'idle';
-    neutronLast      = 0;
-    currentScrubFrac = 0;
+    if (chainRAF)   { cancelAnimationFrame(chainRAF);   chainRAF = null; }
+    neutronState        = 'idle';
+    neutronLast         = 0;
+    currentScrubFrac    = 0;
+    mainNeutronsEmitted = false;
+    chainNeutrons       = [];
+    for (const s of enrichSites) s.state = 'idle';
+    // Fresh nucleus on reset so each new run looks different
+    currentSeed = Math.floor(Math.random() * 1e9);
+    initNuclei();
     document.getElementById('goBtn').textContent = 'Go';
     document.getElementById('goBtn').classList.remove('running');
     document.getElementById('scrubBar').classList.remove('visible');
@@ -1290,8 +1568,9 @@ document.getElementById('goBtn').addEventListener('click', () => {
     drawStaticFrame();
     return;
   }
-  currentSeed = Math.floor(Math.random() * 1e9);
-  initNuclei();
+  mainNeutronsEmitted = false;
+  chainNeutrons       = [];
+  for (const s of enrichSites) s.state = 'idle';
   heatmapDirty = true;
   staticFissAngle = (Math.random() - 0.5) * Math.PI;
   genFissionNeutrons();
@@ -1363,6 +1642,28 @@ document.getElementById('scrubSlider').addEventListener('input', function () {
 document.getElementById('zoomSlider').addEventListener('input', function () {
   viewZoom = parseFloat(this.value);
   heatmapDirty = true;
+  document.getElementById('enrichBtn').style.display = viewZoom <= ENRICH_ZOOM_SHOW ? '' : 'none';
+  drawStaticFrame();
+});
+
+document.getElementById('enrichBtn').addEventListener('click', () => {
+  if (!animParent) return;
+  const W = canvas.width, H = canvas.height;
+  // Place a new nucleus somewhere in the currently-visible world area, away from center
+  const vHalfW = W / (2 * viewZoom);
+  const vHalfH = H / (2 * viewZoom);
+  const pad = 80;
+  const minDist = (animParent.sphereR || 50) * 3.5;
+  let cx, cy, attempts = 0;
+  do {
+    cx = W/2 - vHalfW + pad + Math.random() * (vHalfW * 2 - pad * 2);
+    cy = H/2 - vHalfH + pad + Math.random() * (vHalfH * 2 - pad * 2);
+    attempts++;
+  } while (attempts < 60 && Math.hypot(cx - animParent.cx, cy - animParent.cy) < minDist);
+  // Also avoid other enriched sites
+  const tooClose = enrichSites.some(s => Math.hypot(cx - s.cx, cy - s.cy) < minDist);
+  if (!tooClose) enrichSites.push({ cx, cy, state: 'idle', fissStart: 0, fissT: PH1_END,
+                                    angle: 0, shakeDur: 300, neutronsEmitted: false });
   drawStaticFrame();
 });
 
@@ -1421,54 +1722,149 @@ function computeEnergy(frac) {
 
 function drawEnergyGraph() {
   const W = egCanvas.width, H = egCanvas.height;
-  const PAD = 5;
+  const PAD = 8;
   const gH  = H - PAD * 2;
+  const zs = egZoomStart, ze = egZoomEnd, zLen = ze - zs;
 
   egCtx.clearRect(0, 0, W, H);
 
   // Faint horizontal grid at 25 / 50 / 75%
-  egCtx.strokeStyle = 'rgba(255,255,255,0.07)';
+  egCtx.strokeStyle = 'rgba(255,255,255,0.06)';
   egCtx.lineWidth = 1;
   for (let i = 1; i <= 3; i++) {
     const y = PAD + gH * (1 - i / 4);
     egCtx.beginPath(); egCtx.moveTo(0, y); egCtx.lineTo(W, y); egCtx.stroke();
   }
 
-  // Dashed phase-boundary markers: neutron impact + fission split
+  // Dashed phase-boundary markers mapped into zoom window
   const ph2EndFrac = NEUTRON_FRAC +
     ((PH2_END - PH1_END) / (ANIM_T_END - PH1_END)) * (1 - NEUTRON_FRAC);
-  egCtx.setLineDash([2, 3]);
-  egCtx.strokeStyle = 'rgba(255,200,50,0.22)';
+  egCtx.setLineDash([2, 4]);
+  egCtx.strokeStyle = 'rgba(255,200,50,0.25)';
   egCtx.lineWidth = 1;
   for (const fx of [NEUTRON_FRAC, ph2EndFrac]) {
-    const x = fx * W;
+    if (fx < zs || fx > ze) continue;
+    const x = ((fx - zs) / zLen) * W;
     egCtx.beginPath(); egCtx.moveTo(x, PAD); egCtx.lineTo(x, H - PAD); egCtx.stroke();
   }
   egCtx.setLineDash([]);
 
-  // One sample per pixel column
-  function plotLine(color, getVal) {
-    egCtx.beginPath();
+  // Pixel where cursor currently sits within the zoom window
+  const curFrac = Math.max(zs, Math.min(ze, currentScrubFrac));
+  const curPx   = Math.round((curFrac - zs) / zLen * (W - 1));
+
+  // Neon line: past portion full-glow, future portion dim
+  function plotLine(color, glowColor, getVal) {
+    const ys = new Float32Array(W);
     for (let px = 0; px < W; px++) {
-      const frac = px / (W - 1);
-      const y    = PAD + gH * (1 - getVal(computeEnergy(frac)));
-      if (px === 0) egCtx.moveTo(px, y); else egCtx.lineTo(px, y);
+      const frac = zs + (px / (W - 1)) * zLen;
+      ys[px] = PAD + gH * (1 - getVal(computeEnergy(frac)));
     }
-    egCtx.strokeStyle = color;
-    egCtx.lineWidth   = 1.5;
-    egCtx.stroke();
+    function strokeSeg(fromPx, toPx, lw, blur, alpha) {
+      if (fromPx > toPx) return;
+      egCtx.save();
+      egCtx.globalAlpha = alpha;
+      egCtx.shadowBlur  = blur;
+      egCtx.shadowColor = glowColor;
+      egCtx.strokeStyle = color;
+      egCtx.lineWidth   = lw;
+      egCtx.beginPath();
+      for (let px = fromPx; px <= toPx; px++) {
+        if (px === fromPx) egCtx.moveTo(px, ys[px]); else egCtx.lineTo(px, ys[px]);
+      }
+      egCtx.stroke();
+      egCtx.restore();
+    }
+    // Future — dim ghost
+    strokeSeg(curPx, W - 1, 1, 0, 0.13);
+    // Past — neon glow passes
+    strokeSeg(0, curPx, 8,  28, 0.25);
+    strokeSeg(0, curPx, 3,  10, 0.55);
+    strokeSeg(0, curPx, 1.5, 0, 1.00);
   }
 
-  plotLine('#22c55e', () => 1.0);   // Total energy — green (flat)
-  plotLine('#818cf8', e => e.eie);  // EIE — indigo
-  plotLine('#f87171', e => e.ke);   // KE  — red
+  plotLine('#00ffaa', 'rgba(0,255,170,0.9)',   () => 1.0);   // Total — neon green
+  plotLine('#7b6fff', 'rgba(120,100,255,0.9)', e => e.eie);  // EIE  — neon indigo
+  plotLine('#ff3a6e', 'rgba(255,45,100,0.9)',  e => e.ke);   // KE   — neon pink-red
 
-  // Cursor at current scrub position
-  const cx = currentScrubFrac * (W - 1);
-  egCtx.strokeStyle = 'rgba(255,255,255,0.42)';
-  egCtx.lineWidth = 1;
+  // Legend — left side, centered vertically
+  const legend = [
+    { text: 'TOTAL', color: '#00ffaa', glow: 'rgba(0,255,170,0.9)'   },
+    { text: 'EIE',   color: '#7b6fff', glow: 'rgba(120,100,255,0.9)' },
+    { text: 'KE',    color: '#ff3a6e', glow: 'rgba(255,45,100,0.9)'  },
+  ];
+  egCtx.font = 'bold 18px "Share Tech Mono", monospace';
+  const LPAD = 10, LLINE = 18, LGAP = 5, LROW = 26;
+  const totalLegendH = legend.length * LROW - (LROW - 20);
+  const legendStartY = (H - totalLegendH) / 2 + 14;
+  legend.forEach((lbl, i) => {
+    const ty  = legendStartY + i * LROW;
+    const lx1 = LPAD;
+    const lx2 = lx1 + LLINE;
+    egCtx.save();
+    egCtx.shadowBlur  = 12;
+    egCtx.shadowColor = lbl.glow;
+    egCtx.strokeStyle = lbl.color;
+    egCtx.lineWidth   = 2;
+    egCtx.beginPath(); egCtx.moveTo(lx1, ty - 5); egCtx.lineTo(lx2, ty - 5); egCtx.stroke();
+    egCtx.fillStyle   = lbl.color;
+    egCtx.shadowBlur  = 8;
+    egCtx.fillText(lbl.text, lx2 + LGAP, ty);
+    egCtx.restore();
+  });
+
+  // Drag-to-zoom selection overlay
+  if (egDragStartPx !== null && egDragCurPx !== null) {
+    const x0 = Math.min(egDragStartPx, egDragCurPx);
+    const x1 = Math.max(egDragStartPx, egDragCurPx);
+    egCtx.fillStyle   = 'rgba(120,100,255,0.12)';
+    egCtx.fillRect(x0, 0, x1 - x0, H);
+    egCtx.strokeStyle = 'rgba(120,100,255,0.6)';
+    egCtx.lineWidth   = 1;
+    egCtx.strokeRect(x0, 0, x1 - x0, H);
+  }
+
+  // Cursor — neon white with glow
+  const cx = curPx;
+  egCtx.save();
+  egCtx.shadowBlur  = 8;
+  egCtx.shadowColor = 'rgba(255,255,255,0.7)';
+  egCtx.strokeStyle = 'rgba(255,255,255,0.85)';
+  egCtx.lineWidth   = 1;
   egCtx.beginPath(); egCtx.moveTo(cx, 0); egCtx.lineTo(cx, H); egCtx.stroke();
+  egCtx.restore();
 }
+
+// ─── Energy graph drag-to-zoom ────────────────────────────────────────────────
+egCanvas.addEventListener('mousedown', e => {
+  egDragStartPx = e.offsetX;
+  egDragCurPx   = e.offsetX;
+  e.preventDefault();
+});
+egCanvas.addEventListener('mousemove', e => {
+  if (egDragStartPx === null) return;
+  egDragCurPx = e.offsetX;
+  drawEnergyGraph();
+});
+egCanvas.addEventListener('mouseup', e => {
+  if (egDragStartPx === null) return;
+  const x0 = Math.min(egDragStartPx, e.offsetX);
+  const x1 = Math.max(egDragStartPx, e.offsetX);
+  egDragStartPx = null; egDragCurPx = null;
+  const W = egCanvas.width;
+  if (x1 - x0 < 4) { drawEnergyGraph(); return; }  // too small — ignore
+  const prevStart = egZoomStart, zLen = egZoomEnd - egZoomStart;
+  egZoomStart = prevStart + (x0 / W) * zLen;
+  egZoomEnd   = prevStart + (x1 / W) * zLen;
+  drawEnergyGraph();
+});
+egCanvas.addEventListener('mouseleave', e => {
+  if (egDragStartPx !== null) { egDragStartPx = null; egDragCurPx = null; drawEnergyGraph(); }
+});
+egCanvas.addEventListener('dblclick', () => {
+  egZoomStart = 0; egZoomEnd = 1;
+  drawEnergyGraph();
+});
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 initNuclei();
