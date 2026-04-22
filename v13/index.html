@@ -410,6 +410,7 @@
     min-width: 3.5em;
     text-align: right;
   }
+
 </style>
 </head>
 <body>
@@ -444,7 +445,7 @@
       <input type="checkbox" id="showElectric" checked>
       <span class="field-label-electric">Electric field</span>
     </label>
-    <button id="particleToggle" class="btn">Particles</button>
+    <button id="particleToggle" class="btn running">Outline</button>
   </div>
 </div>
 
@@ -913,13 +914,17 @@ function drawNeutron(x, y) {
 
 // ─── v11-style particle renderer — stochastic jitter + fuzzy glow ────────────
 const particleJitter = [];
-function updateParticleJitter(count, strength = 1) {
+// slow=false (default): step=1.8, decay=0.72 — σ≈1.83px, autocorr ~3.6 frames (used during fission/daughters)
+// slow=true:            step=1.1, decay=0.90 — σ≈1.78px (same magnitude), autocorr ~10 frames (pre-neutron)
+function updateParticleJitter(count, strength = 1, slow = false) {
+  const step  = slow ? 1.1 : 1.8;
+  const decay = slow ? 0.90 : 0.72;
   while (particleJitter.length < count) particleJitter.push({ x: 0, y: 0 });
   for (let i = 0; i < count; i++) {
-    particleJitter[i].x += (Math.random() - 0.5) * 1.8 * strength;
-    particleJitter[i].y += (Math.random() - 0.5) * 1.8 * strength;
-    particleJitter[i].x *= 0.72;
-    particleJitter[i].y *= 0.72;
+    particleJitter[i].x += (Math.random() - 0.5) * step * strength;
+    particleJitter[i].y += (Math.random() - 0.5) * step * strength;
+    particleJitter[i].x *= decay;
+    particleJitter[i].y *= decay;
   }
 }
 
@@ -1033,8 +1038,9 @@ function drawExcitedGlow(cx, cy, sphereR, intensity) {
 // ─── Animation state ──────────────────────────────────────────────────────────
 let currentSeed = Math.floor(Math.random() * 1e9);
 let viewZoom = 1.0;
-let showParticles = false;
+let showParticles = true;
 let currentScrubFrac = 0;
+let maxRevealedFrac  = 0;   // high-water mark — graph line never erases back
 let egZoomStart = 0, egZoomEnd = 1;
 let egDragStartPx = null, egDragCurPx = null;
 let animParent = null, animProd1 = null, animProd2 = null;
@@ -1050,7 +1056,47 @@ const ANIM_T_END   = 0.47;
 const ANIM_RANGE   = ANIM_T_END - ANIM_T_START;
 const NORMAL_DURATION       = 5000;  // ms — main nucleus phase 3 separation
 const CHAIN_NORMAL_DURATION = 5000;  // ms — chain-site daughters
-let SHAKE_DURATION  = 600;   // ms — phase 2 excited glow, randomised on each hit (200–1000)
+let SHAKE_DURATION  = 1000;  // ms — randomised on each hit (500–1500)
+
+// Wobble mode, picked randomly each time a nucleus is hit:
+//   'dip1'   50% — 1 KE dip  : nucleus elongates once then fissions
+//   'dip2'   20% — 2 KE dips : one full wobble back to circular, then elongates and fissions
+//   'dip3'   15% — 3 KE dips : two full wobbles, then elongates and fissions
+//   'stable' 15% — 3 KE dips : three full wobbles, nucleus returns to circular (no fission)
+let wobbleMode = 'dip1';
+
+function pickWobbleMode() {
+  const r = Math.random();
+  if (r < 0.50) return 'dip1';
+  if (r < 0.70) return 'dip2';
+  if (r < 0.85) return 'dip3';
+  return 'stable';
+}
+
+// General wobble signal — ph2 ∈ [0,1], returns normWobble ∈ [0,1].
+// Continuously differentiable everywhere (zero derivative at all segment joins).
+//
+//   dip1:   [0,1]       half-cosine 0→1 (pure elongation, 1 minimum at end)
+//   dip2:   [0,½]       full cycle 0→1→0  +  [½,1] half-cosine 0→1
+//   dip3:   [0,⅓][⅓,⅔] two full cycles  +  [⅔,1]  half-cosine 0→1
+//   stable: [0,⅓][⅓,⅔][⅔,1] three full cycles (ends at 0 → no fission)
+function wobbleSignal(ph2, mode) {
+  if (mode === 'dip1') {
+    return (1 - Math.cos(Math.PI * ph2)) / 2;
+  }
+  const nFull = mode === 'dip2' ? 1 : 2;   // full cycles before elongation (stable uses all 3 as full)
+  const nSegs = mode === 'stable' ? 3 : nFull + 1;
+  const T = 1 / nSegs;
+  if (mode !== 'stable' && ph2 > nFull * T) {
+    // Final half-cosine elongation
+    const p = (ph2 - nFull * T) / T;
+    return (1 - Math.cos(Math.PI * p)) / 2;
+  }
+  // Full cosine cycle
+  const i = Math.min(nSegs - 1, Math.floor(ph2 / T));
+  const p = (ph2 - i * T) / T;
+  return (1 - Math.cos(2 * Math.PI * p)) / 2;
+}
 
 function initNuclei() {
   const W = canvas.width, H = canvas.height;
@@ -1099,7 +1145,7 @@ function drawAnimContent(t) {
   if (t <= PH1_END) {
     if (showElec) drawElectricHeatmap(animParent.particles, 0.5, 1.0, parentMask);
     if (!showParticles) drawCloudOutline(animParent.cx, animParent.cy, animParent.sphereR);
-    if (showParticles) drawParticles(animParent.particles, 0.25);
+    if (showParticles) drawParticles(animParent.particles, 0.5);   // 2x jitter in static scene
     return;
   }
 
@@ -1107,19 +1153,59 @@ function drawAnimContent(t) {
   if (t <= PH2_END) {
     const ph2Frac = (t - PH1_END) / (PH2_END - PH1_END);
     if (showElec) drawElectricHeatmap(animParent.particles, 0.5, 1.0, parentMask);
-    const outAmp = PARTICLE_RADIUS * 0.08 * Math.min(1, ph2Frac / 0.12);
+
+    // Wobble: mode-driven signal (dip1/dip2/dip3/stable), all smooth, no kinks.
+    // deformAmp reaches full by ph2=0.10 so the first wobble is at full visual amplitude.
+    const deformAmp  = 0.15 * Math.min(1, ph2Frac / 0.10);
+    const normWobble = wobbleSignal(ph2Frac, wobbleMode);    // 0=circular, 1=max oblong
+    const wobble     = deformAmp * normWobble;
+    const scaleAlong = 1 + wobble;
+    const scalePerp  = 1 / (1 + wobble * 0.7);
+    const jitterS    = 0.85 * (1 - normWobble * 0.88);
+
+    const outAmp = PARTICLE_RADIUS * 0.035 * Math.min(1, ph2Frac / 0.12);
     const jx = outAmp * Math.sin(t * 180);
     const jy = outAmp * Math.cos(t * 150);
+
     const glowIntensity = Math.min(1, ph2Frac / 0.3);
     if (showParticles && neutronState === 'fission') drawExcitedGlow(animParent.cx, animParent.cy, animParent.sphereR, glowIntensity);
-    ctx.save(); ctx.translate(jx, jy);
-    if (!showParticles) drawCloudOutline(animParent.cx, animParent.cy, animParent.sphereR);
-    if (showParticles) drawParticles(animParent.particles, 0.25);
-    ctx.restore();
+
+    const ncx = animParent.cx, ncy = animParent.cy;
+    const cosA = Math.cos(staticFissAngle), sinA = Math.sin(staticFissAngle);
+
+    if (!showParticles) {
+      // Outline: ctx.scale to deform the scalloped circle into an ellipse
+      ctx.save();
+      ctx.translate(jx, jy);
+      ctx.translate(ncx, ncy);
+      ctx.rotate(staticFissAngle);
+      ctx.scale(scaleAlong, scalePerp);
+      ctx.rotate(-staticFissAngle);
+      ctx.translate(-ncx, -ncy);
+      drawCloudOutline(ncx, ncy, animParent.sphereR);
+      ctx.restore();
+    } else {
+      // Particles: actually move each one along the deformation axis + modulated jitter
+      const deformed = animParent.particles.map(p => {
+        const rx = p.x - ncx, ry = p.y - ncy;
+        const along = rx * cosA + ry * sinA;
+        const perp  = -rx * sinA + ry * cosA;
+        return { ...p,
+          x: ncx + along * scaleAlong * cosA - perp * scalePerp * sinA + jx,
+          y: ncy + along * scaleAlong * sinA + perp * scalePerp * cosA + jy,
+        };
+      });
+      drawParticles(deformed, jitterS);
+    }
     return;
   }
 
-  // Phase 3: separation
+  // Phase 3: separation (skipped for stable mode — nucleus returned to circular)
+  if (wobbleMode === 'stable') {
+    if (!showParticles) drawCloudOutline(animParent.cx, animParent.cy, animParent.sphereR);
+    if (showParticles)  drawParticles(animParent.particles, 0.5);
+    return;
+  }
   const W = canvas.width, H = canvas.height;
   const cx = W / 2, cy = H / 2;
   const sepT      = (t - PH2_END) / (1.0 - PH2_END);
@@ -1245,7 +1331,7 @@ function renderAtFrac(frac) {
       const nx = (-PARTICLE_RADIUS - 5) + nf * (neutronImpactX() - (-PARTICLE_RADIUS - 5));
       drawNeutron(nx, animParent.cy);
     }
-    if (showParticles) drawParticles(animParent.particles, 0.25);
+    if (showParticles) drawParticles(animParent.particles, 0.85);
   } else {
     // Fission zone
     const ff = (frac - NEUTRON_FRAC) / (1 - NEUTRON_FRAC);
@@ -1256,6 +1342,7 @@ function renderAtFrac(frac) {
   drawChainOverlay();
   ctx.restore();
   drawEnergyGraph();
+  captureFrame();
 }
 
 // ─── Prompt fission neutrons ──────────────────────────────────────────────────
@@ -1314,8 +1401,9 @@ function triggerEnrichSite(site) {
   site.state          = 'fission';
   site.fissStart      = performance.now();
   site.angle          = Math.random() * Math.PI * 2;
-  site.shakeDur       = 200 + Math.random() * 800;
-  site.fissT          = PH1_END;
+  site.wobbleMode      = pickWobbleMode();
+  site.shakeDur        = (5 + Math.random() * 10) * 100;
+  site.fissT           = PH1_END;
   site.neutronsEmitted = false;
 }
 
@@ -1362,11 +1450,16 @@ function updateChain(now) {
       site.fissT = PH2_END + Math.min(1, (elapsed - site.shakeDur) / CHAIN_NORMAL_DURATION)
                            * (ANIM_T_END - PH2_END);
     }
-    if (!site.neutronsEmitted && site.fissT >= PH2_END) {
-      site.neutronsEmitted = true;
-      emitChainNeutrons(site.cx, site.cy);
+    if (site.wobbleMode === 'stable') {
+      // No fission — wobble completes, nucleus stabilises, no chain neutrons emitted
+      if (site.fissT >= ANIM_T_END) site.state = 'done';
+    } else {
+      if (!site.neutronsEmitted && site.fissT >= PH2_END) {
+        site.neutronsEmitted = true;
+        emitChainNeutrons(site.cx, site.cy);
+      }
+      if (site.fissT >= ANIM_T_END) site.state = 'done';
     }
-    if (site.fissT >= ANIM_T_END) site.state = 'done';
   }
 }
 
@@ -1381,17 +1474,38 @@ function drawChainOverlay() {
       const cx = site.cx, cy = site.cy;
       if (t <= PH2_END) {
         const ph2 = (t - PH1_END) / (PH2_END - PH1_END);
-        const glowR = sphereR * (1 + ph2 * 0.12);
-        drawCloudOutline(cx, cy, glowR);
-        // excited glow ring
+
+        const deformAmp  = 0.15 * Math.min(1, ph2 / 0.10);
+        const wobble     = deformAmp * wobbleSignal(ph2, site.wobbleMode || 'dip1');
+        const scaleAlong = 1 + wobble;
+        const scalePerp  = 1 / (1 + wobble * 0.7);
+
         ctx.save();
-        ctx.beginPath(); ctx.arc(cx, cy, glowR, 0, Math.PI * 2);
+        ctx.translate(cx, cy);
+        ctx.rotate(site.angle);
+        ctx.scale(scaleAlong, scalePerp);
+        ctx.rotate(-site.angle);
+        ctx.translate(-cx, -cy);
+        drawCloudOutline(cx, cy, sphereR);
+        ctx.restore();
+
+        // Excited glow ring (also deformed)
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(site.angle);
+        ctx.scale(scaleAlong, scalePerp);
+        ctx.rotate(-site.angle);
+        ctx.translate(-cx, -cy);
+        ctx.beginPath(); ctx.arc(cx, cy, sphereR * (1 + ph2 * 0.08), 0, Math.PI * 2);
         ctx.strokeStyle = `rgba(255,45,120,${0.3 + ph2 * 0.5})`;
         ctx.lineWidth   = 3 + ph2 * 5;
         ctx.shadowBlur  = 18 * ph2;
         ctx.shadowColor = '#ff2d78';
         ctx.stroke();
         ctx.restore();
+      } else if (site.wobbleMode === 'stable') {
+        // No fission — draw stabilised circular nucleus
+        drawCloudOutline(cx, cy, sphereR);
       } else {
         const sepT = (t - PH2_END) / (ANIM_T_END - PH2_END);
         const shootEase = Math.min(1, sepT);  // ramp over full CHAIN_NORMAL_DURATION
@@ -1419,6 +1533,7 @@ function ensureChainLoop() {
     const stillActive = chainNeutrons.length > 0 ||
                         enrichSites.some(s => s.state === 'fission');
     chainRAF = stillActive ? requestAnimationFrame(chainTick) : null;
+    if (!chainRAF) markPrerenderDone();
   }
   chainRAF = requestAnimationFrame(chainTick);
 }
@@ -1453,7 +1568,9 @@ function neutronTick(now) {
     staticNeutronIY  = animParent.cy;
     neutronState     = 'fission';
     staticFissStart  = now;
-    SHAKE_DURATION   = 200 + Math.random() * 800;
+    wobbleMode     = isFirstFission ? 'dip1' : pickWobbleMode();
+    isFirstFission = false;
+    SHAKE_DURATION = (5 + Math.random() * 10) * 100;   // 500–1500 ms (1 unit = 100 ms)
     resetExcitedSpots();
     staticFissT      = PH1_END;
     currentScrubFrac = NEUTRON_FRAC;
@@ -1463,7 +1580,7 @@ function neutronTick(now) {
     return;
   }
 
-  updateParticleJitter(animParent.particles.length);
+  updateParticleJitter(animParent.particles.length, 1, true);  // slow before neutron hits
   renderAtFrac(currentScrubFrac);
   neutronRAF = requestAnimationFrame(neutronTick);
 }
@@ -1515,6 +1632,8 @@ function fissionTick(now) {
     document.getElementById('goBtn').textContent = 'Go';
     document.getElementById('goBtn').classList.remove('running');
     ensureChainLoop();
+    // If no chain reaction sites are active, mark pre-render done now
+    if (!chainRAF) markPrerenderDone();
   }
 }
 
@@ -1562,7 +1681,89 @@ function neutronIconLoop() {
 neutronIconLoop();
 
 // ─── Controls ─────────────────────────────────────────────────────────────────
+// ─── Pre-render + smooth playback ─────────────────────────────────────────────
+let isFirstFission   = true;  // first run always uses dip1 mode
+let prerenderFrames  = [];   // ImageBitmap[]
+let prerenderFracs   = [];   // currentScrubFrac at each frame
+let prerenderTimes   = [];   // performance.now() at capture
+let prerenderActive  = false;
+let prerenderPending = 0;
+let prerenderAllDone = false;
+let prerenderSlot    = 0;
+let playbackRAF      = null;
+let playbackStartT   = 0;
+let playbackStartRealT = 0;
+
+function captureFrame() {
+  if (!prerenderActive) return;
+  const slot = prerenderSlot++;
+  prerenderFrames.push(null);
+  prerenderFracs.push(currentScrubFrac);
+  prerenderTimes.push(performance.now());
+  prerenderPending++;
+  createImageBitmap(canvas).then(bmp => {
+    prerenderFrames[slot] = bmp;
+    prerenderPending--;
+    if (prerenderAllDone && prerenderPending === 0) startPlayback();
+  });
+}
+
+function markPrerenderDone() {
+  if (!prerenderActive || prerenderAllDone) return;
+  prerenderAllDone = true;
+  if (prerenderPending === 0) startPlayback();
+}
+
+function startPlayback() {
+  prerenderActive = false;
+}
+
+function playbackLoop(now) {
+  const n = prerenderFrames.length;
+  if (!n) return;
+
+  const speed   = parseFloat(document.getElementById('playbackSpeed').value);
+  const elapsed = (now - playbackStartRealT) * speed;
+  const animEnd = prerenderTimes[n - 1] - prerenderTimes[0];
+
+  // Binary search for the frame whose capture time <= elapsed
+  let lo = 0, hi = n - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (prerenderTimes[mid] - prerenderTimes[0] <= elapsed) lo = mid; else hi = mid - 1;
+  }
+  const idx   = lo;
+  const frame = prerenderFrames[idx];
+
+  if (frame) {
+    ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
+    currentScrubFrac = prerenderFracs[idx];
+    drawEnergyGraph();
+    document.getElementById('scrubSlider').value = scrubVal(currentScrubFrac);
+    document.getElementById('scrubPct').textContent = scrubPct(currentScrubFrac);
+  }
+
+  if (elapsed < animEnd) {
+    playbackRAF = requestAnimationFrame(playbackLoop);
+  } else {
+    // Hold last frame, mark done
+    playbackRAF = null;
+    document.getElementById('goBtn').textContent = 'Go';
+    document.getElementById('goBtn').classList.remove('running');
+  }
+}
+
+function resetPrerender() {
+  if (playbackRAF) { cancelAnimationFrame(playbackRAF); playbackRAF = null; }
+  prerenderFrames = []; prerenderFracs = []; prerenderTimes = [];
+  prerenderActive = false; prerenderAllDone = false;
+  prerenderPending = 0; prerenderSlot = 0;
+}
+
 document.getElementById('goBtn').addEventListener('click', () => {
+  // Reset any in-progress pre-render or playback
+  resetPrerender();
+
   if (neutronState !== 'idle') {
     if (neutronRAF) { cancelAnimationFrame(neutronRAF); neutronRAF = null; }
     if (chainRAF)   { cancelAnimationFrame(chainRAF);   chainRAF = null; }
@@ -1572,7 +1773,6 @@ document.getElementById('goBtn').addEventListener('click', () => {
     mainNeutronsEmitted = false;
     chainNeutrons       = [];
     for (const s of enrichSites) s.state = 'idle';
-    // Fresh nucleus on reset so each new run looks different
     currentSeed = Math.floor(Math.random() * 1e9);
     initNuclei();
     document.getElementById('goBtn').textContent = 'Go';
@@ -1582,6 +1782,16 @@ document.getElementById('goBtn').addEventListener('click', () => {
     drawStaticFrame();
     return;
   }
+
+  // Begin background pre-render pass (frames stored for Replay)
+  prerenderActive  = true;
+  prerenderAllDone = false;
+  prerenderPending = 0;
+  prerenderSlot    = 0;
+  prerenderFrames  = [];
+  prerenderFracs   = [];
+  prerenderTimes   = [];
+
   mainNeutronsEmitted = false;
   chainNeutrons       = [];
   for (const s of enrichSites) s.state = 'idle';
@@ -1592,8 +1802,8 @@ document.getElementById('goBtn').addEventListener('click', () => {
   neutronX     = -PARTICLE_RADIUS - 5;
   neutronY     = animParent.cy;
   neutronLast  = 0;
-  document.getElementById('goBtn').classList.add('running');
-  document.getElementById('goBtn').textContent = 'Reset';
+  egCtx.clearRect(0, 0, egCanvas.width, egCanvas.height);
+  maxRevealedFrac = 0;
   document.getElementById('scrubBar').classList.add('visible');
   document.getElementById('scrubSlider').value = 0;
   document.getElementById('scrubPct').textContent = '0%';
@@ -1610,6 +1820,16 @@ document.getElementById('playbackSpeed').addEventListener('input', function () {
 
 document.getElementById('replayBtn').addEventListener('click', () => {
   if (!animParent) return;
+  // If we have pre-rendered frames, replay from them instantly
+  if (prerenderFrames.length && !prerenderActive) {
+    if (playbackRAF) cancelAnimationFrame(playbackRAF);
+    if (neutronRAF)  { cancelAnimationFrame(neutronRAF); neutronRAF = null; }
+    playbackStartRealT = performance.now();
+    document.getElementById('goBtn').classList.add('running');
+    document.getElementById('goBtn').textContent = 'Reset';
+    playbackRAF = requestAnimationFrame(playbackLoop);
+    return;
+  }
   if (neutronRAF) { cancelAnimationFrame(neutronRAF); neutronRAF = null; }
 
   const frac = currentScrubFrac;
@@ -1691,7 +1911,7 @@ function idleParticleLoop() {
   // Only runs when particles are on and no main animation loop is active
   if (!showParticles) { idleParticleRAF = null; return; }
   if (neutronState === 'idle' || neutronState === 'done') {
-    if (animParent) updateParticleJitter(animParent.particles.length);
+    if (animParent) updateParticleJitter(animParent.particles.length, 1, true);
     drawStaticFrame();
   }
   idleParticleRAF = requestAnimationFrame(idleParticleLoop);
@@ -1706,32 +1926,47 @@ document.getElementById('particleToggle').addEventListener('click', function () 
 });
 
 // ─── Energy model ─────────────────────────────────────────────────────────────
-// Analytical KE / EIE as a function of scrub fraction.
-// Total energy = 1.0 (normalised). EIE = 1 − KE throughout.
-//
-// Shape:
-//   Neutron flying  (frac 0 → NEUTRON_FRAC): tiny KE ramp, peaks at ~2%
-//   Phase 1/2       (absorbed / excited)    : KE ≈ 1–4%, nucleus still together
-//   Phase 3 start   (fission)               : KE JUMPS to 50%, EIE drops to 50%
-//   Phase 3 cont.   (daughters separate)    : KE rises to ~77% by animation end
+// NO sharp changes anywhere — every transition is cosine-smooth.
+//   BEFORE                    : KE flat 0.62, EIE flat 0.38
+//   Neutron hit               : +0.006 KE step (very tiny, intentional)
+//   DURING  (wobbleSignal)    : KE oscillates keHigh↔keLow per mode
+//   AFTER fission             : symmetric S-curve KE 0.15 → 0.72
+//   AFTER stable (no fission) : smooth return KE → 0.62
 function computeEnergy(frac) {
-  if (frac < NEUTRON_FRAC) {
-    const ke = 0.02 * Math.sqrt(frac / NEUTRON_FRAC);
-    return { ke, eie: 1 - ke };
-  }
+  if (frac < NEUTRON_FRAC) return { ke: 0.62, eie: 0.38 };
+
   const ff = (frac - NEUTRON_FRAC) / (1 - NEUTRON_FRAC);
   const t  = PH1_END + ff * (ANIM_T_END - PH1_END);
+
   if (t <= PH2_END) {
-    const ph2 = (t - PH1_END) / (PH2_END - PH1_END);
-    const ke  = 0.01 + 0.03 * ph2 * ph2;
+    const ph2        = (t - PH1_END) / (PH2_END - PH1_END);
+    const normWobble = wobbleSignal(ph2, wobbleMode);
+    // keHigh: circular baseline drifts down gently (0.626 → 0.566)
+    // keLow:  oblong floor (0.626 → 0.15).  Polynomial f = 2ph2−ph2² has f(0)=0, f(1)=1,
+    //         f'(1)=0 — so the descent flattens to zero slope right at the minimum,
+    //         rounding the bottom of the dip.
+    const keHigh = 0.626 - 0.06 * ph2;
+    const keLow  = wobbleMode === 'stable'
+                   ? 0.626 - 0.35 * Math.sqrt(ph2)                   // stable: shallower dip
+                   : 0.626 - 0.476 * (2 * ph2 - ph2 * ph2);          // fission: → 0.15, zero slope at ph2=1
+    const t01 = (1 - Math.cos(normWobble * Math.PI)) / 2;
+    const ke  = keHigh - (keHigh - keLow) * t01;
     return { ke, eie: 1 - ke };
   }
-  // Phase 3: Coulomb KE curve — continuous from phase 2 end (~4%), steep rise then flattening
-  // Uses shape: ke_start + range * (1 - 1/(1 + A*ph3))
-  // ph3=0 → 0.04 (matches phase 2 end),  ph3=1 → ~0.75
+
   const ph3 = (t - PH2_END) / (ANIM_T_END - PH2_END);
-  const ke  = 0.04 + 0.88 * (1 - 1 / (1 + 6 * ph3));
-  return { ke, eie: Math.max(0.03, 1 - ke) };
+  if (wobbleMode === 'stable') {
+    // No fission — nucleus relaxes back toward pre-neutron KE (S-curve)
+    const s  = (1 - Math.cos(ph3 * Math.PI)) / 2;
+    const ke = 0.566 + 0.054 * s;   // 0.566 → 0.62 smoothly
+    return { ke, eie: 1 - ke };
+  }
+  // Fission: Coulomb energy converts to KE.  exp(−k·ph3²) starts with zero slope
+  // (rounds the bottom of the dip), peaks rate around ph3≈0.18 (≈9 time units),
+  // then decelerates.  k=15 → ~74 % done by ph3=0.30 (≈15 time units), ~95 % by ph3=0.45.
+  const s  = 1 - Math.exp(-ph3 * ph3 * 15);
+  const ke = 0.15 + 0.57 * s;       // 0.15 → 0.72
+  return { ke, eie: Math.max(0.05, 1 - ke) };
 }
 
 function drawEnergyGraph() {
@@ -1763,11 +1998,23 @@ function drawEnergyGraph() {
   }
   egCtx.setLineDash([]);
 
-  // Pixel where cursor currently sits within the zoom window
+  // Advance high-water mark then compute reveal and cursor pixels
+  maxRevealedFrac = Math.max(maxRevealedFrac, currentScrubFrac);
+  const revealFrac = Math.max(zs, Math.min(ze, maxRevealedFrac));
+  const revealPx   = Math.round((revealFrac - zs) / zLen * (W - 1));
   const curFrac = Math.max(zs, Math.min(ze, currentScrubFrac));
   const curPx   = Math.round((curFrac - zs) / zLen * (W - 1));
 
-  // Neon line: past portion full-glow, future portion dim
+  // Bottom axis — always visible
+  egCtx.save();
+  egCtx.shadowBlur  = 6;
+  egCtx.shadowColor = 'rgba(0,200,255,0.5)';
+  egCtx.strokeStyle = 'rgba(0,200,255,0.35)';
+  egCtx.lineWidth   = 1;
+  egCtx.beginPath(); egCtx.moveTo(0, H - PAD); egCtx.lineTo(W, H - PAD); egCtx.stroke();
+  egCtx.restore();
+
+  // Neon line: full graph always shown, cursor marks current position
   function plotLine(color, glowColor, getVal) {
     const ys = new Float32Array(W);
     for (let px = 0; px < W; px++) {
@@ -1789,42 +2036,36 @@ function drawEnergyGraph() {
       egCtx.stroke();
       egCtx.restore();
     }
-    // Future — dim ghost
-    strokeSeg(curPx, W - 1, 1, 0, 0.13);
-    // Past — neon glow passes
-    strokeSeg(0, curPx, 8,  28, 0.25);
-    strokeSeg(0, curPx, 3,  10, 0.55);
-    strokeSeg(0, curPx, 1.5, 0, 1.00);
+    // Draw up to the high-water mark — traces live, stays drawn after scrub
+    strokeSeg(0, revealPx, 8,  28, 0.25);
+    strokeSeg(0, revealPx, 3,  10, 0.55);
+    strokeSeg(0, revealPx, 1.5, 0, 1.00);
   }
 
-  plotLine('#00ffaa', 'rgba(0,255,170,0.9)',   () => 1.0);   // Total — neon green
-  plotLine('#7b6fff', 'rgba(120,100,255,0.9)', e => e.eie);  // EIE  — neon indigo
-  plotLine('#ff3a6e', 'rgba(255,45,100,0.9)',  e => e.ke);   // KE   — neon pink-red
+  plotLine('#7b6fff', 'rgba(120,100,255,0.9)', e => e.eie);  // Energy in Fields — neon indigo
+  plotLine('#ff3a6e', 'rgba(255,45,100,0.9)',  e => e.ke);   // Energy in Motion — neon pink-red
 
-  // Legend — left side, centered vertically
+  // Legend — top of graph, side by side
   const legend = [
-    { text: 'TOTAL', color: '#00ffaa', glow: 'rgba(0,255,170,0.9)'   },
-    { text: 'EIE',   color: '#7b6fff', glow: 'rgba(120,100,255,0.9)' },
-    { text: 'KE',    color: '#ff3a6e', glow: 'rgba(255,45,100,0.9)'  },
+    { text: 'Energy in Fields', color: '#7b6fff', glow: 'rgba(120,100,255,0.9)' },
+    { text: 'Energy in Motion', color: '#ff3a6e', glow: 'rgba(255,45,100,0.9)'  },
   ];
-  egCtx.font = 'bold 18px "Share Tech Mono", monospace';
-  const LPAD = 10, LLINE = 18, LGAP = 5, LROW = 26;
-  const totalLegendH = legend.length * LROW - (LROW - 20);
-  const legendStartY = (H - totalLegendH) / 2 + 14;
-  legend.forEach((lbl, i) => {
-    const ty  = legendStartY + i * LROW;
-    const lx1 = LPAD;
-    const lx2 = lx1 + LLINE;
+  egCtx.font = 'bold 14px "Share Tech Mono", monospace';
+  const LLINE = 14, LGAP = 4;
+  const ty = PAD + 11;   // just below top edge
+  let lx = 10;
+  legend.forEach(lbl => {
     egCtx.save();
-    egCtx.shadowBlur  = 12;
+    egCtx.shadowBlur  = 10;
     egCtx.shadowColor = lbl.glow;
     egCtx.strokeStyle = lbl.color;
     egCtx.lineWidth   = 2;
-    egCtx.beginPath(); egCtx.moveTo(lx1, ty - 5); egCtx.lineTo(lx2, ty - 5); egCtx.stroke();
-    egCtx.fillStyle   = lbl.color;
-    egCtx.shadowBlur  = 8;
-    egCtx.fillText(lbl.text, lx2 + LGAP, ty);
+    egCtx.beginPath(); egCtx.moveTo(lx, ty - 4); egCtx.lineTo(lx + LLINE, ty - 4); egCtx.stroke();
+    egCtx.fillStyle  = lbl.color;
+    egCtx.shadowBlur = 7;
+    egCtx.fillText(lbl.text, lx + LLINE + LGAP, ty);
     egCtx.restore();
+    lx += LLINE + LGAP + egCtx.measureText(lbl.text).width + 20;
   });
 
   // Drag-to-zoom selection overlay
@@ -1883,6 +2124,8 @@ egCanvas.addEventListener('dblclick', () => {
 // ─── Init ─────────────────────────────────────────────────────────────────────
 initNuclei();
 drawStaticFrame();
+if (showParticles && !idleParticleRAF) idleParticleLoop();
 </script>
+
 </body>
 </html>
