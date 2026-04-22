@@ -692,7 +692,6 @@ const coulombStrength = 139;      // K in F = K/r² (Coulomb repulsion, proton-p
 const COULOMB_CUTOFF_SQ = (PARTICLE_RADIUS * 40) ** 2;  // Skip pairs beyond this distance
 let strongForceStrength = 0.25;   // Constant attractive force magnitude within cutoff
 let strongForceRange = 1.2;       // Cutoff = PARTICLE_RADIUS * 2 * strongForceRange
-const COULOMB_CUTOFF_SQ = (PARTICLE_RADIUS * 40) ** 2;  // 400px — Coulomb force negligible beyond this
 const equilibriumRatio = 0.6;     // Ratio r_eq / r_cutoff (informational, not used directly)
 const damping = 1.00;             // Velocity multiplier per frame; 1.0 = no damping
 const SUBSTEPS = 20;              // Physics substeps per animation frame for integration accuracy
