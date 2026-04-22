@@ -241,9 +241,8 @@
       0 0 100px var(--accent1-dim);
   }
 
-  /* accent2 neon (cyan/violet) — Replay, btn-neon2 */
-  .btn-neon2,
-  #replayBtn {
+  /* accent2 neon (cyan/violet) — btn-neon2 only */
+  .btn-neon2 {
     border-color: var(--accent2);
     color: rgba(255,255,255,0.5);
     background: var(--accent2-dim);
@@ -260,8 +259,7 @@
       0 0 22px var(--accent2-glow),
       0 0 44px var(--accent2-dim);
   }
-  .btn-neon2:hover,
-  #replayBtn:hover {
+  .btn-neon2:hover {
     background: var(--accent2-glow);
     color: rgba(255,255,255,0.5);
     box-shadow:
@@ -272,6 +270,21 @@
       0 0 60px var(--accent2-dim),
       0 0 100px var(--accent2-dim);
   }
+
+  /* Replay — same red as Stop */
+  #replayBtn {
+    border-color: #ff4040;
+    color: rgba(255,255,255,0.5);
+    background: rgba(255,40,40,0.15);
+    box-shadow:
+      inset 0 0 6px rgba(255,40,40,0.2),
+      0 0 2px #ff4040,
+      0 0 8px #ff4040,
+      0 0 18px rgba(255,40,40,0.5),
+      0 0 40px rgba(255,40,40,0.2);
+    text-shadow: 0 0 4px rgba(255,255,255,0.5), 0 0 10px #ff4040, 0 0 22px rgba(255,80,80,0.6);
+  }
+  #replayBtn:hover { background: rgba(255,40,40,0.3); }
   #replayBtn:disabled {
     background: transparent;
     border-color: rgba(255,255,255,0.06);
@@ -296,6 +309,8 @@
   }
   #goBtn.running:hover { background: rgba(255,40,40,0.3); }
 
+  /* Go / Replay — double-size for easy classroom use */
+  #goBtn, #replayBtn { padding: 8px 28px; font-size: 22px; letter-spacing: 2px; }
 
   /* ========================================
      SLIDERS — neon tube aesthetic

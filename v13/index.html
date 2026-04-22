@@ -179,8 +179,91 @@
   }
   #goBtn.running:hover { background: rgba(255,40,40,0.3); }
 
-  /* Replay — same neon pink as Go */
+  /* Go / Replay / New — double-size for easy classroom use */
+  #goBtn, #replayBtn, #newBtn { padding: 8px 28px; font-size: 22px; letter-spacing: 2px; }
+
+  /* Replay — same red as Stop */
   #replayBtn {
+    border-color: #ff4040;
+    color: rgba(255,255,255,0.5);
+    background: rgba(255,40,40,0.15);
+    box-shadow:
+      inset 0 0 6px rgba(255,40,40,0.2),
+      0 0 2px #ff4040,
+      0 0 8px #ff4040,
+      0 0 18px rgba(255,40,40,0.5),
+      0 0 40px rgba(255,40,40,0.2);
+    text-shadow: 0 0 4px rgba(255,255,255,0.5), 0 0 10px #ff4040, 0 0 22px rgba(255,80,80,0.6);
+  }
+  #replayBtn:hover { background: rgba(255,40,40,0.3); }
+
+  /* ========================================
+     PARTICLE WHEEL — vertical drum picker (mirrors arrow-wheel in v11)
+     Active item is always in normal flow (defines height).
+     Above/below items are position:absolute overlays.
+     ======================================== */
+  .arrow-wheel {
+    position: relative;
+  }
+  .awheel-item {
+    display: block;
+    padding: 2px 12px;
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 5px;
+    background: transparent;
+    color: rgba(255,255,255,0.15);
+    font-size: 10px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+    letter-spacing: 0.5px;
+    transition: color 0.15s, border-color 0.15s, background 0.15s,
+                box-shadow 0.15s, text-shadow 0.15s,
+                opacity 0.18s ease, transform 0.22s ease;
+  }
+  .awheel-item[data-position] {
+    position: absolute;
+    left: 0; right: 0;
+    opacity: 0;
+    pointer-events: none;
+    color: rgba(255,255,255,0.55);
+    border-color: rgba(255,255,255,0.18);
+    transform: translateY(var(--slide-dir, 0px));
+  }
+  .arrow-wheel:hover .awheel-item[data-position] {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+  .awheel-item:hover:not(.active) {
+    color: var(--accent2);
+    border-color: var(--accent2);
+    background: var(--accent2-dim);
+    box-shadow:
+      0 0 4px var(--accent2),
+      0 0 12px var(--accent2-glow),
+      0 0 26px var(--accent2-dim);
+    text-shadow:
+      0 0 6px var(--accent2),
+      0 0 14px var(--accent2-glow);
+  }
+  .awheel-item.active {
+    color: var(--accent2);
+    border-color: var(--accent2);
+    background: var(--accent2-dim);
+    box-shadow:
+      0 0 3px var(--accent2),
+      0 0 9px var(--accent2-glow),
+      0 0 20px var(--accent2-dim);
+    text-shadow:
+      0 0 5px var(--accent2),
+      0 0 12px var(--accent2-glow);
+  }
+
+  /* New — neon pink, matches Go */
+  #newBtn {
     border-color: var(--accent1);
     color: rgba(255,255,255,0.5);
     background: var(--accent1-dim);
@@ -197,7 +280,7 @@
       0 0 22px var(--accent1-glow),
       0 0 44px var(--accent1-dim);
   }
-  #replayBtn:hover {
+  #newBtn:hover {
     background: var(--accent1-glow);
     box-shadow:
       inset 0 0 10px var(--accent1-glow),
@@ -206,35 +289,6 @@
       0 0 28px var(--accent1-glow),
       0 0 60px var(--accent1-dim),
       0 0 100px var(--accent1-dim);
-  }
-
-  /* Particles — neon blue (accent2), matching slider aesthetic */
-  #particleToggle {
-    border-color: var(--accent2);
-    color: rgba(255,255,255,0.5);
-    background: var(--accent2-dim);
-    box-shadow:
-      inset 0 0 6px var(--accent2-dim),
-      0 0 2px var(--accent2),
-      0 0 8px var(--accent2),
-      0 0 18px var(--accent2-glow),
-      0 0 40px var(--accent2-dim),
-      0 0 70px var(--accent2-dim);
-    text-shadow:
-      0 0 4px rgba(255,255,255,0.5),
-      0 0 10px var(--accent2),
-      0 0 22px var(--accent2-glow),
-      0 0 44px var(--accent2-dim);
-  }
-  #particleToggle:hover {
-    background: var(--accent2-glow);
-    box-shadow:
-      inset 0 0 10px var(--accent2-glow),
-      0 0 4px var(--accent2),
-      0 0 14px var(--accent2),
-      0 0 28px var(--accent2-glow),
-      0 0 60px var(--accent2-dim),
-      0 0 100px var(--accent2-dim);
   }
 
   /* Enrich — neon green */
@@ -424,17 +478,16 @@
     </div>
   </div>
   <div class="toolbar-row">
-    <button id="goBtn" class="btn">Go</button>
+    <div class="slider-group">
+      <canvas id="neutronIconCanvas" width="28" height="28" style="display:block;flex-shrink:0;image-rendering:pixelated"></canvas>
+      <label><span id="neutronSpeedVal">4.0×</span></label>
+      <input type="range" id="neutronSpeed" min="0.2" max="8.0" step="0.1" value="4.0">
+    </div>
     <div class="slider-group">
       <span class="slider-icon">🐢</span>
       <label><span id="playbackSpeedVal">1.0×</span></label>
       <input type="range" id="playbackSpeed" min="0.1" max="4.0" step="0.1" value="1.0">
       <span class="slider-icon">🐇</span>
-    </div>
-    <div class="slider-group">
-      <canvas id="neutronIconCanvas" width="28" height="28" style="display:block;flex-shrink:0;image-rendering:pixelated"></canvas>
-      <label><span id="neutronSpeedVal">4.0×</span></label>
-      <input type="range" id="neutronSpeed" min="0.2" max="8.0" step="0.1" value="4.0">
     </div>
     <div class="slider-group">
       <input type="range" id="zoomSlider" min="0.16" max="1.0" step="0.02" value="1.0" style="width:70px">
@@ -445,7 +498,16 @@
       <input type="checkbox" id="showElectric" checked>
       <span class="field-label-electric">Electric field</span>
     </label>
-    <button id="particleToggle" class="btn running">Outline</button>
+    <div id="particleWheel" class="arrow-wheel">
+      <button class="awheel-item active" data-pmode="particles">Particles</button>
+      <button class="awheel-item" data-pmode="outline" data-position="below">Outline</button>
+    </div>
+    <div style="display:flex;flex-direction:column;justify-content:flex-end;align-self:stretch;gap:8px;padding-bottom:10px;margin-left:auto">
+      <button id="goBtn" class="btn">Go</button>
+      <button id="newBtn" class="btn" style="display:flex;align-items:center;justify-content:center;gap:8px;">
+        <canvas id="newBtnNeutron" width="22" height="22" style="display:block;flex-shrink:0;image-rendering:pixelated"></canvas>New
+      </button>
+    </div>
   </div>
 </div>
 
@@ -1629,7 +1691,7 @@ function fissionTick(now) {
     neutronRAF = requestAnimationFrame(fissionTick);
   } else {
     neutronState = 'done';
-    document.getElementById('goBtn').textContent = 'Go';
+    document.getElementById('goBtn').textContent = 'Replay';
     document.getElementById('goBtn').classList.remove('running');
     ensureChainLoop();
     // If no chain reaction sites are active, mark pre-render done now
@@ -1640,12 +1702,11 @@ function fissionTick(now) {
 // ─── Neutron icon ─────────────────────────────────────────────────────────────
 const neutronIconJitter = { x: 0, y: 0 };
 
-function drawNeutronIcon() {
-  const canvas = document.getElementById('neutronIconCanvas');
+function drawNeutronIconToCanvas(canvas) {
   if (!canvas) return;
   const c = canvas.getContext('2d');
   const w = canvas.width, h = canvas.height;
-  const R  = 9;
+  const R  = Math.min(w, h) * 0.32;
   const cx = w / 2 + neutronIconJitter.x;
   const cy = h / 2 + neutronIconJitter.y;
 
@@ -1670,6 +1731,11 @@ function drawNeutronIcon() {
   c.globalAlpha = 1;
 }
 
+function drawNeutronIcon() {
+  drawNeutronIconToCanvas(document.getElementById('neutronIconCanvas'));
+  drawNeutronIconToCanvas(document.getElementById('newBtnNeutron'));
+}
+
 function neutronIconLoop() {
   neutronIconJitter.x += (Math.random() - 0.5) * 0.7;
   neutronIconJitter.y += (Math.random() - 0.5) * 0.7;
@@ -1692,7 +1758,9 @@ let prerenderAllDone = false;
 let prerenderSlot    = 0;
 let playbackRAF      = null;
 let playbackStartT   = 0;
-let playbackStartRealT = 0;
+let playbackStartRealT     = 0;
+let pausedInPrerender      = false;   // paused during prerender playback
+let pausedPlaybackElapsed  = 0;       // raw ms elapsed when paused
 
 function captureFrame() {
   if (!prerenderActive) return;
@@ -1748,7 +1816,7 @@ function playbackLoop(now) {
   } else {
     // Hold last frame, mark done
     playbackRAF = null;
-    document.getElementById('goBtn').textContent = 'Go';
+    document.getElementById('goBtn').textContent = 'Replay';
     document.getElementById('goBtn').classList.remove('running');
   }
 }
@@ -1758,32 +1826,86 @@ function resetPrerender() {
   prerenderFrames = []; prerenderFracs = []; prerenderTimes = [];
   prerenderActive = false; prerenderAllDone = false;
   prerenderPending = 0; prerenderSlot = 0;
+  pausedInPrerender = false;
 }
 
 document.getElementById('goBtn').addEventListener('click', () => {
-  // Reset any in-progress pre-render or playback
-  resetPrerender();
+  const btn = document.getElementById('goBtn');
 
-  if (neutronState !== 'idle') {
-    if (neutronRAF) { cancelAnimationFrame(neutronRAF); neutronRAF = null; }
-    if (chainRAF)   { cancelAnimationFrame(chainRAF);   chainRAF = null; }
-    neutronState        = 'idle';
-    neutronLast         = 0;
-    currentScrubFrac    = 0;
-    mainNeutronsEmitted = false;
-    chainNeutrons       = [];
-    for (const s of enrichSites) s.state = 'idle';
-    currentSeed = Math.floor(Math.random() * 1e9);
-    initNuclei();
-    document.getElementById('goBtn').textContent = 'Go';
-    document.getElementById('goBtn').classList.remove('running');
-    document.getElementById('scrubBar').classList.remove('visible');
-    heatmapDirty = true;
-    drawStaticFrame();
+  // ── STOP = PAUSE: freeze in place; Go resumes from here ──────────────────
+  if (btn.textContent === 'Stop') {
+    if (neutronRAF)  { cancelAnimationFrame(neutronRAF);  neutronRAF  = null; }
+    if (playbackRAF) {
+      pausedPlaybackElapsed = performance.now() - playbackStartRealT;
+      pausedInPrerender = true;
+      cancelAnimationFrame(playbackRAF);
+      playbackRAF = null;
+    } else {
+      pausedInPrerender = false;
+    }
+    btn.textContent = 'Go';
+    btn.classList.remove('running');
     return;
   }
 
-  // Begin background pre-render pass (frames stored for Replay)
+  // ── REPLAY: play prerendered frames from the beginning ───────────────────
+  if (btn.textContent === 'Replay') {
+    if (neutronRAF)  { cancelAnimationFrame(neutronRAF);  neutronRAF  = null; }
+    if (playbackRAF) { cancelAnimationFrame(playbackRAF); playbackRAF = null; }
+    currentScrubFrac = 0;
+    maxRevealedFrac  = 0;
+    egCtx.clearRect(0, 0, egCanvas.width, egCanvas.height);
+    document.getElementById('scrubSlider').value = 0;
+    document.getElementById('scrubPct').textContent = '0%';
+    playbackStartRealT = performance.now();
+    btn.textContent = 'Stop';
+    btn.classList.add('running');
+    playbackRAF = requestAnimationFrame(playbackLoop);
+    return;
+  }
+
+  // ── GO: resume if paused, or start fresh ─────────────────────────────────
+
+  // Resume prerender playback from exact pause point
+  if (pausedInPrerender) {
+    pausedInPrerender  = false;
+    playbackStartRealT = performance.now() - pausedPlaybackElapsed;
+    btn.textContent = 'Stop';
+    btn.classList.add('running');
+    playbackRAF = requestAnimationFrame(playbackLoop);
+    return;
+  }
+
+  // Resume live animation from current scrub position
+  if (neutronState === 'flying' || neutronState === 'fission') {
+    const frac = currentScrubFrac;
+    const now  = performance.now();
+    if (frac < NEUTRON_FRAC) {
+      const nf = frac / NEUTRON_FRAC;
+      neutronX    = (-PARTICLE_RADIUS - 5) + nf * (neutronImpactX() - (-PARTICLE_RADIUS - 5));
+      neutronY    = animParent.cy;
+      neutronLast = 0;
+    } else {
+      const ff = (frac - NEUTRON_FRAC) / (1 - NEUTRON_FRAC);
+      staticFissT = PH1_END + ff * (ANIM_T_END - PH1_END);
+      let elapsedAtPos;
+      if (staticFissT <= PH2_END) {
+        elapsedAtPos = (staticFissT - PH1_END) / (PH2_END - PH1_END) * SHAKE_DURATION;
+      } else {
+        elapsedAtPos = SHAKE_DURATION + (staticFissT - PH2_END) / (ANIM_T_END - PH2_END) * NORMAL_DURATION;
+      }
+      const pbSpeed = parseFloat(document.getElementById('playbackSpeed').value);
+      staticFissStart = now - elapsedAtPos / pbSpeed;
+    }
+    btn.textContent = 'Stop';
+    btn.classList.add('running');
+    neutronRAF = requestAnimationFrame(frac < NEUTRON_FRAC ? neutronTick : fissionTick);
+    return;
+  }
+
+  // Fresh start — choose fission axis before wobble so elongation and split
+  // always go in the same direction.
+  resetPrerender();
   prerenderActive  = true;
   prerenderAllDone = false;
   prerenderPending = 0;
@@ -1795,8 +1917,8 @@ document.getElementById('goBtn').addEventListener('click', () => {
   mainNeutronsEmitted = false;
   chainNeutrons       = [];
   for (const s of enrichSites) s.state = 'idle';
-  heatmapDirty = true;
-  staticFissAngle = (Math.random() - 0.5) * Math.PI;
+  heatmapDirty    = true;
+  staticFissAngle = (Math.random() - 0.5) * Math.PI;   // fission axis chosen early
   genFissionNeutrons();
   neutronState = 'flying';
   neutronX     = -PARTICLE_RADIUS - 5;
@@ -1807,6 +1929,8 @@ document.getElementById('goBtn').addEventListener('click', () => {
   document.getElementById('scrubBar').classList.add('visible');
   document.getElementById('scrubSlider').value = 0;
   document.getElementById('scrubPct').textContent = '0%';
+  btn.textContent = 'Stop';
+  btn.classList.add('running');
   neutronRAF = requestAnimationFrame(neutronTick);
 });
 
@@ -1826,7 +1950,7 @@ document.getElementById('replayBtn').addEventListener('click', () => {
     if (neutronRAF)  { cancelAnimationFrame(neutronRAF); neutronRAF = null; }
     playbackStartRealT = performance.now();
     document.getElementById('goBtn').classList.add('running');
-    document.getElementById('goBtn').textContent = 'Reset';
+    document.getElementById('goBtn').textContent = 'Stop';
     playbackRAF = requestAnimationFrame(playbackLoop);
     return;
   }
@@ -1860,17 +1984,43 @@ document.getElementById('replayBtn').addEventListener('click', () => {
   }
 
   document.getElementById('goBtn').classList.add('running');
-  document.getElementById('goBtn').textContent = 'Reset';
+  document.getElementById('goBtn').textContent = 'Stop';
   neutronRAF = requestAnimationFrame(frac < NEUTRON_FRAC ? neutronTick : fissionTick);
 });
 
 document.getElementById('scrubSlider').addEventListener('input', function () {
-  if (neutronRAF) { cancelAnimationFrame(neutronRAF); neutronRAF = null; }
+  if (neutronRAF)  { cancelAnimationFrame(neutronRAF);  neutronRAF  = null; }
+  if (playbackRAF) { cancelAnimationFrame(playbackRAF); playbackRAF = null; }
   if (neutronState === 'flying' || neutronState === 'fission') neutronState = 'done';
+  const gbtn = document.getElementById('goBtn');
+  if (gbtn.textContent === 'Stop') { gbtn.textContent = 'Replay'; gbtn.classList.remove('running'); }
   currentScrubFrac = parseInt(this.value) / 1000;
   document.getElementById('scrubPct').textContent = scrubPct(currentScrubFrac);
   heatmapDirty = true;
   renderAtFrac(currentScrubFrac);
+});
+
+document.getElementById('newBtn').addEventListener('click', () => {
+  // Stage a fresh neutron — same as Stop but always available, does not require
+  // the animation to currently be running.
+  resetPrerender();
+  if (neutronRAF) { cancelAnimationFrame(neutronRAF); neutronRAF = null; }
+  if (chainRAF)   { cancelAnimationFrame(chainRAF);   chainRAF = null; }
+  if (playbackRAF){ cancelAnimationFrame(playbackRAF); playbackRAF = null; }
+  neutronState        = 'idle';
+  neutronLast         = 0;
+  currentScrubFrac    = 0;
+  mainNeutronsEmitted = false;
+  chainNeutrons       = [];
+  for (const s of enrichSites) s.state = 'idle';
+  currentSeed = Math.floor(Math.random() * 1e9);
+  initNuclei();
+  const btn = document.getElementById('goBtn');
+  btn.textContent = 'Go';
+  btn.classList.remove('running');
+  document.getElementById('scrubBar').classList.remove('visible');
+  heatmapDirty = true;
+  drawStaticFrame();
 });
 
 document.getElementById('zoomSlider').addEventListener('input', function () {
@@ -1920,12 +2070,45 @@ function idleParticleLoop() {
   idleParticleRAF = requestAnimationFrame(idleParticleLoop);
 }
 
-document.getElementById('particleToggle').addEventListener('click', function () {
-  showParticles = !showParticles;
-  this.textContent = showParticles ? 'Outline' : 'Particles';
-  this.classList.toggle('running', showParticles);
-  if (showParticles && !idleParticleRAF) idleParticleLoop();
-  else drawStaticFrame();
+function setParticleWheelActive(targetBtn) {
+  const items = [...document.querySelectorAll('.awheel-item[data-pmode]')];
+  const activeIdx = items.indexOf(targetBtn);
+  const SLOT = 22;
+
+  items.forEach(item => {
+    item.classList.remove('active');
+    delete item.dataset.position;
+    item.style.top = item.style.bottom = item.style.paddingTop = item.style.paddingBottom = '';
+    item.style.removeProperty('--slide-dir');
+  });
+
+  targetBtn.classList.add('active');
+
+  items.forEach((item, i) => {
+    if (i === activeIdx) return;
+    if (i < activeIdx) {
+      const slot = activeIdx - i;
+      item.dataset.position = 'above';
+      item.style.bottom = `calc(100% + ${(slot - 1) * SLOT}px)`;
+      if (slot === 1) item.style.paddingBottom = '5px';
+      item.style.setProperty('--slide-dir', '5px');
+    } else {
+      const slot = i - activeIdx;
+      item.dataset.position = 'below';
+      item.style.top = `calc(100% + ${(slot - 1) * SLOT}px)`;
+      if (slot === 1) item.style.paddingTop = '5px';
+      item.style.setProperty('--slide-dir', '-5px');
+    }
+  });
+}
+
+document.querySelectorAll('.awheel-item[data-pmode]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    showParticles = btn.dataset.pmode === 'particles';
+    setParticleWheelActive(btn);
+    if (showParticles && !idleParticleRAF) idleParticleLoop();
+    else drawStaticFrame();
+  });
 });
 
 // ─── Energy model ─────────────────────────────────────────────────────────────
@@ -2125,6 +2308,7 @@ egCanvas.addEventListener('dblclick', () => {
 });
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
+setParticleWheelActive(document.querySelector('.awheel-item[data-pmode="particles"]'));
 initNuclei();
 drawStaticFrame();
 if (showParticles && !idleParticleRAF) idleParticleLoop();
