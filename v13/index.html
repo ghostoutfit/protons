@@ -437,7 +437,7 @@
       <input type="range" id="neutronSpeed" min="0.2" max="8.0" step="0.1" value="4.0">
     </div>
     <div class="slider-group">
-      <input type="range" id="zoomSlider" min="0.1" max="1.0" step="0.05" value="1.0" style="width:70px">
+      <input type="range" id="zoomSlider" min="0.16" max="1.0" step="0.02" value="1.0" style="width:70px">
       <span class="slider-icon">🔍</span>
     </div>
     <button id="enrichBtn" class="btn" style="display:none">Enrich</button>
@@ -1883,21 +1883,24 @@ document.getElementById('zoomSlider').addEventListener('input', function () {
 document.getElementById('enrichBtn').addEventListener('click', () => {
   if (!animParent) return;
   const W = canvas.width, H = canvas.height;
-  // Place a new nucleus somewhere in the currently-visible world area, away from center
   const vHalfW = W / (2 * viewZoom);
   const vHalfH = H / (2 * viewZoom);
   const pad = 80;
   const minDist = (animParent.sphereR || 50) * 3.5;
-  let cx, cy, attempts = 0;
-  do {
-    cx = W/2 - vHalfW + pad + Math.random() * (vHalfW * 2 - pad * 2);
-    cy = H/2 - vHalfH + pad + Math.random() * (vHalfH * 2 - pad * 2);
-    attempts++;
-  } while (attempts < 60 && Math.hypot(cx - animParent.cx, cy - animParent.cy) < minDist);
-  // Also avoid other enriched sites
-  const tooClose = enrichSites.some(s => Math.hypot(cx - s.cx, cy - s.cy) < minDist);
-  if (!tooClose) enrichSites.push({ cx, cy, state: 'idle', fissStart: 0, fissT: PH1_END,
-                                    angle: 0, shakeDur: 600, neutronsEmitted: false });
+  // Try to place 5 nuclei; skip any candidate that lands too close to existing sites
+  for (let n = 0; n < 5; n++) {
+    let cx, cy, attempts = 0;
+    do {
+      cx = W/2 - vHalfW + pad + Math.random() * (vHalfW * 2 - pad * 2);
+      cy = H/2 - vHalfH + pad + Math.random() * (vHalfH * 2 - pad * 2);
+      attempts++;
+    } while (attempts < 60 && (
+      Math.hypot(cx - animParent.cx, cy - animParent.cy) < minDist ||
+      enrichSites.some(s => Math.hypot(cx - s.cx, cy - s.cy) < minDist)
+    ));
+    if (attempts < 60) enrichSites.push({ cx, cy, state: 'idle', fissStart: 0, fissT: PH1_END,
+                                          angle: 0, shakeDur: 600, neutronsEmitted: false });
+  }
   drawStaticFrame();
 });
 
