@@ -1167,8 +1167,8 @@
 // ============================================================
 //  DOM ELEMENT REFERENCES
 // ============================================================
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
+let canvas = document.getElementById('canvas');
+let ctx = canvas.getContext('2d');
 const goBtn = document.getElementById('goBtn');
 const replayBtn = document.getElementById('replayBtn');
 const speedSlider = document.getElementById('speedSlider');
@@ -1364,8 +1364,8 @@ const hmCtx = hmCanvas.getContext('2d');
 
 // Composite canvas: holds the fully-blended heatmap at full resolution.
 // Cached between frames so we can skip recomputation every other frame.
-const hmComposite = document.createElement('canvas');
-const hmcCtx = hmComposite.getContext('2d');
+let hmComposite = document.createElement('canvas');
+let hmcCtx = hmComposite.getContext('2d');
 
 // Pre-allocated pixel buffers; resized when canvas dimensions change.
 let hmW = 0, hmH = 0;
@@ -3653,10 +3653,10 @@ const SideSim = (() => {
   let running = false, animId = null, activePlayBtn = null;
   const R = 10, SUB = 20, K = 139;
 
-  // Theme-derived colors — updated from captured state via applyState()
-  let pCore = '#ff80b0', pMid = '#ff1a65', pEdge = '#7a0030';
-  let nCore = '#b0b0c4', nMid = '#70707f', nEdge = '#383848';
-  let bgFill = '#05040f';
+  // Saved viz state from captured note — used when calling main draw()
+  let savedShowElectric = true, savedShowStrong = true;
+  let savedTab = 'nucleus', savedZoom = 1, savedThemeKey = 'A';
+  const sideHmComposite = document.createElement('canvas');
 
   function pairForce(dist, dSq, at, bt) {
     let f = 0;
@@ -3668,6 +3668,7 @@ const SideSim = (() => {
   function step(dt) {
     const n = parts.length, subDt = dt / SUB;
     for (let s = 0; s < SUB; s++) {
+      // Pairwise forces
       for (let i = 0; i < n; i++) {
         for (let j = i + 1; j < n; j++) {
           const a = parts[i], b = parts[j];
@@ -3680,10 +3681,30 @@ const SideSim = (() => {
           b.vx += fx * subDt; b.vy += fy * subDt;
         }
       }
+
+      // Cohesion spring toward cluster CM — keeps nucleus from drifting apart
+      if (n >= 2) {
+        let cmx = 0, cmy = 0;
+        for (let i = 0; i < n; i++) { cmx += parts[i].x; cmy += parts[i].y; }
+        cmx /= n; cmy /= n;
+        for (let i = 0; i < n; i++) {
+          const p = parts[i];
+          const dx = cmx - p.x, dy = cmy - p.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 0.01) continue;
+          const f = 0.004 * dist;
+          p.vx += (dx / dist) * f * subDt;
+          p.vy += (dy / dist) * f * subDt;
+        }
+      }
+
+      // Integrate positions
       for (let i = 0; i < n; i++) {
         parts[i].x += parts[i].vx * subDt;
         parts[i].y += parts[i].vy * subDt;
       }
+
+      // Hard-sphere constraint
       const minSep = R * 2;
       for (let i = 0; i < n; i++) {
         for (let j = i + 1; j < n; j++) {
@@ -3704,34 +3725,81 @@ const SideSim = (() => {
         }
       }
     }
+
+    // Antispin — suppress runaway cluster rotation (matches main sim)
+    if (n >= 3) {
+      let cmx = 0, cmy = 0, cvx = 0, cvy = 0;
+      for (let i = 0; i < n; i++) {
+        cmx += parts[i].x; cmy += parts[i].y;
+        cvx += parts[i].vx; cvy += parts[i].vy;
+      }
+      cmx /= n; cmy /= n; cvx /= n; cvy /= n;
+      let L = 0, I = 0;
+      for (let i = 0; i < n; i++) {
+        const p = parts[i];
+        const rx = p.x - cmx, ry = p.y - cmy;
+        const vxr = p.vx - cvx, vyr = p.vy - cvy;
+        L += rx * vyr - ry * vxr;
+        I += rx * rx + ry * ry;
+      }
+      if (I >= 0.001) {
+        const omega = L / I;
+        const MAX_OMEGA = 2 * Math.PI * spd / (60 * SUB);
+        const removeOmega = Math.sign(omega) * Math.max(0, Math.abs(omega) - MAX_OMEGA);
+        for (let i = 0; i < n; i++) {
+          const p = parts[i];
+          const rx = p.x - cmx, ry = p.y - cmy;
+          p.vx -= -removeOmega * ry;
+          p.vy -=  removeOmega * rx;
+        }
+      }
+    }
   }
 
   function draw() {
     if (!cv || !cx) return;
-    // Fill with theme background so card matches the sim's color scheme
-    cx.fillStyle = bgFill;
+
+    // Fill background (main draw() only clears to transparent)
+    const t = THEMES[savedThemeKey] || THEMES.A;
+    cx.fillStyle = t.bg;
     cx.fillRect(0, 0, cv.width, cv.height);
-    for (const p of parts) {
-      const ip = p.type === 'proton';
-      // Outer glow
-      const g = cx.createRadialGradient(p.x, p.y, 0, p.x, p.y, R * 2.5);
-      g.addColorStop(0, ip ? 'rgba(255,80,80,0.35)' : 'rgba(140,140,180,0.25)');
-      g.addColorStop(1, 'rgba(0,0,0,0)');
-      cx.fillStyle = g;
-      cx.beginPath(); cx.arc(p.x, p.y, R * 2.5, 0, Math.PI * 2); cx.fill();
-      // Body — uses theme proton/neutron colors
-      const bg = cx.createRadialGradient(p.x - 2, p.y - 2, 1, p.x, p.y, R);
-      if (ip) { bg.addColorStop(0, pCore); bg.addColorStop(0.7, pMid); bg.addColorStop(1, pEdge); }
-      else    { bg.addColorStop(0, nCore); bg.addColorStop(0.7, nMid); bg.addColorStop(1, nEdge); }
-      cx.fillStyle = bg;
-      cx.beginPath(); cx.arc(p.x, p.y, R, 0, Math.PI * 2); cx.fill();
-      // Label
-      cx.fillStyle = 'rgba(255,255,255,0.88)';
-      cx.font = 'bold 10px monospace';
-      cx.textAlign = 'center'; cx.textBaseline = 'middle';
-      if (ip) cx.fillText('+', p.x, p.y + 1);
-      else    cx.fillText('n', p.x, p.y + 1);
-    }
+
+    // Temporarily redirect all main sim draw globals to this card canvas,
+    // then call the actual main draw() so SideSim gets identical rendering
+    // (field heatmaps, particle style, etc.) to the version that captured the note.
+    const _canvas = canvas, _ctx = ctx, _hmComposite = hmComposite, _hmcCtx = hmcCtx;
+    const _particles = particles, _zoom = zoom;
+    const _tab = currentTab, _tabIsProton = currentTabIsProton;
+    const _showE = showElectricField, _showS = showStrongField;
+    const _theme = currentTheme, _themeKey = currentThemeKey;
+    const _arrow = arrowMode, _drag = dragging, _sel = selectedParticle;
+    const _running = running, _jitter = jitter;
+    const _sfStr = strongForceStrength, _sfRng = strongForceRange;
+
+    canvas = cv; ctx = cx;
+    hmComposite = sideHmComposite; hmcCtx = sideHmComposite.getContext('2d');
+    particles = parts;
+    zoom = 1;  // positions are already scaled to card-canvas space
+    currentTab = savedTab; currentTabIsProton = (savedTab === 'proton');
+    showElectricField = savedShowElectric;
+    showStrongField = savedShowStrong;
+    currentTheme = t; currentThemeKey = savedThemeKey;
+    arrowMode = 0;  // no force arrows in cards
+    dragging = null; selectedParticle = null;
+    running = false;  // prevent heatmap frame-skip cache
+    jitter = [];
+    strongForceStrength = sfStr; strongForceRange = sfRng;
+
+    window.draw();
+
+    canvas = _canvas; ctx = _ctx; hmComposite = _hmComposite; hmcCtx = _hmcCtx;
+    particles = _particles; zoom = _zoom;
+    currentTab = _tab; currentTabIsProton = _tabIsProton;
+    showElectricField = _showE; showStrongField = _showS;
+    currentTheme = _theme; currentThemeKey = _themeKey;
+    arrowMode = _arrow; dragging = _drag; selectedParticle = _sel;
+    running = _running; jitter = _jitter;
+    strongForceStrength = _sfStr; strongForceRange = _sfRng;
   }
 
   function loop() {
@@ -3755,19 +3823,18 @@ const SideSim = (() => {
     sfRng = state.strongForceRange    ?? 1.2;
     spd   = state.speed               ?? 1.5;
 
-    // Theme colors — look up from the global THEMES object
-    const tk = state.themeKey || 'A';
-    const t  = THEMES[tk] || THEMES.A;
-    pCore = t.protonCore;  pMid = t.protonMid;  pEdge = t.protonEdge;
-    nCore = t.neutronCore; nMid = t.neutronMid; nEdge = t.neutronEdge;
-    bgFill = t.bg;
+    // Viz settings — passed through to the main draw() call
+    savedThemeKey     = state.themeKey          || 'A';
+    savedShowElectric = state.showElectricField  ?? true;
+    savedShowStrong   = state.showStrongField    ?? true;
+    savedTab          = state.currentTab         || 'nucleus';
+    savedZoom         = state.zoom               || 1;
 
-    // Zoom: incorporate the captured zoom so particle density matches the main sim
-    const z     = state.zoom || 1;
+    // Scale particle positions to card-canvas space
     const srcW  = state.canvasWidth  || targetCv.width;
     const srcH  = state.canvasHeight || targetCv.height;
     const base  = Math.min(targetCv.width / srcW, targetCv.height / srcH);
-    const scale = base * z;
+    const scale = base * savedZoom;
     const offX  = (targetCv.width  - srcW * scale) / 2;
     const offY  = (targetCv.height - srcH * scale) / 2;
 
@@ -3778,6 +3845,9 @@ const SideSim = (() => {
       vy: (p.vy || 0) * scale,
       type: p.type || 'proton',
     }));
+
+    // Invalidate heatmap cache so the new state renders fresh
+    sideHmComposite.width = 0; sideHmComposite.height = 0;
   }
 
   // Render one still frame to any canvas without disrupting active playback
