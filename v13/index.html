@@ -505,7 +505,7 @@
   }
   #scrubBar.visible { display: flex; }
   #energyGraph {
-    display: block;
+    display: none;
     width: 100%;
     height: 110px;
     border-bottom: 1px solid var(--ui-border);
@@ -588,7 +588,7 @@
       </div>
       <div style="display:flex;flex-direction:column;gap:10px;justify-content:space-evenly;align-self:stretch">
         <label class="toggle-label">
-          <input type="checkbox" id="showElectric" checked>
+          <input type="checkbox" id="showElectric">
           <span class="field-label-electric">Electric field</span>
         </label>
         <div id="particleWheel" class="arrow-wheel">
@@ -609,6 +609,7 @@
     <span class="slider-icon" style="font-size:16px">⏱</span>
     <input type="range" id="scrubSlider" min="0" max="1000" value="0">
     <span id="scrubPct">0%</span>
+    <label class="toggle-label" style="margin-left:10px;white-space:nowrap"><input type="checkbox" id="energyGraphToggle"> Energy Graph</label>
   </div>
 </div>
 
@@ -1251,6 +1252,7 @@ const PH2_END = 0.375;
 const ANIM_T_START = 0.27;
 const ANIM_T_END   = 0.47;
 const ANIM_RANGE   = ANIM_T_END - ANIM_T_START;
+const FISS_STOP_T  = PH2_END + 0.70 * (ANIM_T_END - PH2_END);  // playback endpoint
 const NORMAL_DURATION       = 5000;  // ms — main nucleus phase 3 separation
 const CHAIN_NORMAL_DURATION = 5000;  // ms — chain-site daughters
 let SHAKE_DURATION  = 1000;  // ms — randomised on each hit (500–1500)
@@ -1365,7 +1367,6 @@ function drawAnimContent(t) {
     const jy = outAmp * Math.cos(t * 150);
 
     const glowIntensity = Math.min(1, ph2Frac / 0.3);
-    if (showParticles && neutronState === 'fission') drawExcitedGlow(animParent.cx, animParent.cy, animParent.sphereR, glowIntensity);
 
     const ncx = animParent.cx, ncy = animParent.cy;
     const cosA = Math.cos(staticFissAngle), sinA = Math.sin(staticFissAngle);
@@ -1407,7 +1408,7 @@ function drawAnimContent(t) {
   const cx = W / 2, cy = H / 2;
   const sepT      = (t - PH2_END) / (1.0 - PH2_END);
   const shootT    = Math.min(1, sepT / 0.075);
-  const shootEase = shootT;  // linear — Coulomb daughters already have ~50% KE at separation
+  const shootEase = Math.min(1, 3 * shootT * shootT * shootT);  // s = 3t³
   const rearT     = Math.min(1, sepT / 0.05);
   const rearEase  = rearT * rearT * (3 - 2 * rearT);
 
@@ -1532,7 +1533,7 @@ function renderAtFrac(frac) {
   } else {
     // Fission zone
     const ff = (frac - NEUTRON_FRAC) / (1 - NEUTRON_FRAC);
-    const t = PH1_END + ff * (ANIM_T_END - PH1_END);
+    const t = PH1_END + ff * (FISS_STOP_T - PH1_END);
     drawAnimContent(t);
   }
 
@@ -1790,7 +1791,7 @@ function fissionTick(now) {
   if (elapsed < SHAKE_DURATION) {
     staticFissT = PH1_END + (elapsed / SHAKE_DURATION) * (PH2_END - PH1_END);
   } else {
-    staticFissT = PH2_END + Math.min(1, (elapsed - SHAKE_DURATION) / NORMAL_DURATION) * (ANIM_T_END - PH2_END);
+    staticFissT = Math.min(FISS_STOP_T, PH2_END + ((elapsed - SHAKE_DURATION) / NORMAL_DURATION) * (ANIM_T_END - PH2_END));
   }
   // Check fission neutron collisions with enriched sites every frame after split
   if (staticFissT > PH2_END) {
@@ -1817,12 +1818,12 @@ function fissionTick(now) {
     }
   }
   updateChain(now);
-  const ff = (staticFissT - PH1_END) / (ANIM_T_END - PH1_END);
-  currentScrubFrac = NEUTRON_FRAC + ff * (1 - NEUTRON_FRAC);
+  const ff = (staticFissT - PH1_END) / (FISS_STOP_T - PH1_END);
+  currentScrubFrac = NEUTRON_FRAC + Math.min(1, ff) * (1 - NEUTRON_FRAC);
   document.getElementById('scrubSlider').value = scrubVal(currentScrubFrac);
   document.getElementById('scrubPct').textContent = scrubPct(currentScrubFrac);
   renderAtFrac(currentScrubFrac);
-  if (staticFissT < ANIM_T_END) {
+  if (staticFissT < FISS_STOP_T) {
     neutronRAF = requestAnimationFrame(fissionTick);
   } else {
     neutronState = 'done';
@@ -2289,6 +2290,10 @@ document.getElementById('enrichBtn').addEventListener('click', () => {
 document.getElementById('showElectric').addEventListener('change', () => {
   heatmapDirty = true;
   drawStaticFrame();
+});
+
+document.getElementById('energyGraphToggle').addEventListener('change', function() {
+  document.getElementById('energyGraph').style.display = this.checked ? 'block' : 'none';
 });
 
 let idleParticleRAF = null;

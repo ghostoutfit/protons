@@ -790,8 +790,10 @@
       </div>
       <!-- Right col: electric toggle + arrowWheel stacked -->
       <div style="display:flex;flex-direction:column;gap:10px;justify-content:space-evenly;align-self:stretch">
-        <label class="toggle-label"><input type="checkbox" id="electricFieldToggle" checked> <span class="field-label-electric">Electric field</span></label>
-        <input type="checkbox" id="strongFieldToggle" checked style="display:none">
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <label class="toggle-label"><input type="checkbox" id="electricFieldToggle" checked> <span class="field-label-electric">Electric field</span></label>
+          <label class="toggle-label" id="strongFieldLabel" style="visibility:hidden"><input type="checkbox" id="strongFieldToggle" checked> <span style="color:#ff8040">Strong field</span></label>
+        </div>
         <div id="arrowWheel" class="arrow-wheel">
           <button class="awheel-item active" data-mode="0">Force arrows off</button>
           <button class="awheel-item" data-mode="1">Show all forces</button>
@@ -1458,6 +1460,7 @@ function applyTab(tab) {
   document.getElementById('tabA').classList.toggle('active', isProtonOnly);
   document.getElementById('tabB').classList.toggle('active', isNucleus);
   document.getElementById('centerBtn').style.visibility = isNucleus ? 'visible' : 'hidden';
+  document.getElementById('strongFieldLabel').style.visibility = isNucleus ? 'visible' : 'hidden';
   // Reset strong force to tab default
   if (isProtonOnly) {
     strongForceStrength = 0.25;
