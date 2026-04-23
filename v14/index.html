@@ -1894,15 +1894,13 @@ function drawEnergyGraph() {
   // Neon legend — left side, vertically centered
   const legend = splitIE
     ? [
-        { text: 'TOTAL', color: '#00ffaa', glow: 'rgba(0,255,170,0.9)'    },
-        { text: 'EIE',   color: '#7b6fff', glow: 'rgba(120,100,255,0.9)'  },
-        { text: 'SIE',   color: '#ff8040', glow: 'rgba(255,128,64,0.9)'   },
-        { text: 'KE',    color: '#ff3a6e', glow: 'rgba(255,45,100,0.9)'   },
+        { text: 'Energy in Electric Field', color: '#7b6fff', glow: 'rgba(120,100,255,0.9)'  },
+        { text: 'Energy in Strong Field',   color: '#ff8040', glow: 'rgba(255,128,64,0.9)'   },
+        { text: 'Energy in Motion',         color: '#ff3a6e', glow: 'rgba(255,45,100,0.9)'   },
       ]
     : [
-        { text: 'TOTAL', color: '#00ffaa', glow: 'rgba(0,255,170,0.9)'    },
-        { text: 'IE',    color: '#7b6fff', glow: 'rgba(120,100,255,0.9)'  },
-        { text: 'KE',    color: '#ff3a6e', glow: 'rgba(255,45,100,0.9)'   },
+        { text: 'Energy in Fields',  color: '#7b6fff', glow: 'rgba(120,100,255,0.9)'  },
+        { text: 'Energy in Motion',  color: '#ff3a6e', glow: 'rgba(255,45,100,0.9)'   },
       ];
 
   egCtx.font = 'bold 18px "JetBrains Mono", monospace';
