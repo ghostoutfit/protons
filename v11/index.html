@@ -201,9 +201,8 @@
     border-color: rgba(255,255,255,0.12);
   }
 
-  /* accent1 neon (pink) — Go, particle add, center, btn-neon1 */
+  /* accent1 neon (pink) — particle add, center, btn-neon1 */
   .btn-neon1,
-  #goBtn,
   .particle-add-btn,
   #centerBtn,
   #neutronDecBtn,
@@ -225,7 +224,6 @@
       0 0 44px var(--accent1-dim);
   }
   .btn-neon1:hover,
-  #goBtn:hover,
   .particle-add-btn:hover,
   #centerBtn:hover,
   #neutronDecBtn:hover,
@@ -271,6 +269,58 @@
       0 0 100px var(--accent2-dim);
   }
 
+  /* Go idle (▶) — neon green */
+  #goBtn {
+    border-color: #00d060;
+    color: rgba(255,255,255,0.5);
+    background: rgba(0,208,96,0.12);
+    box-shadow:
+      inset 0 0 6px rgba(0,208,96,0.18),
+      0 0 2px #00d060,
+      0 0 8px #00d060,
+      0 0 18px rgba(0,208,96,0.5),
+      0 0 40px rgba(0,208,96,0.2),
+      0 0 70px rgba(0,208,96,0.1);
+    text-shadow:
+      0 0 4px rgba(255,255,255,0.5),
+      0 0 10px #00d060,
+      0 0 22px rgba(0,208,96,0.6),
+      0 0 44px rgba(0,208,96,0.2);
+  }
+  #goBtn:hover { background: rgba(0,208,96,0.28); }
+  /* Go running (⏸) — red */
+  #goBtn.running {
+    border-color: #ff4040;
+    color: rgba(255,255,255,0.5);
+    background: rgba(255,40,40,0.15);
+    box-shadow:
+      inset 0 0 6px rgba(255,40,40,0.2),
+      0 0 2px #ff4040,
+      0 0 8px #ff4040,
+      0 0 18px rgba(255,40,40,0.5),
+      0 0 40px rgba(255,40,40,0.2);
+    text-shadow: 0 0 4px rgba(255,255,255,0.5), 0 0 10px #ff4040, 0 0 22px rgba(255,80,80,0.6);
+  }
+  #goBtn.running:hover { background: rgba(255,40,40,0.3); }
+
+  /* Clear — neon green */
+  #clearBtn {
+    border-color: #00d060;
+    color: rgba(255,255,255,0.5);
+    background: rgba(0,208,96,0.12);
+    box-shadow:
+      inset 0 0 6px rgba(0,208,96,0.18),
+      0 0 2px #00d060,
+      0 0 8px #00d060,
+      0 0 18px rgba(0,208,96,0.5),
+      0 0 40px rgba(0,208,96,0.2);
+    text-shadow:
+      0 0 4px rgba(255,255,255,0.5),
+      0 0 10px #00d060,
+      0 0 22px rgba(0,208,96,0.6);
+  }
+  #clearBtn:hover { background: rgba(0,208,96,0.28); }
+
   /* Replay — same red as Stop */
   #replayBtn {
     border-color: #ff4040;
@@ -294,23 +344,67 @@
     cursor: not-allowed;
   }
 
-  /* Go running state */
-  #goBtn.running {
+  /* Mini replay in scrub bar */
+  #scrubReplayBtn {
+    font-size: 16px;
     border-color: #ff4040;
     color: rgba(255,255,255,0.5);
     background: rgba(255,40,40,0.15);
     box-shadow:
-      inset 0 0 6px rgba(255,40,40,0.2),
+      inset 0 0 4px rgba(255,40,40,0.2),
       0 0 2px #ff4040,
-      0 0 8px #ff4040,
-      0 0 18px rgba(255,40,40,0.5),
-      0 0 40px rgba(255,40,40,0.2);
-    text-shadow: 0 0 4px rgba(255,255,255,0.5), 0 0 10px #ff4040, 0 0 22px rgba(255,80,80,0.6);
+      0 0 8px rgba(255,40,40,0.5),
+      0 0 14px rgba(255,40,40,0.4);
+    text-shadow: 0 0 4px rgba(255,255,255,0.5), 0 0 8px #ff4040;
   }
-  #goBtn.running:hover { background: rgba(255,40,40,0.3); }
+  #scrubReplayBtn:hover { background: rgba(255,40,40,0.3); }
+  #scrubReplayBtn:disabled {
+    background: transparent;
+    border-color: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.18);
+    box-shadow: none;
+    text-shadow: none;
+    cursor: not-allowed;
+  }
 
-  /* Go / Replay — double-size for easy classroom use */
-  #goBtn, #replayBtn { padding: 8px 28px; font-size: 22px; letter-spacing: 2px; }
+
+  /* Go / Replay — squished symbol buttons */
+  #goBtn, #replayBtn { font-size: 28px; letter-spacing: 0; padding: 2px 18px; }
+
+  /* Neutron slider — grey to distinguish from sim speed/zoom */
+  #neutronSlider {
+    box-shadow: 0 0 4px rgba(160,160,185,0.35), 0 0 10px rgba(160,160,185,0.15);
+  }
+  #neutronSlider::-webkit-slider-thumb {
+    background: #9090a8;
+    box-shadow: 0 0 3px #9090a8, 0 0 8px rgba(150,150,180,0.5), 0 0 18px rgba(150,150,180,0.2);
+  }
+  #neutronSlider::-moz-range-thumb {
+    background: #9090a8;
+    box-shadow: 0 0 3px #9090a8, 0 0 8px rgba(150,150,180,0.5);
+  }
+
+  /* ========================================
+     CTRL BOXES — pink and blue bordered panels
+     ======================================== */
+  .ctrl-box-pink {
+    display: flex; align-items: center; align-self: stretch;
+    gap: 14px; padding: 10px 16px;
+    background: rgba(255,45,120,0.07);
+    border: 1px solid rgba(255,45,120,0.22);
+    border-radius: 12px;
+  }
+  .ctrl-box-blue {
+    display: flex; align-items: center; align-self: stretch;
+    gap: 18px; padding: 10px 16px;
+    background: rgba(26,110,255,0.07);
+    border: 1px solid rgba(26,110,255,0.22);
+    border-radius: 12px;
+  }
+  .ctrl-box-blue input[type="range"] { width: 150px; }
+  .ctrl-box-blue .slider-icon { font-size: 28px; }
+  .ctrl-box-blue .toggle-label { font-size: 13px; gap: 6px; }
+  .ctrl-box-blue .awheel-item { font-size: 13px; padding: 5px 14px; }
 
   /* ========================================
      SLIDERS — neon tube aesthetic
@@ -491,8 +585,8 @@
     border-color: rgba(255,255,255,0.18);
     transform: translateY(var(--slide-dir, 0px));
   }
-  /* Reveal on hover — slide into place */
-  .arrow-wheel:hover .awheel-item[data-position] {
+  /* Reveal when open (JS-managed) — slide into place */
+  .arrow-wheel.open .awheel-item[data-position] {
     opacity: 1;
     transform: translateY(0);
     pointer-events: auto;
@@ -546,27 +640,28 @@
     box-shadow: none;
     text-shadow: none;
   }
+  a.tab-btn { text-decoration: none; }
+
   .tab-btn:hover {
     color: rgba(255,255,255,0.38);
     border-color: rgba(255,255,255,0.12);
   }
   .tab-btn.active {
-    color: #fff;
-    border-color: var(--accent1);
-    background: var(--accent1-dim);
-    /* neon sign: tight tube on the border, then atmospheric bloom layers */
+    color: #e8e4ff;
+    border-color: #7b6fff;
+    background: rgba(123,111,255,0.12);
     box-shadow:
-      inset 0 0 6px var(--accent1-dim),
-      0 0 2px var(--accent1),
-      0 0 8px var(--accent1),
-      0 0 18px var(--accent1-glow),
-      0 0 40px var(--accent1-dim),
-      0 0 70px var(--accent1-dim);
+      inset 0 0 6px rgba(123,111,255,0.15),
+      0 0 2px #7b6fff,
+      0 0 8px #7b6fff,
+      0 0 18px rgba(123,111,255,0.5),
+      0 0 40px rgba(123,111,255,0.2),
+      0 0 70px rgba(123,111,255,0.1);
     text-shadow:
-      0 0 4px #fff,
-      0 0 10px var(--accent1),
-      0 0 22px var(--accent1-glow),
-      0 0 44px var(--accent1-dim);
+      0 0 4px #e8e4ff,
+      0 0 10px #7b6fff,
+      0 0 22px rgba(123,111,255,0.5),
+      0 0 44px rgba(123,111,255,0.2);
   }
 
   /* ========================================
@@ -627,6 +722,8 @@
     <div id="tabBar">
       <button class="tab-btn active" id="tabA">Protons</button>
       <button class="tab-btn" id="tabB">Protons + Neutrons</button>
+      <a href="../v13/index.html" class="tab-btn">Fission</a>
+      <a href="../v13/index.html" class="tab-btn">Chain Reaction</a>
     </div>
     <div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
       <button class="theme-btn active" id="themeA" title="Synthwave"></button>
@@ -634,58 +731,73 @@
       <button class="theme-btn" id="themeC" title="Neon Blue"></button>
     </div>
   </div>
-  <div class="toolbar-row" style="align-items:flex-start;gap:10px">
-    <!-- PROTONS frame: always visible, always in this position -->
-    <div class="particle-frame">
-      <div class="particle-frame-title"><canvas id="protonIconCanvas" class="particle-icon-canvas" width="40" height="40"></canvas></div>
-      <div class="particle-frame-controls">
-        <div id="particleBtns" style="display:flex;gap:6px">
-          <button class="btn particle-add-btn" data-count="1">1</button>
-          <button class="btn particle-add-btn" data-count="2">2</button>
-          <button class="btn particle-add-btn" data-count="6">6</button>
-          <button class="btn particle-add-btn" data-count="20">20</button>
-          <button class="btn particle-add-btn" data-count="36">36</button>
-        </div>
-      </div>
-    </div>
-    <!-- NEUTRONS frame: visible in Tab B, invisible-but-present in Tab A to hold position -->
-    <div id="neutronFrame" class="particle-frame" style="visibility:hidden">
-      <div class="particle-frame-title"><canvas id="neutronIconCanvas" class="particle-icon-canvas" width="40" height="40"></canvas></div>
-      <div class="particle-frame-controls">
-        <div class="neutron-slider-wrap">
-          <button id="neutronDecBtn" style="width:28px;height:28px;padding:0;font-size:13px;line-height:1;flex-shrink:0;">&#9664;</button>
-          <input type="range" id="neutronSlider" min="0" max="50" step="1" value="2">
-          <button id="neutronIncBtn" style="width:28px;height:28px;padding:0;font-size:13px;line-height:1;flex-shrink:0;">&#9654;</button>
-          <span class="neutron-slider-label"><span id="neutronSliderVal">2</span></span>
-        </div>
-      </div>
-    </div>
-    <!-- GO + REPLAY always visible, bottom-aligned with the button rows -->
+  <div class="toolbar-row" style="align-items:stretch;gap:12px">
+    <!-- GO + REPLAY + CLEAR — far left, bottom-aligned -->
     <div style="display:flex;flex-direction:column;justify-content:flex-end;align-self:stretch;gap:6px;padding-bottom:10px">
-      <button class="btn" id="goBtn">Go</button>
-      <button class="btn" id="replayBtn" disabled>Replay</button>
+      <button class="btn" id="goBtn">&#9654;</button>
+      <button class="btn" id="replayBtn" disabled>&#8634;</button>
+      <button id="clearBtn" class="btn">Clear</button>
     </div>
-    <div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin-left:8px;align-self:center">
-      <span id="stats">Protons: 0</span>
-      <button class="btn" id="centerBtn" style="display:none;font-size:11px;padding:2px 8px">Center</button>
+
+    <!-- PINK BOX: stats/center | proton add buttons + neutron slider -->
+    <div class="ctrl-box-pink">
+      <!-- Left col: particle counts stacked + center button -->
+      <div style="display:flex;flex-direction:column;align-items:flex-start;gap:6px;align-self:center">
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <span id="statProtons">Protons: 0</span>
+          <span id="statNeutrons" style="visibility:hidden">Neutrons: 0</span>
+        </div>
+        <button class="btn" id="centerBtn" style="visibility:hidden;font-size:11px;padding:2px 8px;margin-top:4px">Center</button>
+      </div>
+      <!-- Right col: proton buttons + neutron row -->
+      <div style="display:flex;flex-direction:column;gap:8px;justify-content:center;align-self:stretch">
+        <div style="display:flex;align-items:center;gap:6px">
+          <canvas id="protonIconCanvas" class="particle-icon-canvas" width="32" height="32"></canvas>
+          <div id="particleBtns" style="display:flex;gap:6px">
+            <button class="btn particle-add-btn" data-count="1">1</button>
+            <button class="btn particle-add-btn" data-count="2">2</button>
+            <button class="btn particle-add-btn" data-count="6">6</button>
+            <button class="btn particle-add-btn" data-count="20">20</button>
+            <button class="btn particle-add-btn" data-count="36">36</button>
+          </div>
+        </div>
+        <div id="neutronFrame" style="display:flex;align-items:center;gap:6px;visibility:hidden">
+          <canvas id="neutronIconCanvas" class="particle-icon-canvas" width="32" height="32"></canvas>
+          <div class="neutron-slider-wrap">
+            <button id="neutronDecBtn" style="width:24px;height:24px;padding:0;font-size:12px;line-height:1;flex-shrink:0;">&#9664;</button>
+            <input type="range" id="neutronSlider" min="0" max="50" step="1" value="2" style="width:110px">
+            <button id="neutronIncBtn" style="width:24px;height:24px;padding:0;font-size:12px;line-height:1;flex-shrink:0;">&#9654;</button>
+            <span class="neutron-slider-label"><span id="neutronSliderVal">2</span></span>
+          </div>
+        </div>
+      </div>
     </div>
-  </div>
-  <div class="toolbar-row">
-    <div class="slider-group">
-      <span class="slider-icon" title="Slow">🐢</span>
-      <input type="range" id="speedSlider" min="0" max="20" step="1" value="13">
-      <span class="slider-icon" title="Fast">🐇</span>
-    </div>
-    <div class="slider-group">
-      <span class="slider-icon" title="Zoom">🔍</span>
-      <input type="range" id="zoomSlider" min="5" max="40" step="1" value="20">
-    </div>
-    <label class="toggle-label"><input type="checkbox" id="electricFieldToggle" checked> <span class="field-label-electric">Electric field</span></label>
-    <label class="toggle-label"><input type="checkbox" id="strongFieldToggle" checked> <span class="field-label-strong">Strong field</span></label>
-    <div id="arrowWheel" class="arrow-wheel">
-      <button class="awheel-item active" data-mode="0">Force arrows off</button>
-      <button class="awheel-item" data-mode="1" data-position="below">Show all forces</button>
-      <button class="awheel-item" data-mode="2" data-position="above">Show total forces</button>
+
+    <!-- BLUE BOX: stacked sliders | stacked toggles -->
+    <div class="ctrl-box-blue">
+      <!-- Left col: speed + zoom sliders stacked -->
+      <div style="display:flex;flex-direction:column;gap:14px;justify-content:space-evenly;align-self:stretch">
+        <div class="slider-group">
+          <span class="slider-icon" title="Slow">🐢</span>
+          <input type="range" id="speedSlider" min="0" max="20" step="1" value="13">
+          <span class="slider-icon" title="Fast">🐇</span>
+        </div>
+        <div class="slider-group">
+          <span class="slider-icon" style="visibility:hidden">🐢</span>
+          <input type="range" id="zoomSlider" min="5" max="40" step="1" value="20">
+          <span class="slider-icon" title="Zoom">🔍</span>
+        </div>
+      </div>
+      <!-- Right col: electric toggle + arrowWheel stacked -->
+      <div style="display:flex;flex-direction:column;gap:10px;justify-content:space-evenly;align-self:stretch">
+        <label class="toggle-label"><input type="checkbox" id="electricFieldToggle" checked> <span class="field-label-electric">Electric field</span></label>
+        <input type="checkbox" id="strongFieldToggle" checked style="display:none">
+        <div id="arrowWheel" class="arrow-wheel">
+          <button class="awheel-item active" data-mode="0">Force arrows off</button>
+          <button class="awheel-item" data-mode="1">Show all forces</button>
+          <button class="awheel-item" data-mode="2">Show total forces</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -701,7 +813,8 @@
 </div>
 
 <div id="scrubBar">
-  <span class="scrub-label">Time</span>
+  <button id="scrubReplayBtn" class="btn" disabled>&#8634;</button>
+  <span class="slider-icon" style="font-size:16px">⏱</span>
   <input type="range" id="timeSlider" min="0" max="0" value="0" disabled>
   <span class="scrub-time" id="timeLabel">–</span>
 </div>
@@ -714,8 +827,10 @@ const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const goBtn = document.getElementById('goBtn');
 const replayBtn = document.getElementById('replayBtn');
+const scrubReplayBtn = document.getElementById('scrubReplayBtn');
 const speedSlider = document.getElementById('speedSlider');
-const statsEl = document.getElementById('stats');
+const statProtons = document.getElementById('statProtons');
+const statNeutrons = document.getElementById('statNeutrons');
 const timeSlider  = document.getElementById('timeSlider');
 const timeLabelEl = document.getElementById('timeLabel');
 
@@ -1169,11 +1284,12 @@ function resetSim() {
   running = false;
   replaying = false;
   cancelAnimationFrame(animId);
-  goBtn.textContent = 'Go';
+  goBtn.textContent = '▶';
   goBtn.classList.remove('running');
   particles = [];
   snapshot = null;
   replayBtn.disabled = true;
+  scrubReplayBtn.disabled = true;
   particleHistory = [];
   scrubFrame = -1;
   timeSlider.value = 0;
@@ -1231,6 +1347,7 @@ let snapshot = null;  // Deep copy of particles at simulation start
 function takeSnapshot() {
   snapshot = particles.map(p => ({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, type: p.type }));
   replayBtn.disabled = false;
+  scrubReplayBtn.disabled = false;
 }
 
 function restoreSnapshot() {
@@ -1244,7 +1361,7 @@ function restoreSnapshot() {
 goBtn.addEventListener('click', () => {
   replaying = false;
   running = !running;
-  goBtn.textContent = running ? 'Stop' : 'Go';
+  goBtn.textContent = running ? '⏸' : '▶';
   goBtn.classList.toggle('running', running);
   if (running) {
     particleHistory = [];
@@ -1261,8 +1378,11 @@ goBtn.addEventListener('click', () => {
 // ============================================================
 //  REPLAY BUTTON
 // ============================================================
-replayBtn.addEventListener('click', () => {
+function doReplay() {
   if (!particleHistory.length) return;
+  // Snap current slider values so replay uses whatever zoom/speed are set now
+  applySpeedSlider();
+  zoom = parseInt(document.getElementById('zoomSlider').value) / 10;
   cancelAnimationFrame(animId);
   running = false;
   replaying = false;
@@ -1273,9 +1393,16 @@ replayBtn.addEventListener('click', () => {
   // Auto-play through recorded history
   replaying = true;
   running = true;
-  goBtn.textContent = 'Stop';
+  goBtn.textContent = '⏸';
   goBtn.classList.add('running');
   animId = requestAnimationFrame(loop);
+}
+replayBtn.addEventListener('click', doReplay);
+scrubReplayBtn.addEventListener('click', doReplay);
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  resetSim();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 });
 
 
@@ -1328,10 +1455,9 @@ function applyTab(tab) {
   currentTabIsProton = isProtonOnly;
   currentTab = isProtonOnly ? 'proton' : 'nucleus';
   neutronFrame.style.visibility = isNucleus ? 'visible' : 'hidden';
-  document.getElementById('arrowWheel').style.display   = isProtonOnly ? '' : 'none';
   document.getElementById('tabA').classList.toggle('active', isProtonOnly);
   document.getElementById('tabB').classList.toggle('active', isNucleus);
-  document.getElementById('centerBtn').style.display = isNucleus ? '' : 'none';
+  document.getElementById('centerBtn').style.visibility = isNucleus ? 'visible' : 'hidden';
   // Reset strong force to tab default
   if (isProtonOnly) {
     strongForceStrength = 0.25;
@@ -1339,12 +1465,13 @@ function applyTab(tab) {
   // Clear simulation state on tab switch
   running = false;
   cancelAnimationFrame(animId);
-  goBtn.textContent = 'Go';
+  goBtn.textContent = '▶';
   goBtn.classList.remove('running');
   particles = [];
   snapshot = null;
   selectedParticle = null;
   replayBtn.disabled = true;
+  scrubReplayBtn.disabled = true;
   quantumEjectAt = quantumTimerStartAt = null;
   quantumFlashes = [];
   updateStats();
@@ -1445,11 +1572,10 @@ document.getElementById('neutronDecBtn').addEventListener('click', () => stepNeu
 document.getElementById('neutronIncBtn').addEventListener('click', () => stepNeutronSlider(1));
 
 
-// Arrow mode wheel — fixed order, selected stays in flow, others float above/below
+// Arrow mode wheel — active stays in flow, inactive items always drop down
 function setArrowWheelActive(targetBtn) {
   const items = [...document.querySelectorAll('.awheel-item[data-mode]')];
-  const activeIdx = items.indexOf(targetBtn);
-  const SLOT = 27; // item height (~22px) + inter-item gap (5px)
+  const SLOT = 27; // approximate item height + gap
 
   items.forEach(item => {
     item.classList.remove('active');
@@ -1460,30 +1586,29 @@ function setArrowWheelActive(targetBtn) {
 
   targetBtn.classList.add('active');
 
-  items.forEach((item, i) => {
-    if (i === activeIdx) return;
-    if (i < activeIdx) {
-      // above active — items stack upward in original order
-      const slot = activeIdx - i;                           // 1 = closest
-      item.dataset.position = 'above';
-      item.style.bottom = `calc(100% + ${(slot - 1) * SLOT}px)`;
-      if (slot === 1) item.style.paddingBottom = '5px';
-      item.style.setProperty('--slide-dir', '5px');
-    } else {
-      // below active — items stack downward in original order
-      const slot = i - activeIdx;                           // 1 = closest
-      item.dataset.position = 'below';
-      item.style.top = `calc(100% + ${(slot - 1) * SLOT}px)`;
-      if (slot === 1) item.style.paddingTop = '5px';
-      item.style.setProperty('--slide-dir', '-5px');
-    }
+  let slot = 0;
+  items.forEach(item => {
+    if (item === targetBtn) return;
+    slot++;
+    item.dataset.position = 'below';
+    item.style.top = slot === 1 ? '100%' : `calc(100% + ${(slot - 1) * SLOT}px)`;
+    item.style.paddingTop = slot === 1 ? '5px' : '';
+    item.style.setProperty('--slide-dir', '-5px');
   });
 }
+
+function bindWheelHover(wheelEl) {
+  let tid = null;
+  wheelEl.addEventListener('mouseenter', () => { clearTimeout(tid); wheelEl.classList.add('open'); });
+  wheelEl.addEventListener('mouseleave', () => { tid = setTimeout(() => wheelEl.classList.remove('open'), 80); });
+}
+bindWheelHover(document.getElementById('arrowWheel'));
 
 document.querySelectorAll('.awheel-item[data-mode]').forEach(btn => {
   btn.addEventListener('click', () => {
     arrowMode = parseInt(btn.dataset.mode);
     setArrowWheelActive(btn);
+    document.getElementById('arrowWheel').classList.remove('open');
     if (!running) draw();
   });
 });
@@ -1496,11 +1621,9 @@ function hideInstructions() { /* removed */ }
 function updateStats() {
   const np = particles.filter(p => p.type === 'proton').length;
   const nn = particles.filter(p => p.type === 'neutron').length;
-  if (currentTabIsProton) {
-    statsEl.textContent = `Protons: ${np}`;
-  } else {
-    statsEl.textContent = `Protons: ${np}  Neutrons: ${nn}`;
-  }
+  statProtons.textContent = `Protons: ${np}`;
+  statNeutrons.textContent = `Neutrons: ${nn}`;
+  statNeutrons.style.visibility = currentTabIsProton ? 'hidden' : 'visible';
 }
 
 // ============================================================
@@ -2166,7 +2289,7 @@ function draw() {
     const px = p.x + jx, py = p.y + jy;
 
     // Selection ring
-    if (i === selectedParticle && currentTabIsProton && arrowMode > 0) {
+    if (i === selectedParticle && arrowMode > 0) {
       ctx.beginPath();
       ctx.arc(px, py, PARTICLE_RADIUS + 6, 0, Math.PI * 2);
       ctx.strokeStyle = 'rgba(250,204,21,0.6)';
@@ -2250,8 +2373,8 @@ function draw() {
     });
   }
 
-  // Force arrows on selected particle (Tab A only)
-  if (currentTabIsProton) drawProtonForceArrows();
+  // Force arrows on selected particle
+  drawProtonForceArrows();
 
   ctx.restore();
 }
@@ -2277,7 +2400,7 @@ timeSlider.addEventListener('input', () => {
     running = false;
     replaying = false;
     cancelAnimationFrame(animId);
-    goBtn.textContent = 'Go';
+    goBtn.textContent = '▶';
     goBtn.classList.remove('running');
   }
   const val = parseInt(timeSlider.value);
@@ -2304,7 +2427,7 @@ function loop() {
       scrubFrame = particleHistory.length - 1;
       running = false;
       replaying = false;
-      goBtn.textContent = 'Go';
+      goBtn.textContent = '▶';
       goBtn.classList.remove('running');
       timeSlider.value = scrubFrame;
       timeLabelEl.textContent = `${scrubFrame + 1} / ${particleHistory.length}`;
@@ -2371,7 +2494,7 @@ function loop() {
   // Auto-stop when all particles have escaped off-screen
   if (particles.length === 0) {
     running = false;
-    goBtn.textContent = 'Go';
+    goBtn.textContent = '▶';
     goBtn.classList.remove('running');
     return;
   }
@@ -2711,6 +2834,12 @@ function ambientLoop() {
 }
 ambientLoop();
 iconAnimLoop();
+setArrowWheelActive(document.querySelector('.awheel-item[data-mode="0"]'));
+
+// If linked from v13 with #nucleus hash, auto-switch to Protons + Neutrons tab
+if (location.hash === '#nucleus') {
+  document.getElementById('tabB').click();
+}
 
 // Initial draw to populate the canvas before Go is pressed
 draw();

@@ -88,26 +88,29 @@
     text-shadow: none;
     font-family: inherit;
   }
+  /* Navigation tabs (links to other sims) inherit tab-btn appearance */
+  a.tab-btn { text-decoration: none; }
+
   .tab-btn:hover {
     color: rgba(255,255,255,0.38);
     border-color: rgba(255,255,255,0.12);
   }
   .tab-btn.active {
-    color: #fff8d0;
-    border-color: #c8960a;
-    background: rgba(200,150,10,0.12);
+    color: #e8e4ff;
+    border-color: #7b6fff;
+    background: rgba(123,111,255,0.12);
     box-shadow:
-      inset 0 0 6px rgba(200,150,10,0.15),
-      0 0 2px #c8960a,
-      0 0 8px #c8960a,
-      0 0 18px rgba(200,150,10,0.45),
-      0 0 40px rgba(200,150,10,0.15),
-      0 0 70px rgba(200,150,10,0.08);
+      inset 0 0 6px rgba(123,111,255,0.15),
+      0 0 2px #7b6fff,
+      0 0 8px #7b6fff,
+      0 0 18px rgba(123,111,255,0.45),
+      0 0 40px rgba(123,111,255,0.15),
+      0 0 70px rgba(123,111,255,0.08);
     text-shadow:
-      0 0 4px #fff8d0,
-      0 0 10px #c8960a,
-      0 0 22px rgba(200,150,10,0.6),
-      0 0 44px rgba(200,150,10,0.25);
+      0 0 4px #e8e4ff,
+      0 0 10px #7b6fff,
+      0 0 22px rgba(123,111,255,0.6),
+      0 0 44px rgba(123,111,255,0.25);
   }
 
   /* ── Buttons ───────────────────────────────────────────────────────────── */
@@ -133,35 +136,26 @@
     border-color: rgba(255,255,255,0.12);
   }
 
-  /* Go — neon pink */
+  /* Go idle (▶) — neon green */
   #goBtn {
-    border-color: var(--accent1);
+    border-color: #00d060;
     color: rgba(255,255,255,0.5);
-    background: var(--accent1-dim);
+    background: rgba(0,208,96,0.12);
     box-shadow:
-      inset 0 0 6px var(--accent1-dim),
-      0 0 2px var(--accent1),
-      0 0 8px var(--accent1),
-      0 0 18px var(--accent1-glow),
-      0 0 40px var(--accent1-dim),
-      0 0 70px var(--accent1-dim);
+      inset 0 0 6px rgba(0,208,96,0.18),
+      0 0 2px #00d060,
+      0 0 8px #00d060,
+      0 0 18px rgba(0,208,96,0.5),
+      0 0 40px rgba(0,208,96,0.2),
+      0 0 70px rgba(0,208,96,0.1);
     text-shadow:
       0 0 4px rgba(255,255,255,0.5),
-      0 0 10px var(--accent1),
-      0 0 22px var(--accent1-glow),
-      0 0 44px var(--accent1-dim);
+      0 0 10px #00d060,
+      0 0 22px rgba(0,208,96,0.6),
+      0 0 44px rgba(0,208,96,0.2);
   }
-  #goBtn:hover {
-    background: var(--accent1-glow);
-    box-shadow:
-      inset 0 0 10px var(--accent1-glow),
-      0 0 4px var(--accent1),
-      0 0 14px var(--accent1),
-      0 0 28px var(--accent1-glow),
-      0 0 60px var(--accent1-dim),
-      0 0 100px var(--accent1-dim);
-  }
-  /* Running / reset state — neon red */
+  #goBtn:hover { background: rgba(0,208,96,0.28); }
+  /* Go running (⏸) — red */
   #goBtn.running {
     border-color: #ff4040;
     color: rgba(255,255,255,0.5);
@@ -172,17 +166,31 @@
       0 0 8px #ff4040,
       0 0 18px rgba(255,40,40,0.5),
       0 0 40px rgba(255,40,40,0.2);
-    text-shadow:
-      0 0 4px rgba(255,255,255,0.5),
-      0 0 10px #ff4040,
-      0 0 22px rgba(255,80,80,0.6);
+    text-shadow: 0 0 4px rgba(255,255,255,0.5), 0 0 10px #ff4040, 0 0 22px rgba(255,80,80,0.6);
   }
   #goBtn.running:hover { background: rgba(255,40,40,0.3); }
 
-  /* Go / Replay / New — double-size for easy classroom use */
+  /* Clear — neon green */
+  #clearBtn {
+    border-color: #00d060;
+    color: rgba(255,255,255,0.5);
+    background: rgba(0,208,96,0.12);
+    box-shadow:
+      inset 0 0 6px rgba(0,208,96,0.18),
+      0 0 2px #00d060,
+      0 0 8px #00d060,
+      0 0 18px rgba(0,208,96,0.5),
+      0 0 40px rgba(0,208,96,0.2);
+    text-shadow:
+      0 0 4px rgba(255,255,255,0.5),
+      0 0 10px #00d060,
+      0 0 22px rgba(0,208,96,0.6);
+  }
+  #clearBtn:hover { background: rgba(0,208,96,0.28); }
+
+  /* Go / Replay / New — squished symbol buttons */
   #goBtn, #replayBtn, #newBtn { padding: 8px 28px; font-size: 22px; letter-spacing: 2px; }
-  /* Symbol icons fill the button */
-  #goBtn, #replayBtn { font-size: 38px; letter-spacing: 0; padding: 4px 22px; }
+  #goBtn, #replayBtn { font-size: 28px; letter-spacing: 0; padding: 2px 18px; }
 
   /* Replay — same red as Stop */
   #replayBtn {
@@ -266,7 +274,7 @@
     border-color: rgba(255,255,255,0.18);
     transform: translateY(var(--slide-dir, 0px));
   }
-  .arrow-wheel:hover .awheel-item[data-position] {
+  .arrow-wheel.open .awheel-item[data-position] {
     opacity: 1;
     transform: translateY(0);
     pointer-events: auto;
@@ -536,15 +544,18 @@
 <div id="toolbar">
   <div class="toolbar-row">
     <div id="tabBar">
+      <a href="../v11/index.html" class="tab-btn">Protons</a>
+      <a href="../v11/index.html#nucleus" class="tab-btn">Protons + Neutrons</a>
       <button class="tab-btn active" data-tab="fission">Fission</button>
       <button class="tab-btn" data-tab="chain">Chain Reaction</button>
     </div>
   </div>
   <div class="toolbar-row">
-    <!-- Far left: GO + REPLAY column -->
-    <div style="display:flex;flex-direction:column;justify-content:flex-end;align-self:stretch;gap:8px;padding-bottom:10px">
+    <!-- Far left: GO + REPLAY + CLEAR column -->
+    <div style="display:flex;flex-direction:column;justify-content:flex-end;align-self:stretch;gap:6px;padding-bottom:10px">
       <button id="goBtn" class="btn">&#9654;</button>
       <button id="replayBtn" class="btn" disabled>&#8634;</button>
+      <button id="clearBtn" class="btn">Clear</button>
     </div>
 
     <!-- Pink box: New button + neutron speed -->
@@ -1195,13 +1206,31 @@ function zoomFromSlider(v) {
 }
 
 function applyTab(tab) {
+  // Stop any in-progress animation
+  if (neutronRAF)  { cancelAnimationFrame(neutronRAF);  neutronRAF  = null; }
+  if (playbackRAF) { cancelAnimationFrame(playbackRAF); playbackRAF = null; }
+  if (chainRAF)    { cancelAnimationFrame(chainRAF);    chainRAF    = null; }
+  resetPrerender();
+  neutronState        = 'idle';
+  currentScrubFrac    = 0;
+  maxRevealedFrac     = 0;
+  mainNeutronsEmitted = false;
+  chainNeutrons       = [];
+  enrichSites         = [];
+  document.getElementById('goBtn').textContent = '▶';
+  document.getElementById('goBtn').classList.remove('running');
+  document.getElementById('replayBtn').disabled = true;
+  document.getElementById('scrubReplayBtn').disabled = true;
+  document.getElementById('scrubBar').classList.remove('visible');
+  document.getElementById('scrubSlider').value = 0;
+  document.getElementById('scrubPct').textContent = '0%';
+
   currentTab = tab;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.querySelector(`.tab-btn[data-tab="${tab}"]`).classList.add('active');
   const slider = document.getElementById('zoomSlider');
   slider.value = 0;
   viewZoom = zoomFromSlider(0);
-  // Enrich button: always shown on chain, never on fission
   document.getElementById('enrichBtn').style.display = tab === 'chain' ? '' : 'none';
   heatmapDirty = true;
   if (typeof drawStaticFrame === 'function') drawStaticFrame();
@@ -1945,13 +1974,11 @@ function playbackLoop(now) {
     const mid = (lo + hi + 1) >> 1;
     if (prerenderTimes[mid] - prerenderTimes[0] <= elapsed) lo = mid; else hi = mid - 1;
   }
-  const idx   = lo;
-  const frame = prerenderFrames[idx];
+  const idx = lo;
 
-  if (frame) {
-    ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
+  if (prerenderFracs[idx] !== undefined) {
     currentScrubFrac = prerenderFracs[idx];
-    drawEnergyGraph();
+    renderAtFrac(currentScrubFrac);
     document.getElementById('scrubSlider').value = scrubVal(currentScrubFrac);
     document.getElementById('scrubPct').textContent = scrubPct(currentScrubFrac);
   }
@@ -2131,6 +2158,29 @@ document.getElementById('zoomSlider').addEventListener('input', function () {
   drawStaticFrame();
 });
 
+document.getElementById('clearBtn').addEventListener('click', () => {
+  if (neutronRAF)  { cancelAnimationFrame(neutronRAF);  neutronRAF  = null; }
+  if (playbackRAF) { cancelAnimationFrame(playbackRAF); playbackRAF = null; }
+  if (chainRAF)    { cancelAnimationFrame(chainRAF);    chainRAF    = null; }
+  resetPrerender();
+  neutronState        = 'idle';
+  neutronLast         = 0;
+  currentScrubFrac    = 0;
+  maxRevealedFrac     = 0;
+  mainNeutronsEmitted = false;
+  chainNeutrons       = [];
+  enrichSites         = [];
+  heatmapDirty        = true;
+  document.getElementById('goBtn').textContent = '▶';
+  document.getElementById('goBtn').classList.remove('running');
+  document.getElementById('replayBtn').disabled = true;
+  document.getElementById('scrubReplayBtn').disabled = true;
+  document.getElementById('scrubBar').classList.remove('visible');
+  document.getElementById('scrubSlider').value = 0;
+  document.getElementById('scrubPct').textContent = '0%';
+  drawStaticFrame();
+});
+
 document.getElementById('enrichBtn').addEventListener('click', () => {
   if (!animParent) return;
   const W = canvas.width, H = canvas.height;
@@ -2194,10 +2244,18 @@ function setParticleWheelActive(targetBtn) {
   });
 }
 
+function bindWheelHover(wheelEl) {
+  let tid = null;
+  wheelEl.addEventListener('mouseenter', () => { clearTimeout(tid); wheelEl.classList.add('open'); });
+  wheelEl.addEventListener('mouseleave', () => { tid = setTimeout(() => wheelEl.classList.remove('open'), 80); });
+}
+bindWheelHover(document.getElementById('particleWheel'));
+
 document.querySelectorAll('.awheel-item[data-pmode]').forEach(btn => {
   btn.addEventListener('click', () => {
     showParticles = btn.dataset.pmode === 'particles';
     setParticleWheelActive(btn);
+    document.getElementById('particleWheel').classList.remove('open');
     if (showParticles && !idleParticleRAF) idleParticleLoop();
     else drawStaticFrame();
   });
