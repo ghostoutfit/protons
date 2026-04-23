@@ -561,7 +561,7 @@
     <!-- Pink box: New button + neutron speed -->
     <div class="ctrl-box-pink">
       <button id="newBtn" class="btn" style="display:flex;align-items:center;justify-content:center;gap:8px;">
-        <canvas id="newBtnNeutron" width="38" height="38" style="display:block;flex-shrink:0;image-rendering:pixelated"></canvas>New
+        <canvas id="newBtnNucleus" width="68" height="42" style="display:block;flex-shrink:0;image-rendering:pixelated"></canvas>New
       </button>
       <div class="slider-group">
         <div style="display:flex;align-items:center;gap:1px">
@@ -1854,8 +1854,8 @@ function drawSpeedLines() {
   const ys      = [h * 0.25, h * 0.5, h * 0.75];
 
   scales.forEach((scale, i) => {
-    const len = t * maxLen * scale;
-    if (len < 1) return;
+    const tFloor = 0.18 + 0.82 * t;  // minimum ~18% even at slider min
+    const len = tFloor * maxLen * scale;
     const x = w - len;
     const y = Math.round(ys[i]);
 
@@ -1907,7 +1907,6 @@ function drawNeutronIconToCanvas(canvas) {
 
 function drawNeutronIcon() {
   drawNeutronIconToCanvas(document.getElementById('neutronIconCanvas'));
-  drawNeutronIconToCanvas(document.getElementById('newBtnNeutron'));
 }
 
 function neutronIconLoop() {
@@ -1919,6 +1918,88 @@ function neutronIconLoop() {
   requestAnimationFrame(neutronIconLoop);
 }
 neutronIconLoop();
+
+// ─── Nucleus button icon (New button) ─────────────────────────────────────────
+// ~62 particles (25% of main 250-nucleon nucleus), sphere-packed, fixed seed.
+// Same gradient+shadowBlur style as drawParticles().
+const nucleusIconParticles = (() => {
+  const ICON_R = 4;   // particle radius in icon px
+  const nP = 20, nN = 42, nTotal = nP + nN;
+  const packFrac = 0.62;
+  const vol    = nTotal * (4/3 * Math.PI * ICON_R ** 3) / packFrac;
+  const sphR   = Math.cbrt(vol * 3 / (4 * Math.PI)) * 1.05;
+  const minD2  = (ICON_R * 2.05) ** 2;
+
+  let s = 0x9e3779b9;
+  const rand = () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; };
+
+  const pts = [];
+  let tries = 0;
+  while (pts.length < nTotal && tries < nTotal * 300) {
+    tries++;
+    const r3 = rand(), th = Math.acos(2 * rand() - 1), ph = rand() * 2 * Math.PI;
+    const r  = sphR * Math.cbrt(r3);
+    const ox = r * Math.sin(th) * Math.cos(ph);
+    const oy = r * Math.sin(th) * Math.sin(ph);
+    const oz = r * Math.cos(th);
+    let ok = true;
+    for (const q of pts) {
+      if ((ox-q.ox)**2 + (oy-q.oy)**2 + (oz-q.oz)**2 < minD2) { ok = false; break; }
+    }
+    if (ok) pts.push({ ox, oy, oz, type: pts.length < nP ? 'proton' : 'neutron', jx: 0, jy: 0 });
+  }
+  return pts.sort((a, b) => a.oz - b.oz);  // back-to-front
+})();
+
+function drawNucleusIcon(canvas) {
+  if (!canvas) return;
+  const c = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  const cx = w / 2 - 6, cy = h / 2;
+  const R = 4;
+
+  c.clearRect(0, 0, w, h);
+
+  for (const p of nucleusIconParticles) {
+    const px = cx + p.ox + p.jx;
+    const py = cy + p.oy + p.jy;
+    const isProton = p.type === 'proton';
+    const mid  = isProton ? '#ff1a65' : '#70707f';
+    const core = isProton ? '#ff80b0' : '#b0b0c4';
+
+    const baseGrad = c.createRadialGradient(px, py, 0, px, py, R * 1.1);
+    baseGrad.addColorStop(0,    mid);
+    baseGrad.addColorStop(0.82, mid);
+    baseGrad.addColorStop(1,    'rgba(0,0,0,0)');
+    c.fillStyle = baseGrad;
+    c.beginPath(); c.arc(px, py, R * 1.1, 0, Math.PI * 2); c.fill();
+
+    const innerGlow = c.createRadialGradient(px, py, 0, px, py, R);
+    innerGlow.addColorStop(0,   core);
+    innerGlow.addColorStop(0.5, core);
+    innerGlow.addColorStop(1,   'rgba(0,0,0,0)');
+    c.save();
+    c.shadowColor = core;
+    c.shadowBlur  = 4;
+    c.globalAlpha = 0.82;
+    c.fillStyle = innerGlow;
+    c.beginPath(); c.arc(px, py, R, 0, Math.PI * 2); c.fill();
+    c.restore();
+    c.globalAlpha = 1;
+  }
+}
+
+function nucleusIconLoop() {
+  for (const p of nucleusIconParticles) {
+    p.jx += (Math.random() - 0.5) * 0.7;
+    p.jy += (Math.random() - 0.5) * 0.7;
+    p.jx *= 0.78;
+    p.jy *= 0.78;
+  }
+  drawNucleusIcon(document.getElementById('newBtnNucleus'));
+  requestAnimationFrame(nucleusIconLoop);
+}
+nucleusIconLoop();
 
 // ─── Controls ─────────────────────────────────────────────────────────────────
 // ─── Pre-render + smooth playback ─────────────────────────────────────────────
