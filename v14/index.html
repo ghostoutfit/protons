@@ -1640,15 +1640,13 @@ function drawBarChart() {
 
   const bars = splitIE
     ? [
-        { label: 'KE',  value: Math.max(0, displayKE),  color: '#ff2060', glow: 'rgba(255,20,80,0.9)'   },
-        { label: 'EIE', value: displayEIE,               color: '#00e5ff', glow: 'rgba(0,220,255,0.9)'  },
-        { label: 'SIE', value: displaySIE,               color: '#ffe600', glow: 'rgba(255,230,0,0.9)'  },
-        { label: 'Tot', value: totalVal,                  color: '#00ff88', glow: 'rgba(0,255,120,0.9)'  },
+        { label: 'Energy in Motion',        value: Math.max(0, displayKE),  color: '#ff2060', glow: 'rgba(255,20,80,0.9)'    },
+        { label: 'Energy in Electric Field', value: displayEIE,              color: '#00e5ff', glow: 'rgba(0,220,255,0.9)'   },
+        { label: 'Energy in Strong Field',   value: displaySIE,              color: '#ff8040', glow: 'rgba(255,128,64,0.9)'  },
       ]
     : [
-        { label: 'KE',  value: Math.max(0, displayKE),  color: '#ff2060', glow: 'rgba(255,20,80,0.9)'   },
-        { label: 'IE',  value: displayEIE + displaySIE,  color: '#00e5ff', glow: 'rgba(0,220,255,0.9)'  },
-        { label: 'Tot', value: totalVal,                  color: '#00ff88', glow: 'rgba(0,255,120,0.9)'  },
+        { label: 'Energy in Motion',  value: Math.max(0, displayKE),        color: '#ff2060', glow: 'rgba(255,20,80,0.9)'    },
+        { label: 'Energy in Fields',  value: displayEIE + displaySIE,       color: '#7b6fff', glow: 'rgba(120,100,255,0.9)' },
       ];
 
   const pad      = 12;
@@ -1673,25 +1671,36 @@ function drawBarChart() {
       const rectH = barPx;
       const r     = Math.min(6, bw / 2, rectH / 2);
 
-      // Outer glow pass
+      // Dim fill — half-brightness via alpha
       ctx.save();
-      ctx.shadowColor = bar.glow;
-      ctx.shadowBlur  = 18;
-      ctx.globalAlpha = 0.45;
       ctx.fillStyle   = bar.color;
+      ctx.globalAlpha = 0.22;
       ctx.beginPath();
       ctx.roundRect(x, rectY, bw, rectH, [r, r, 2, 2]);
       ctx.fill();
       ctx.restore();
 
-      // Solid neon body
+      // Outer glow
       ctx.save();
       ctx.shadowColor = bar.glow;
-      ctx.shadowBlur  = 8;
-      ctx.fillStyle   = bar.color + 'dd';
+      ctx.shadowBlur  = 22;
+      ctx.strokeStyle = bar.color;
+      ctx.lineWidth   = 3;
+      ctx.globalAlpha = 0.5;
       ctx.beginPath();
       ctx.roundRect(x, rectY, bw, rectH, [r, r, 2, 2]);
-      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+
+      // Crisp neon outline
+      ctx.save();
+      ctx.shadowColor = bar.glow;
+      ctx.shadowBlur  = 6;
+      ctx.strokeStyle = bar.color;
+      ctx.lineWidth   = 3;
+      ctx.beginPath();
+      ctx.roundRect(x, rectY, bw, rectH, [r, r, 2, 2]);
+      ctx.stroke();
       ctx.restore();
     }
 
@@ -1703,12 +1712,15 @@ function drawBarChart() {
     ctx.fillText(bar.value.toFixed(1), x + bw / 2, labelY);
     ctx.restore();
 
-    // Axis label below baseline
+    // Axis label below baseline — two lines at small font
     ctx.save();
     ctx.shadowColor = bar.glow; ctx.shadowBlur = 6;
     ctx.fillStyle   = bar.color;
-    ctx.font        = 'bold 12px "JetBrains Mono", monospace';
-    ctx.fillText(bar.label, x + bw / 2, baseline + 16);
+    ctx.font        = 'bold 9px "JetBrains Mono", monospace';
+    const words = bar.label.split(' ');
+    const mid   = Math.ceil(words.length / 2);
+    ctx.fillText(words.slice(0, mid).join(' '),  x + bw / 2, baseline + 13);
+    ctx.fillText(words.slice(mid).join(' '),     x + bw / 2, baseline + 24);
     ctx.restore();
   });
 
@@ -1848,8 +1860,7 @@ function drawEnergyGraph() {
     egCtx.restore();
   }
 
-  // Colors: Total=teal, EIE=purple, SIE=orange, KE=pink
-  plotNeonLine('#00ffaa', 'rgba(0,255,170,0.9)',    f => (f.edisp || {}).tot || 0);
+  // Colors: EIE=purple, SIE=orange, KE=pink
   if (splitIE) {
     plotNeonLine('#ff8040', 'rgba(255,128,64,0.9)', f => (f.edisp || {}).sie || 0);
     plotNeonLine('#7b6fff', 'rgba(120,100,255,0.9)',f => (f.edisp || {}).eie || 0);
