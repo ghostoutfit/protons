@@ -6,7 +6,7 @@ Vanilla HTML + CSS + JS only — no build system, no npm, no bundler.
 ## Project structure
 
 ```
-v1/ … v12/    Each version is a self-contained index.html
+v1/ … v14/    Each version is a self-contained index.html
 v100/         Separate fission simulation
 dev/          Scratch/in-progress work (not versioned with vN)
 v2/           Shared backend:
@@ -17,7 +17,7 @@ v2/           Shared backend:
 Each version is a single HTML file (inline CSS + JS). There is no build step.
 To run locally: `python3 -m http.server` in the repo root, then open `localhost:8000/v12/index.html`.
 
-The active development version is **v12** (v11 is the previous iteration).
+The active development version is **v14** (v13 is the previous iteration).
 
 ## Physics model
 

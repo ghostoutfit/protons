@@ -1621,8 +1621,8 @@ function drawBarChart() {
 
   ctx.save();
 
-  // CRT dark background with subtle blue tint
-  ctx.fillStyle = 'rgba(2,4,18,0.96)';
+  // Panel background
+  ctx.fillStyle = 'rgba(4,3,20,0.88)';
   ctx.fillRect(gx, gy, W, H);
 
   // Left border glow
@@ -1669,37 +1669,29 @@ function drawBarChart() {
     const barTop = baseline - barPx;
 
     if (barPx > 0) {
-      // Phosphor body — vertical gradient (bright mid, darker edges)
-      const bodyGrad = ctx.createLinearGradient(x, barTop, x + bw, barTop);
-      bodyGrad.addColorStop(0,    bar.color + '55');
-      bodyGrad.addColorStop(0.3,  bar.color + 'cc');
-      bodyGrad.addColorStop(0.5,  bar.color + 'ff');
-      bodyGrad.addColorStop(0.7,  bar.color + 'cc');
-      bodyGrad.addColorStop(1,    bar.color + '55');
-      ctx.save();
-      ctx.shadowColor = bar.glow; ctx.shadowBlur = 14;
-      ctx.fillStyle = bodyGrad;
-      if (bar.value >= 0) ctx.fillRect(x, barTop, bw, barPx);
-      else                ctx.fillRect(x, baseline, bw, -barPx);
-      ctx.restore();
+      const rectY = bar.value >= 0 ? barTop : baseline;
+      const rectH = barPx;
+      const r     = Math.min(6, bw / 2, rectH / 2);
 
-      // Bright phosphor top-edge bloom
+      // Outer glow pass
       ctx.save();
-      ctx.shadowColor = bar.color; ctx.shadowBlur = 18;
-      ctx.strokeStyle = bar.color; ctx.lineWidth = 2;
+      ctx.shadowColor = bar.glow;
+      ctx.shadowBlur  = 18;
+      ctx.globalAlpha = 0.45;
+      ctx.fillStyle   = bar.color;
       ctx.beginPath();
-      ctx.moveTo(x, bar.value >= 0 ? barTop : baseline + Math.abs(barPx));
-      ctx.lineTo(x + bw, bar.value >= 0 ? barTop : baseline + Math.abs(barPx));
-      ctx.stroke();
+      ctx.roundRect(x, rectY, bw, rectH, [r, r, 2, 2]);
+      ctx.fill();
       ctx.restore();
 
-      // Scanline overlay on bar
+      // Solid neon body
       ctx.save();
-      ctx.globalAlpha = 0.18;
-      ctx.fillStyle = '#000';
-      for (let sy = barTop; sy < baseline; sy += 3) {
-        ctx.fillRect(x, sy, bw, 1);
-      }
+      ctx.shadowColor = bar.glow;
+      ctx.shadowBlur  = 8;
+      ctx.fillStyle   = bar.color + 'dd';
+      ctx.beginPath();
+      ctx.roundRect(x, rectY, bw, rectH, [r, r, 2, 2]);
+      ctx.fill();
       ctx.restore();
     }
 
@@ -1726,22 +1718,6 @@ function drawBarChart() {
   ctx.strokeStyle = 'rgba(0,200,255,0.3)'; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(gx, baseline); ctx.lineTo(gx + W, baseline); ctx.stroke();
   ctx.restore();
-
-  // Scanlines over entire panel
-  ctx.save();
-  ctx.globalAlpha = 0.07;
-  ctx.fillStyle = '#000';
-  for (let sy = gy; sy < gy + H; sy += 2) {
-    ctx.fillRect(gx, sy, W, 1);
-  }
-  ctx.restore();
-
-  // Vignette
-  const vig = ctx.createRadialGradient(gx + W / 2, gy + H / 2, H * 0.25, gx + W / 2, gy + H / 2, H * 0.75);
-  vig.addColorStop(0, 'rgba(0,0,0,0)');
-  vig.addColorStop(1, 'rgba(0,0,0,0.45)');
-  ctx.fillStyle = vig;
-  ctx.fillRect(gx, gy, W, H);
 
   // Y-axis max
   ctx.save();
