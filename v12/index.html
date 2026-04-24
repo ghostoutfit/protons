@@ -755,27 +755,59 @@
     display: block;
     background: #05040f;
   }
-  .obs-play-btn {
-    position: absolute;
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-    width: 44px; height: 44px;
-    border-radius: 50%;
-    background: rgba(5,4,18,0.72);
-    border: 2px solid rgba(255,255,255,0.35);
-    color: #fff;
-    font-size: 16px;
+  .obs-controls {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 7px;
+    background: rgba(0,0,0,0.28);
+    border-top: 1px solid rgba(255,255,255,0.05);
+  }
+  .obs-ctrl-btn {
+    flex-shrink: 0;
+    width: 22px; height: 22px;
+    padding: 0;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 4px;
+    color: rgba(255,255,255,0.72);
+    font-size: 10px;
+    cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    cursor: pointer;
-    opacity: 0.55;
-    transition: opacity 0.15s, background 0.15s;
-    padding-left: 3px;
     font-family: inherit;
+    line-height: 1;
   }
-  .obs-thumb-wrap:hover .obs-play-btn { opacity: 1; }
-  .obs-play-btn:hover { background: var(--accent2-dim); border-color: var(--accent2); }
+  .obs-ctrl-btn:hover { background: rgba(255,255,255,0.14); color: #fff; }
+  .obs-time-slider {
+    flex: 1;
+    min-width: 0;
+    height: 3px;
+    cursor: pointer;
+    accent-color: var(--accent1);
+  }
+  .obs-time-slider:disabled { opacity: 0.25; cursor: default; }
+  .obs-zoom-group {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: 8px;
+  }
+  .obs-zoom-group-icon {
+    font-size: 20px;
+    opacity: 0.45;
+    line-height: 1;
+    user-select: none;
+  }
+  .obs-zoom-slider {
+    flex: none;
+    width: 78px;
+    height: 3px;
+    cursor: pointer;
+    accent-color: var(--accent2);
+  }
   .obs-meta {
     display: flex;
     justify-content: space-between;
@@ -3480,20 +3512,83 @@ function buildNoteCard(note, isOwn) {
     simCv.style.aspectRatio = `${srcW} / ${srcH}`;
     wrap.appendChild(simCv);
 
+    // Per-card zoom state
+    let cardZoom = parsedState.zoom || 1;
+
     requestAnimationFrame(() => SideSim.drawFirstFrame(simCv, parsedState));
 
-    const play = document.createElement('button');
-    play.className = 'obs-play-btn';
-    play.title = 'Play / pause';
-    play.innerHTML = '&#9654;';
-    play.addEventListener('click', () => {
+    // Controls strip: replay | play/pause | time slider | zoom slider
+    const controls = document.createElement('div');
+    controls.className = 'obs-controls';
+
+    const replayBtn = document.createElement('button');
+    replayBtn.className = 'obs-ctrl-btn';
+    replayBtn.title = 'Replay from start';
+    replayBtn.textContent = '↺';
+
+    const playBtn = document.createElement('button');
+    playBtn.className = 'obs-ctrl-btn';
+    playBtn.title = 'Play / Pause';
+    playBtn.innerHTML = '&#9654;';
+
+    const timeSlider = document.createElement('input');
+    timeSlider.type = 'range';
+    timeSlider.className = 'obs-time-slider';
+    timeSlider.min = '0';
+    timeSlider.max = '0';
+    timeSlider.value = '0';
+    timeSlider.disabled = true;
+
+    const zoomSlider = document.createElement('input');
+    zoomSlider.type = 'range';
+    zoomSlider.className = 'obs-zoom-slider';
+    zoomSlider.min = '0.5';
+    zoomSlider.max = '6';
+    zoomSlider.step = '0.25';
+    zoomSlider.value = cardZoom;
+
+    zoomSlider.addEventListener('input', () => {
+      cardZoom = parseFloat(zoomSlider.value);
+      SideSim.drawStaticAt(simCv, parsedState, cardZoom);
+    });
+
+    timeSlider.addEventListener('mousedown', () => {
+      if (SideSim.isCurrentCanvas(simCv)) SideSim.startScrub();
+    });
+    timeSlider.addEventListener('input', () => {
+      if (SideSim.isCurrentCanvas(simCv)) SideSim.scrubTo(parseInt(timeSlider.value));
+    });
+    timeSlider.addEventListener('mouseup', () => {
+      if (SideSim.isCurrentCanvas(simCv)) SideSim.endScrub(parseInt(timeSlider.value));
+    });
+
+    playBtn.addEventListener('click', () => {
       if (SideSim.isCurrentCanvas(simCv)) {
         SideSim.toggle();
       } else {
-        SideSim.loadAndPlay(note.sim_state, simCv, play);
+        SideSim.loadAndPlay(note.sim_state, simCv, playBtn, timeSlider);
+        SideSim.setZoom(cardZoom);
       }
     });
-    wrap.appendChild(play);
+
+    replayBtn.addEventListener('click', () => {
+      SideSim.loadAndPlay(note.sim_state, simCv, playBtn, timeSlider);
+      SideSim.setZoom(cardZoom);
+    });
+
+    const zoomGroup = document.createElement('div');
+    zoomGroup.className = 'obs-zoom-group';
+    const zoomIcon = document.createElement('span');
+    zoomIcon.className = 'obs-zoom-group-icon';
+    zoomIcon.textContent = '🔍';
+    zoomGroup.appendChild(zoomSlider);
+    zoomGroup.appendChild(zoomIcon);
+
+    controls.appendChild(replayBtn);
+    controls.appendChild(playBtn);
+    controls.appendChild(timeSlider);
+    controls.appendChild(zoomGroup);
+    wrap.appendChild(controls);
   } else {
     const ph = document.createElement('div');
     ph.style.cssText = 'height:90px;display:flex;align-items:center;justify-content:center;font-size:10px;color:rgba(255,255,255,0.15)';
@@ -3651,6 +3746,9 @@ const SideSim = (() => {
   let cv = null, cx = null;
   let parts = [], sfStr = 0.25, sfRng = 1.2, spd = 1.5;
   let running = false, animId = null, activePlayBtn = null;
+  let frameHistory = [], scrubbing = false, activeTimeSlider = null;
+  const MAX_FRAMES = 600;
+  let sideQuantumEjectAt = null, sideQuantumTimerStartAt = null, sideQuantumFlashes = [];
   const R = 10, SUB = 20, K = 139;
 
   // Saved viz state from captured note — used when calling main draw()
@@ -3682,19 +3780,17 @@ const SideSim = (() => {
         }
       }
 
-      // Cohesion spring toward cluster CM — keeps nucleus from drifting apart
-      if (n >= 2) {
-        let cmx = 0, cmy = 0;
-        for (let i = 0; i < n; i++) { cmx += parts[i].x; cmy += parts[i].y; }
-        cmx /= n; cmy /= n;
+      // Cohesion spring toward cluster CM (nucleus tab, non-ejected only)
+      if (savedTab === 'nucleus') {
         for (let i = 0; i < n; i++) {
           const p = parts[i];
-          const dx = cmx - p.x, dy = cmy - p.y;
+          if (p.ejected || p.clusterCmx === undefined) continue;
+          const dx = p.clusterCmx - p.x, dy = p.clusterCmy - p.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
           if (dist < 0.01) continue;
           const f = 0.004 * dist;
-          p.vx += (dx / dist) * f * subDt;
-          p.vy += (dy / dist) * f * subDt;
+          p.vx += f * (dx / dist) * subDt;
+          p.vy += f * (dy / dist) * subDt;
         }
       }
 
@@ -3759,10 +3855,7 @@ const SideSim = (() => {
   function draw() {
     if (!cv || !cx) return;
 
-    // Fill background (main draw() only clears to transparent)
     const t = THEMES[savedThemeKey] || THEMES.A;
-    cx.fillStyle = t.bg;
-    cx.fillRect(0, 0, cv.width, cv.height);
 
     // Temporarily redirect all main sim draw globals to this card canvas,
     // then call the actual main draw() so SideSim gets identical rendering
@@ -3773,24 +3866,36 @@ const SideSim = (() => {
     const _showE = showElectricField, _showS = showStrongField;
     const _theme = currentTheme, _themeKey = currentThemeKey;
     const _arrow = arrowMode, _drag = dragging, _sel = selectedParticle;
-    const _running = running, _jitter = jitter;
+    const _jitter = jitter;
     const _sfStr = strongForceStrength, _sfRng = strongForceRange;
+    const _qEject = quantumEjectAt, _qStart = quantumTimerStartAt, _qFlash = quantumFlashes;
 
     canvas = cv; ctx = cx;
     hmComposite = sideHmComposite; hmcCtx = sideHmComposite.getContext('2d');
     particles = parts;
-    zoom = 1;  // positions are already scaled to card-canvas space
+    zoom = savedZoom;  // draw() applies zoom transform; particles are in physics space
     currentTab = savedTab; currentTabIsProton = (savedTab === 'proton');
     showElectricField = savedShowElectric;
     showStrongField = savedShowStrong;
     currentTheme = t; currentThemeKey = savedThemeKey;
     arrowMode = 0;  // no force arrows in cards
     dragging = null; selectedParticle = null;
-    running = false;  // prevent heatmap frame-skip cache
     jitter = [];
     strongForceStrength = sfStr; strongForceRange = sfRng;
+    quantumEjectAt = sideQuantumEjectAt;
+    quantumTimerStartAt = sideQuantumTimerStartAt;
+    quantumFlashes = sideQuantumFlashes;
 
     window.draw();
+
+    // draw() may filter quantumFlashes — read back the updated array
+    sideQuantumFlashes = quantumFlashes;
+
+    // draw() clears to transparent — paint theme bg behind rendered content
+    cx.globalCompositeOperation = 'destination-over';
+    cx.fillStyle = t.bg;
+    cx.fillRect(0, 0, cv.width, cv.height);
+    cx.globalCompositeOperation = 'source-over';
 
     canvas = _canvas; ctx = _ctx; hmComposite = _hmComposite; hmcCtx = _hmcCtx;
     particles = _particles; zoom = _zoom;
@@ -3798,13 +3903,41 @@ const SideSim = (() => {
     showElectricField = _showE; showStrongField = _showS;
     currentTheme = _theme; currentThemeKey = _themeKey;
     arrowMode = _arrow; dragging = _drag; selectedParticle = _sel;
-    running = _running; jitter = _jitter;
+    jitter = _jitter;
     strongForceStrength = _sfStr; strongForceRange = _sfRng;
+    quantumEjectAt = _qEject; quantumTimerStartAt = _qStart; quantumFlashes = _qFlash;
+  }
+
+  function runQuantumStability() {
+    if (savedTab !== 'nucleus') return;
+    const _particles = particles, _tab = currentTab;
+    const _sfStr = strongForceStrength, _sfRng = strongForceRange;
+    const _qEject = quantumEjectAt, _qStart = quantumTimerStartAt, _qFlash = quantumFlashes;
+    particles = parts; currentTab = savedTab;
+    strongForceStrength = sfStr; strongForceRange = sfRng;
+    quantumEjectAt = sideQuantumEjectAt;
+    quantumTimerStartAt = sideQuantumTimerStartAt;
+    quantumFlashes = sideQuantumFlashes;
+    updateQuantumStability();
+    sideQuantumEjectAt = quantumEjectAt;
+    sideQuantumTimerStartAt = quantumTimerStartAt;
+    sideQuantumFlashes = quantumFlashes;
+    particles = _particles; currentTab = _tab;
+    strongForceStrength = _sfStr; strongForceRange = _sfRng;
+    quantumEjectAt = _qEject; quantumTimerStartAt = _qStart; quantumFlashes = _qFlash;
   }
 
   function loop() {
     if (!running) return;
+    runQuantumStability();
     step(spd);
+    if (frameHistory.length < MAX_FRAMES) {
+      frameHistory.push(parts.map(p => ({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, type: p.type })));
+      if (activeTimeSlider) {
+        activeTimeSlider.max = frameHistory.length - 1;
+        activeTimeSlider.value = frameHistory.length - 1;
+      }
+    }
     draw();
     animId = requestAnimationFrame(loop);
   }
@@ -3816,8 +3949,6 @@ const SideSim = (() => {
     }
   }
 
-  // Scale particle positions from the original canvas space to the card canvas.
-  // Incorporates zoom so the card shows the same visual density as the main sim.
   function applyState(state, targetCv) {
     sfStr = state.strongForceStrength ?? 0.25;
     sfRng = state.strongForceRange    ?? 1.2;
@@ -3828,26 +3959,29 @@ const SideSim = (() => {
     savedShowElectric = state.showElectricField  ?? true;
     savedShowStrong   = state.showStrongField    ?? true;
     savedTab          = state.currentTab         || 'nucleus';
-    savedZoom         = state.zoom               || 1;
 
-    // Scale particle positions to card-canvas space
-    const srcW  = state.canvasWidth  || targetCv.width;
-    const srcH  = state.canvasHeight || targetCv.height;
-    const base  = Math.min(targetCv.width / srcW, targetCv.height / srcH);
-    const scale = base * savedZoom;
-    const offX  = (targetCv.width  - srcW * scale) / 2;
-    const offY  = (targetCv.height - srcH * scale) / 2;
+    // Keep particles in physics space — force constants (K, R, sfRng) stay correct.
+    // Offset so the original canvas center maps to the card-canvas center.
+    // Use the captured zoom directly for rendering so particles appear at normal size.
+    const srcW = state.canvasWidth  || targetCv.width;
+    const srcH = state.canvasHeight || targetCv.height;
+    savedZoom = state.zoom || 1;  // captured zoom — gives proper visual particle size
+
+    const offX = targetCv.width  / 2 - srcW / 2;
+    const offY = targetCv.height / 2 - srcH / 2;
 
     parts = (state.particles || []).map(p => ({
-      x:  p.x * scale + offX,
-      y:  p.y * scale + offY,
-      vx: (p.vx || 0) * scale,
-      vy: (p.vy || 0) * scale,
+      x:  p.x + offX,
+      y:  p.y + offY,
+      vx: p.vx || 0,
+      vy: p.vy || 0,
       type: p.type || 'proton',
     }));
 
     // Invalidate heatmap cache so the new state renders fresh
     sideHmComposite.width = 0; sideHmComposite.height = 0;
+    // Reset quantum ejection state for the new simulation
+    sideQuantumEjectAt = null; sideQuantumTimerStartAt = null; sideQuantumFlashes = [];
   }
 
   // Render one still frame to any canvas without disrupting active playback
@@ -3869,15 +4003,43 @@ const SideSim = (() => {
     if (cv) draw();
   }
 
-  function loadAndPlay(simStateJson, targetCv, playBtn) {
+  function loadAndPlay(simStateJson, targetCv, playBtn, timeSliderEl) {
     if (activePlayBtn && activePlayBtn !== playBtn) activePlayBtn.innerHTML = '&#9654;';
+    if (activeTimeSlider && activeTimeSlider !== timeSliderEl) activeTimeSlider.disabled = true;
     running = false; cancelAnimationFrame(animId);
     let state;
     try { state = JSON.parse(simStateJson); } catch(e) { return; }
     cv = targetCv; cx = targetCv.getContext('2d'); activePlayBtn = playBtn;
+    activeTimeSlider = timeSliderEl || null;
+    frameHistory = []; scrubbing = false;
+    if (activeTimeSlider) { activeTimeSlider.max = 0; activeTimeSlider.value = 0; activeTimeSlider.disabled = false; }
     fitBuffer(cv); applyState(state, cv);
     if (activePlayBtn) activePlayBtn.innerHTML = '&#9646;&#9646;';
     running = true; loop();
+  }
+
+  function startScrub() {
+    scrubbing = true;
+    if (running) { running = false; cancelAnimationFrame(animId); }
+  }
+
+  function scrubTo(idx) {
+    if (!frameHistory.length || !cv) return;
+    const snap = frameHistory[Math.min(idx, frameHistory.length - 1)];
+    if (!snap) return;
+    parts = snap.map(p => ({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, type: p.type }));
+    draw();
+  }
+
+  function endScrub(idx) {
+    const snap = frameHistory[Math.min(idx, frameHistory.length - 1)];
+    if (snap) {
+      parts = snap.map(p => ({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, type: p.type }));
+      // Truncate history after this point so new playback stays consistent
+      frameHistory = frameHistory.slice(0, idx + 1);
+      if (activeTimeSlider) activeTimeSlider.max = frameHistory.length - 1;
+    }
+    scrubbing = false;
   }
 
   function toggle() {
@@ -3888,7 +4050,27 @@ const SideSim = (() => {
 
   function isCurrentCanvas(targetCv) { return cv === targetCv; }
 
-  return { drawFirstFrame, loadAndPlay, toggle, isCurrentCanvas, stop };
+  // Update zoom for the active canvas; if stopped, redraws immediately.
+  function setZoom(value) {
+    savedZoom = value;
+    if (!running && cv) draw();
+  }
+
+  // Re-render a static frame with an explicit zoom override (for the zoom slider
+  // on cards that aren't currently playing).
+  function drawStaticAt(targetCv, state, zoomVal) {
+    if (running && cv === targetCv) { savedZoom = zoomVal; return; }
+    fitBuffer(targetCv);
+    if (!targetCv.width || !targetCv.height) return;
+    const _cv = cv, _cx = cx;
+    cv = targetCv; cx = targetCv.getContext('2d');
+    applyState(state, targetCv);
+    savedZoom = zoomVal;
+    draw();
+    cv = _cv; cx = _cx;
+  }
+
+  return { drawFirstFrame, loadAndPlay, toggle, isCurrentCanvas, stop, setZoom, drawStaticAt, startScrub, scrubTo, endScrub };
 })();
 </script>
 </body>

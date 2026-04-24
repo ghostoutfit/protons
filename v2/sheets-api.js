@@ -121,8 +121,8 @@ const SHEETS = (() => {
         sim_state:      r[4] || '',
         screenshot_b64: r[5] || '',
         text:           r[6] || '',
-        is_public:      r[7] === 'TRUE',
-        promoted:       r[8] === 'TRUE',
+        is_public:      r[7].toLowerCase() === 'true',
+        promoted:       r[8].toLowerCase() === 'true',
       }));
   }
 
