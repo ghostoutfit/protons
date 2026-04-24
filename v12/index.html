@@ -3749,107 +3749,29 @@ const SideSim = (() => {
   let frameHistory = [], scrubbing = false, activeTimeSlider = null;
   const MAX_FRAMES = 600;
   let sideQuantumEjectAt = null, sideQuantumTimerStartAt = null, sideQuantumFlashes = [];
-  const R = 10, SUB = 20, K = 139;
 
   // Saved viz state from captured note — used when calling main draw()
   let savedShowElectric = true, savedShowStrong = true;
   let savedTab = 'nucleus', savedZoom = 1, savedThemeKey = 'A';
   const sideHmComposite = document.createElement('canvas');
 
-  function pairForce(dist, dSq, at, bt) {
-    let f = 0;
-    if (at === 'proton' && bt === 'proton') f += K / Math.max(dSq, R * R);
-    if (dist < R * 2 * sfRng) f -= sfStr;
-    return f;
-  }
-
-  function step(dt) {
-    const n = parts.length, subDt = dt / SUB;
-    for (let s = 0; s < SUB; s++) {
-      // Pairwise forces
-      for (let i = 0; i < n; i++) {
-        for (let j = i + 1; j < n; j++) {
-          const a = parts[i], b = parts[j];
-          const dx = b.x - a.x, dy = b.y - a.y;
-          const dSq = dx * dx + dy * dy, d = Math.sqrt(dSq);
-          if (d < 0.01) continue;
-          const force = pairForce(d, dSq, a.type, b.type);
-          const fx = force * dx / d, fy = force * dy / d;
-          a.vx -= fx * subDt; a.vy -= fy * subDt;
-          b.vx += fx * subDt; b.vy += fy * subDt;
-        }
-      }
-
-      // Cohesion spring toward cluster CM (nucleus tab, non-ejected only)
-      if (savedTab === 'nucleus') {
-        for (let i = 0; i < n; i++) {
-          const p = parts[i];
-          if (p.ejected || p.clusterCmx === undefined) continue;
-          const dx = p.clusterCmx - p.x, dy = p.clusterCmy - p.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < 0.01) continue;
-          const f = 0.004 * dist;
-          p.vx += f * (dx / dist) * subDt;
-          p.vy += f * (dy / dist) * subDt;
-        }
-      }
-
-      // Integrate positions
-      for (let i = 0; i < n; i++) {
-        parts[i].x += parts[i].vx * subDt;
-        parts[i].y += parts[i].vy * subDt;
-      }
-
-      // Hard-sphere constraint
-      const minSep = R * 2;
-      for (let i = 0; i < n; i++) {
-        for (let j = i + 1; j < n; j++) {
-          const a = parts[i], b = parts[j];
-          let dx = b.x - a.x, dy = b.y - a.y, dSq = dx * dx + dy * dy;
-          if (dSq >= minSep * minSep) continue;
-          let d = Math.sqrt(dSq);
-          if (d < 0.001) { dx = 1; dy = 0; d = 0.001; }
-          const nx = dx / d, ny = dy / d, ov = minSep - d;
-          a.x -= nx * ov * 0.5; a.y -= ny * ov * 0.5;
-          b.x += nx * ov * 0.5; b.y += ny * ov * 0.5;
-          const dvn = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
-          if (dvn < 0) {
-            const h = dvn * 0.5;
-            a.vx += h * nx; a.vy += h * ny;
-            b.vx -= h * nx; b.vy -= h * ny;
-          }
-        }
-      }
-    }
-
-    // Antispin — suppress runaway cluster rotation (matches main sim)
-    if (n >= 3) {
-      let cmx = 0, cmy = 0, cvx = 0, cvy = 0;
-      for (let i = 0; i < n; i++) {
-        cmx += parts[i].x; cmy += parts[i].y;
-        cvx += parts[i].vx; cvy += parts[i].vy;
-      }
-      cmx /= n; cmy /= n; cvx /= n; cvy /= n;
-      let L = 0, I = 0;
-      for (let i = 0; i < n; i++) {
-        const p = parts[i];
-        const rx = p.x - cmx, ry = p.y - cmy;
-        const vxr = p.vx - cvx, vyr = p.vy - cvy;
-        L += rx * vyr - ry * vxr;
-        I += rx * rx + ry * ry;
-      }
-      if (I >= 0.001) {
-        const omega = L / I;
-        const MAX_OMEGA = 2 * Math.PI * spd / (60 * SUB);
-        const removeOmega = Math.sign(omega) * Math.max(0, Math.abs(omega) - MAX_OMEGA);
-        for (let i = 0; i < n; i++) {
-          const p = parts[i];
-          const rx = p.x - cmx, ry = p.y - cmy;
-          p.vx -= -removeOmega * ry;
-          p.vy -=  removeOmega * rx;
-        }
-      }
-    }
+  function runPhysics() {
+    const _particles = particles, _tab = currentTab, _drag = dragging;
+    const _sfStr = strongForceStrength, _sfRng = strongForceRange;
+    const _qEject = quantumEjectAt, _qStart = quantumTimerStartAt, _qFlash = quantumFlashes;
+    particles = parts; currentTab = savedTab; dragging = null;
+    strongForceStrength = sfStr; strongForceRange = sfRng;
+    quantumEjectAt = sideQuantumEjectAt;
+    quantumTimerStartAt = sideQuantumTimerStartAt;
+    quantumFlashes = sideQuantumFlashes;
+    updateQuantumStability();
+    step(spd);
+    sideQuantumEjectAt = quantumEjectAt;
+    sideQuantumTimerStartAt = quantumTimerStartAt;
+    sideQuantumFlashes = quantumFlashes;
+    particles = _particles; currentTab = _tab; dragging = _drag;
+    strongForceStrength = _sfStr; strongForceRange = _sfRng;
+    quantumEjectAt = _qEject; quantumTimerStartAt = _qStart; quantumFlashes = _qFlash;
   }
 
   function draw() {
@@ -3908,29 +3830,9 @@ const SideSim = (() => {
     quantumEjectAt = _qEject; quantumTimerStartAt = _qStart; quantumFlashes = _qFlash;
   }
 
-  function runQuantumStability() {
-    if (savedTab !== 'nucleus') return;
-    const _particles = particles, _tab = currentTab;
-    const _sfStr = strongForceStrength, _sfRng = strongForceRange;
-    const _qEject = quantumEjectAt, _qStart = quantumTimerStartAt, _qFlash = quantumFlashes;
-    particles = parts; currentTab = savedTab;
-    strongForceStrength = sfStr; strongForceRange = sfRng;
-    quantumEjectAt = sideQuantumEjectAt;
-    quantumTimerStartAt = sideQuantumTimerStartAt;
-    quantumFlashes = sideQuantumFlashes;
-    updateQuantumStability();
-    sideQuantumEjectAt = quantumEjectAt;
-    sideQuantumTimerStartAt = quantumTimerStartAt;
-    sideQuantumFlashes = quantumFlashes;
-    particles = _particles; currentTab = _tab;
-    strongForceStrength = _sfStr; strongForceRange = _sfRng;
-    quantumEjectAt = _qEject; quantumTimerStartAt = _qStart; quantumFlashes = _qFlash;
-  }
-
   function loop() {
     if (!running) return;
-    runQuantumStability();
-    step(spd);
+    runPhysics();
     if (frameHistory.length < MAX_FRAMES) {
       frameHistory.push(parts.map(p => ({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, type: p.type })));
       if (activeTimeSlider) {
