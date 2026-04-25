@@ -1137,7 +1137,7 @@
       </div>
       <div class="np-tabs">
         <button class="nptab active" data-nptab="my">My Observations</button>
-        <button class="nptab" data-nptab="feed">Class Feed</button>
+        <button class="nptab" data-nptab="feed">Class Feed <span style="font-size:9px;color:rgba(255,255,255,0.35);font-weight:400;letter-spacing:0" onclick="event.stopPropagation();openCardView()">(Card View)</span></button>
       </div>
       <div id="npMyTab"><div id="npObsList"></div></div>
       <div id="npFeedTab" style="display:none"><div id="npFeedList"></div></div>
@@ -3217,6 +3217,7 @@ draw();
 let npStudentId   = localStorage.getItem('proton_student_id')   || '';
 let npStudentName = localStorage.getItem('proton_student_name') || '';
 let npRosterCache = null;
+var npFeedNotes = [];
 let npPendingCapture = null;
 const npLocalScreenshots = new Map();  // noteId → base64 JPEG (session only)
 
@@ -3302,7 +3303,7 @@ document.querySelectorAll('.nptab').forEach(btn => {
     const tab = btn.dataset.nptab;
     document.getElementById('npMyTab').style.display  = tab === 'my'   ? '' : 'none';
     document.getElementById('npFeedTab').style.display = tab === 'feed' ? '' : 'none';
-    if (tab === 'my')   npLoadMyNotes();
+if (tab === 'my')   npLoadMyNotes();
     if (tab === 'feed') npLoadClassFeed();
   });
 });
@@ -3481,10 +3482,224 @@ async function npLoadClassFeed() {
       return;
     }
     npFeedList.innerHTML = '';
+    npFeedNotes = notes;
     for (const note of notes) npFeedList.appendChild(buildNoteCard(note, false));
   } catch(e) {
     npFeedList.innerHTML = `<div class="obs-empty">Couldn't load feed: ${e.message}</div>`;
   }
+}
+
+// ── Card View popup ───────────────────────────────────────────
+function openCardView() {
+  if (!npFeedNotes.length) { alert('Load the Class Feed first.'); return; }
+  const win = window.open('', '_blank', 'width=1300,height=900,resizable=yes,scrollbars=yes');
+  if (!win) { alert('Pop-up blocked — please allow pop-ups for this page.'); return; }
+  win.document.write(`<!DOCTYPE html><html><head>
+<meta charset="utf-8">
+<title>Card View — Class Feed</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#000; color:#fff; font-family:system-ui,sans-serif; overflow:scroll; }
+#cv-toolbar { position:fixed; top:0; left:0; right:0; height:36px; background:#111; border-bottom:1px solid #333; display:flex; align-items:center; gap:10px; padding:0 14px; z-index:9999; }
+#cv-toolbar label { font-size:11px; color:#aaa; }
+#cv-field { position:relative; transform-origin:top left; margin-top:36px; }
+.cv-wrap {
+  position:absolute;
+  user-select:none;
+  cursor:grab;
+  touch-action:none;
+  width:345px;
+  height:0;
+}
+.cv-wrap.grabbing { cursor:grabbing; }
+.cv-inner { zoom:0.75; transform-origin:top left; display:inline-block; }
+.obs-card { background:#1a1a2a; border:2px solid #c060ff; border-radius:16px; padding:10px; width:460px; }
+.obs-thumb-wrap { position:relative; margin-bottom:6px; }
+.obs-sim-canvas { width:100%; display:block; border-radius:4px; background:#111; }
+.obs-controls { display:flex; align-items:center; gap:6px; margin-top:4px; }
+.obs-ctrl-btn { background:#2e2e44; border:1px solid #555; color:#fff; border-radius:4px; cursor:pointer; font-size:14px; padding:2px 8px; }
+.obs-ctrl-btn:hover { background:#3e3e5a; }
+.obs-time-slider { flex:1; }
+.obs-zoom-group { display:flex; align-items:center; gap:2px; }
+.obs-zoom-slider { width:60px; }
+.obs-meta { display:flex; gap:8px; align-items:center; font-size:12px; color:rgba(255,255,255,0.45); margin-bottom:4px; }
+.obs-student { color:rgba(255,255,255,0.75); font-weight:600; }
+.obs-annotation-ro { font-size:18px; color:#fff; line-height:1.45; margin-top:6px; background:#111120; border-radius:8px; padding:6px 8px; }
+<\/style>
+</head><body>
+<div id="cv-toolbar">
+  <label>Zoom</label>
+  <input type="range" id="masterZoomSlider" min="0.3" max="2" step="0.05" value="1" style="width:120px">
+  <span id="masterZoomLabel" style="font-size:11px;color:#ccc;min-width:32px">100%</span>
+</div>
+<div id="cv-field"></div>
+<script>
+(function() {
+  var opener = window.opener;
+  if (!opener) { document.body.textContent = 'Error: could not access opener.'; return; }
+  var notes = opener.npFeedNotes || [];
+  var SideSim = opener.SideSim;
+  var field = document.getElementById('cv-field');
+  var masterZoom = 1;
+
+  // Use popup's own RAF so playback isn't throttled when the opener window is in the background
+  SideSim.setRafFns(
+    function(cb) { return requestAnimationFrame(cb); },
+    function(id) { cancelAnimationFrame(id); }
+  );
+  window.addEventListener('beforeunload', function() {
+    SideSim.stop();
+    SideSim.setRafFns(
+      function(cb) { return opener.requestAnimationFrame(cb); },
+      function(id) { opener.cancelAnimationFrame(id); }
+    );
+  });
+
+  var masterZoomSlider = document.getElementById('masterZoomSlider');
+  var masterZoomLabel  = document.getElementById('masterZoomLabel');
+  masterZoomSlider.addEventListener('input', function() {
+    masterZoom = parseFloat(masterZoomSlider.value);
+    masterZoomLabel.textContent = Math.round(masterZoom * 100) + '%';
+    field.style.transform = 'scale(' + masterZoom + ')';
+  });
+
+  var COLS = 3, GAP = 30;
+  var CARD_W_ZOOMED = 460 * 0.75;
+  var CARD_H_ZOOMED = 520 * 0.75;
+
+  // Track all cards for reset-on-focus
+  var cardRecords = [];
+
+  notes.forEach(function(note, i) {
+    var wrap = document.createElement('div');
+    wrap.className = 'cv-wrap';
+    var col = i % COLS, row = Math.floor(i / COLS);
+    wrap.style.left = (GAP + col * (CARD_W_ZOOMED + GAP)) + 'px';
+    wrap.style.top  = (GAP + row * (CARD_H_ZOOMED + GAP)) + 'px';
+    wrap.style.zIndex = i + 1;
+
+    var parsedState = null;
+    try { if (note.sim_state) parsedState = JSON.parse(note.sim_state); } catch(e) {}
+
+    var card = document.createElement('div');
+    card.className = 'obs-card';
+    var thumbWrap = document.createElement('div');
+    thumbWrap.className = 'obs-thumb-wrap';
+
+    var simCv = null;
+    var simStateJson = note.sim_state || null; // captured explicitly per card
+
+    if (parsedState) {
+      var srcW = parsedState.canvasWidth || 1280;
+      var srcH = parsedState.canvasHeight || 800;
+      simCv = document.createElement('canvas');
+      simCv.className = 'obs-sim-canvas';
+      simCv.style.aspectRatio = srcW + ' / ' + srcH;
+      thumbWrap.appendChild(simCv);
+
+      var cardZoom = parsedState.zoom || 1;
+
+      requestAnimationFrame((function(cv, ps) { return function() { SideSim.drawFirstFrame(cv, ps); }; })(simCv, parsedState));
+
+      var controls = document.createElement('div');
+      controls.className = 'obs-controls';
+
+      var replayBtn = document.createElement('button');
+      replayBtn.className = 'obs-ctrl-btn'; replayBtn.title = 'Replay'; replayBtn.textContent = '\u21BA';
+
+      var playBtn = document.createElement('button');
+      playBtn.className = 'obs-ctrl-btn'; playBtn.title = 'Play / Pause'; playBtn.innerHTML = '&#9654;';
+
+      var timeSlider = document.createElement('input');
+      timeSlider.type = 'range'; timeSlider.className = 'obs-time-slider';
+      timeSlider.min = '0'; timeSlider.max = '0'; timeSlider.value = '0'; timeSlider.disabled = true;
+
+      var zoomSlider = document.createElement('input');
+      zoomSlider.type = 'range'; zoomSlider.className = 'obs-zoom-slider';
+      zoomSlider.min = '0.5'; zoomSlider.max = '6'; zoomSlider.step = '0.25'; zoomSlider.value = cardZoom;
+
+      // Pass all per-card values explicitly — no closure over loop variables
+      (function(cv, zs, ps, ts, pb, rb, sj) {
+        var cz = cardZoom;
+        zs.addEventListener('input', function() { cz = parseFloat(zs.value); SideSim.drawStaticAt(cv, ps, cz); });
+        ts.addEventListener('mousedown', function() { if (SideSim.isCurrentCanvas(cv)) SideSim.startScrub(); });
+        ts.addEventListener('input',     function() { if (SideSim.isCurrentCanvas(cv)) SideSim.scrubTo(parseInt(ts.value)); });
+        ts.addEventListener('mouseup',   function() { if (SideSim.isCurrentCanvas(cv)) SideSim.endScrub(parseInt(ts.value)); });
+        function resetOthers() {
+          cardRecords.forEach(function(r) { if (r.simCv !== cv && r.simCv && r.parsedState) SideSim.drawFirstFrame(r.simCv, r.parsedState); });
+        }
+        pb.addEventListener('click', function() {
+          if (SideSim.isCurrentCanvas(cv)) { SideSim.toggle(); }
+          else { SideSim.stop(); resetOthers(); SideSim.loadAndPlay(sj, cv, pb, ts); SideSim.setZoom(cz); }
+        });
+        rb.addEventListener('click', function() {
+          SideSim.stop(); resetOthers(); SideSim.loadAndPlay(sj, cv, pb, ts); SideSim.setZoom(cz);
+        });
+      })(simCv, zoomSlider, parsedState, timeSlider, playBtn, replayBtn, simStateJson);
+
+      var zoomGroup = document.createElement('div');
+      zoomGroup.className = 'obs-zoom-group';
+      var zoomIcon = document.createElement('span'); zoomIcon.textContent = '\uD83D\uDD0D';
+      zoomGroup.appendChild(zoomSlider); zoomGroup.appendChild(zoomIcon);
+
+      controls.appendChild(replayBtn); controls.appendChild(playBtn);
+      controls.appendChild(timeSlider); controls.appendChild(zoomGroup);
+      thumbWrap.appendChild(controls);
+    } else {
+      var ph = document.createElement('div');
+      ph.style.cssText = 'height:80px;display:flex;align-items:center;justify-content:center;font-size:11px;color:rgba(255,255,255,0.15)';
+      ph.textContent = opener.npGetStudentName(note.student_id);
+      thumbWrap.appendChild(ph);
+    }
+    card.appendChild(thumbWrap);
+
+    var meta = document.createElement('div'); meta.className = 'obs-meta';
+    var nm = document.createElement('span'); nm.className = 'obs-student';
+    nm.textContent = opener.npGetStudentName(note.student_id); meta.appendChild(nm);
+    var ts2 = document.createElement('span');
+    ts2.textContent = new Date(note.timestamp).toLocaleString(); meta.appendChild(ts2);
+    card.appendChild(meta);
+
+    if (note.text) {
+      var ro = document.createElement('div'); ro.className = 'obs-annotation-ro';
+      ro.textContent = note.text; card.appendChild(ro);
+    }
+
+    var inner = document.createElement('div'); inner.className = 'cv-inner';
+    inner.appendChild(card); wrap.appendChild(inner); field.appendChild(wrap);
+
+    cardRecords.push({ wrap: wrap, simCv: simCv, parsedState: parsedState });
+
+    // Drag
+    var ox = 0, oy = 0, fieldRect;
+    wrap.addEventListener('pointerdown', function(e) {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+      SideSim.stop();
+      cardRecords.forEach(function(r) { if (r.wrap !== wrap && r.simCv && r.parsedState) SideSim.drawFirstFrame(r.simCv, r.parsedState); });
+      wrap.setPointerCapture(e.pointerId);
+      wrap.classList.add('grabbing');
+      fieldRect = field.getBoundingClientRect();
+      ox = (e.clientX - fieldRect.left) / masterZoom - wrap.offsetLeft;
+      oy = (e.clientY - fieldRect.top)  / masterZoom - wrap.offsetTop;
+      wrap.style.zIndex = Date.now() % 1000000;
+    });
+    wrap.addEventListener('pointermove', function(e) {
+      if (!wrap.hasPointerCapture(e.pointerId)) return;
+      wrap.style.left = ((e.clientX - fieldRect.left) / masterZoom - ox) + 'px';
+      wrap.style.top  = ((e.clientY - fieldRect.top)  / masterZoom - oy) + 'px';
+    });
+    wrap.addEventListener('pointerup', function(e) {
+      wrap.releasePointerCapture(e.pointerId); wrap.classList.remove('grabbing');
+    });
+  });
+
+  var rows = Math.ceil(notes.length / COLS);
+  field.style.minHeight = (GAP + rows * (CARD_H_ZOOMED + GAP)) + 'px';
+  field.style.minWidth  = (GAP + COLS * (CARD_W_ZOOMED + GAP)) + 'px';
+})();
+<\/script>
+</body></html>`);
+  win.document.close();
 }
 
 // ── Card builder ──────────────────────────────────────────────
@@ -3742,10 +3957,14 @@ function applySimState(state) {
 //    • constant strong force within cutoff (no equilibrium spring)
 //    • no damping, no antispin (simplified for card playback)
 // ============================================================
-const SideSim = (() => {
+var SideSim = (() => {
   let cv = null, cx = null;
   let parts = [], sfStr = 0.25, sfRng = 1.2, spd = 1.5;
   let running = false, animId = null, activePlayBtn = null;
+  // Configurable RAF — popup injects its own so the opener's background throttle doesn't freeze playback
+  let _raf = cb => requestAnimationFrame(cb);
+  let _caf = id => cancelAnimationFrame(id);
+  function setRafFns(rafFn, cafFn) { _raf = rafFn; _caf = cafFn; }
   let frameHistory = [], scrubbing = false, activeTimeSlider = null;
   const MAX_FRAMES = 600;
   let sideQuantumEjectAt = null, sideQuantumTimerStartAt = null, sideQuantumFlashes = [];
@@ -3841,7 +4060,7 @@ const SideSim = (() => {
       }
     }
     draw();
-    animId = requestAnimationFrame(loop);
+    animId = _raf(loop);
   }
 
   function fitBuffer(targetCv) {
@@ -3886,21 +4105,30 @@ const SideSim = (() => {
     sideQuantumEjectAt = null; sideQuantumTimerStartAt = null; sideQuantumFlashes = [];
   }
 
-  // Render one still frame to any canvas without disrupting active playback
+  // Render one still frame to any canvas without disrupting active playback.
+  // Saves and restores ALL SideSim state so this is a true non-destructive peek.
   function drawFirstFrame(targetCv, state) {
     if (running && cv === targetCv) return;
     fitBuffer(targetCv);
     if (!targetCv.width || !targetCv.height) return;
     const savedCv = cv, savedCx = cx;
+    const savedParts = parts, savedSfStr = sfStr, savedSfRng = sfRng, savedSpd = spd;
+    const savedZoomV = savedZoom, savedTheme = savedThemeKey;
+    const savedElec = savedShowElectric, savedStr = savedShowStrong, savedTabV = savedTab;
+    const savedQEject = sideQuantumEjectAt, savedQStart = sideQuantumTimerStartAt, savedQFlash = sideQuantumFlashes;
     cv = targetCv; cx = targetCv.getContext('2d');
     applyState(state, targetCv);
     draw();
     cv = savedCv; cx = savedCx;
+    parts = savedParts; sfStr = savedSfStr; sfRng = savedSfRng; spd = savedSpd;
+    savedZoom = savedZoomV; savedThemeKey = savedTheme;
+    savedShowElectric = savedElec; savedShowStrong = savedStr; savedTab = savedTabV;
+    sideQuantumEjectAt = savedQEject; sideQuantumTimerStartAt = savedQStart; sideQuantumFlashes = savedQFlash;
   }
 
   function stop() {
     running = false;
-    cancelAnimationFrame(animId);
+    _caf(animId);
     if (activePlayBtn) activePlayBtn.innerHTML = '&#9654;';
     if (cv) draw();
   }
@@ -3908,7 +4136,7 @@ const SideSim = (() => {
   function loadAndPlay(simStateJson, targetCv, playBtn, timeSliderEl) {
     if (activePlayBtn && activePlayBtn !== playBtn) activePlayBtn.innerHTML = '&#9654;';
     if (activeTimeSlider && activeTimeSlider !== timeSliderEl) activeTimeSlider.disabled = true;
-    running = false; cancelAnimationFrame(animId);
+    running = false; _caf(animId);
     let state;
     try { state = JSON.parse(simStateJson); } catch(e) { return; }
     cv = targetCv; cx = targetCv.getContext('2d'); activePlayBtn = playBtn;
@@ -3922,7 +4150,7 @@ const SideSim = (() => {
 
   function startScrub() {
     scrubbing = true;
-    if (running) { running = false; cancelAnimationFrame(animId); }
+    if (running) { running = false; _caf(animId); }
   }
 
   function scrubTo(idx) {
@@ -3972,7 +4200,7 @@ const SideSim = (() => {
     cv = _cv; cx = _cx;
   }
 
-  return { drawFirstFrame, loadAndPlay, toggle, isCurrentCanvas, stop, setZoom, drawStaticAt, startScrub, scrubTo, endScrub };
+  return { drawFirstFrame, loadAndPlay, toggle, isCurrentCanvas, stop, setZoom, drawStaticAt, startScrub, scrubTo, endScrub, setRafFns };
 })();
 </script>
 </body>

@@ -82,25 +82,22 @@
   }
   .btn:hover { color: rgba(255,255,255,0.38); border-color: rgba(255,255,255,0.12); }
 
-  #goBtn {
-    border-color: var(--accent1);
+  /* ▶ idle + Clear — neon green */
+  #goBtn, #clearBtn {
+    border-color: #00d060;
     color: rgba(255,255,255,0.5);
-    background: var(--accent1-dim);
+    background: rgba(0,208,96,0.12);
     box-shadow:
-      inset 0 0 6px var(--accent1-dim),
-      0 0 2px var(--accent1), 0 0 8px var(--accent1),
-      0 0 18px var(--accent1-glow), 0 0 40px var(--accent1-dim), 0 0 70px var(--accent1-dim);
+      inset 0 0 6px rgba(0,208,96,0.18),
+      0 0 2px #00d060, 0 0 8px #00d060,
+      0 0 18px rgba(0,208,96,0.5), 0 0 40px rgba(0,208,96,0.2), 0 0 70px rgba(0,208,96,0.1);
     text-shadow:
-      0 0 4px rgba(255,255,255,0.5), 0 0 10px var(--accent1),
-      0 0 22px var(--accent1-glow), 0 0 44px var(--accent1-dim);
+      0 0 4px rgba(255,255,255,0.5), 0 0 10px #00d060,
+      0 0 22px rgba(0,208,96,0.6), 0 0 44px rgba(0,208,96,0.2);
   }
-  #goBtn:hover {
-    background: var(--accent1-glow);
-    box-shadow:
-      inset 0 0 10px var(--accent1-glow),
-      0 0 4px var(--accent1), 0 0 14px var(--accent1),
-      0 0 28px var(--accent1-glow), 0 0 60px var(--accent1-dim), 0 0 100px var(--accent1-dim);
-  }
+  #goBtn:hover, #clearBtn:hover { background: rgba(0,208,96,0.28); }
+
+  /* ⏸ running — red */
   #goBtn.running {
     border-color: #ff4040; color: rgba(255,255,255,0.5); background: rgba(255,40,40,0.15);
     box-shadow:
@@ -111,28 +108,87 @@
   }
   #goBtn.running:hover { background: rgba(255,40,40,0.3); }
 
+  #goBtn, #replayBtn { font-size: 28px; letter-spacing: 0; padding: 2px 18px; }
+  #clearBtn { font-size: 11px; padding: 4px 14px; width: 100%; }
+
+  /* ↺ replay — red */
   #replayBtn {
-    border-color: var(--accent1);
+    border-color: #ff4040;
     color: rgba(255,255,255,0.5);
-    background: var(--accent1-dim);
+    background: rgba(255,40,40,0.15);
     box-shadow:
-      inset 0 0 6px var(--accent1-dim),
-      0 0 2px var(--accent1), 0 0 8px var(--accent1),
-      0 0 18px var(--accent1-glow), 0 0 40px var(--accent1-dim), 0 0 70px var(--accent1-dim);
-    text-shadow:
-      0 0 4px rgba(255,255,255,0.5), 0 0 10px var(--accent1),
-      0 0 22px var(--accent1-glow), 0 0 44px var(--accent1-dim);
+      inset 0 0 6px rgba(255,40,40,0.2),
+      0 0 2px #ff4040, 0 0 8px #ff4040,
+      0 0 18px rgba(255,40,40,0.5), 0 0 40px rgba(255,40,40,0.2);
+    text-shadow: 0 0 4px rgba(255,255,255,0.5), 0 0 10px #ff4040, 0 0 22px rgba(255,80,80,0.6);
   }
-  #replayBtn:hover {
-    background: var(--accent1-glow);
-    box-shadow:
-      inset 0 0 10px var(--accent1-glow),
-      0 0 4px var(--accent1), 0 0 14px var(--accent1),
-      0 0 28px var(--accent1-glow), 0 0 60px var(--accent1-dim), 0 0 100px var(--accent1-dim);
-  }
+  #replayBtn:hover { background: rgba(255,40,40,0.3); }
   #replayBtn:disabled {
     border-color: rgba(255,255,255,0.06); color: rgba(255,255,255,0.12);
     background: transparent; box-shadow: none; text-shadow: none; cursor: not-allowed;
+  }
+
+  /* ── Particle selector ─────────────────────────────────────────────────────── */
+  .ctrl-box-pink {
+    display: flex;
+    flex-direction: column;
+    align-self: stretch;
+    gap: 7px;
+    background: rgba(255,45,120,0.07);
+    border: 1px solid rgba(255,45,120,0.22);
+    border-radius: 12px;
+    padding: 10px 18px;
+    min-width: 260px;
+  }
+
+  .pwheel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+  .pwheel-trigger {
+    border: 1px solid rgba(255,45,120,0.40);
+    background: rgba(255,45,120,0.10);
+    box-shadow: 0 0 8px rgba(255,45,120,0.18);
+  }
+  .pwheel-drop {
+    position: absolute;
+    top: calc(100% + 5px);
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 5px;
+    background: rgba(8,6,24,0.97);
+    border: 1px solid rgba(255,45,120,0.28);
+    border-radius: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s, transform 0.15s;
+    transform: translateX(-50%) translateY(-4px);
+    z-index: 100;
+  }
+  .pwheel.open .pwheel-drop {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(-50%) translateY(0);
+  }
+  .psel-icon {
+    cursor: pointer;
+    border-radius: 7px;
+    border: 1px solid transparent;
+    background: transparent;
+    display: block;
+    transition: border-color 0.1s, background 0.1s;
+  }
+  .psel-icon:hover { border-color: rgba(255,45,120,0.35); background: rgba(255,45,120,0.08); }
+  .pslider-icon, .pslider-icon:hover { border-color: transparent !important; background: transparent !important; box-shadow: none !important; border-radius: 0; }
+  .psel-icon.selected {
+    border-color: rgba(255,45,120,0.65);
+    background: rgba(255,45,120,0.15);
   }
 
   #fullTimelineBtn {
@@ -316,28 +372,47 @@
 </div>
 
 <div id="toolbar">
-  <h1>Fusion v14</h1>
-  <button class="btn" id="goBtn">Go</button>
-  <button class="btn" id="replayBtn" disabled>Replay</button>
+  <div style="display:flex;flex-direction:column;align-items:center;gap:4px;margin-right:8px;">
+    <span style="font-size:10px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--accent1);text-shadow:0 0 8px var(--accent1-glow),0 0 20px var(--accent1-dim);">FUSION</span>
+    <button class="btn" id="goBtn">&#9654;</button>
+    <button class="btn" id="replayBtn" disabled>&#8634;</button>
+    <button class="btn" id="clearBtn">Clear</button>
+  </div>
 
-  <label class="toggle-label">Left:
-    <select id="leftChoice">
-      <option value="p">Proton</option>
-      <option value="n">Neutron</option>
-      <option value="d" selected>Deuterium (p+n)</option>
-      <option value="t">Tritium (p+2n)</option>
-      <option value="he">Helium-4 (2p+2n)</option>
-    </select>
-  </label>
-  <label class="toggle-label">Right:
-    <select id="rightChoice">
-      <option value="p">Proton</option>
-      <option value="n">Neutron</option>
-      <option value="d">Deuterium (p+n)</option>
-      <option value="t" selected>Tritium (p+2n)</option>
-      <option value="he">Helium-4 (2p+2n)</option>
-    </select>
-  </label>
+  <div class="ctrl-box-pink">
+    <div style="display:flex;gap:40px;justify-content:center;">
+      <!-- Left particle wheel -->
+      <div class="pwheel" id="leftWheel">
+        <canvas class="pwheel-trigger psel-icon" data-side="left" data-key="d" width="91" height="77"></canvas>
+        <div class="pwheel-drop">
+          <canvas class="psel-icon" data-side="left" data-key="p"  width="91" height="77"></canvas>
+          <canvas class="psel-icon" data-side="left" data-key="n"  width="91" height="77"></canvas>
+          <canvas class="psel-icon" data-side="left" data-key="d"  width="91" height="77"></canvas>
+          <canvas class="psel-icon" data-side="left" data-key="t"  width="91" height="77"></canvas>
+          <canvas class="psel-icon" data-side="left" data-key="he" width="91" height="77"></canvas>
+        </div>
+      </div>
+      <!-- Right particle wheel -->
+      <div class="pwheel" id="rightWheel">
+        <canvas class="pwheel-trigger psel-icon" data-side="right" data-key="t" width="91" height="77"></canvas>
+        <div class="pwheel-drop">
+          <canvas class="psel-icon" data-side="right" data-key="p"  width="91" height="77"></canvas>
+          <canvas class="psel-icon" data-side="right" data-key="n"  width="91" height="77"></canvas>
+          <canvas class="psel-icon" data-side="right" data-key="d"  width="91" height="77"></canvas>
+          <canvas class="psel-icon" data-side="right" data-key="t"  width="91" height="77"></canvas>
+          <canvas class="psel-icon" data-side="right" data-key="he" width="91" height="77"></canvas>
+        </div>
+      </div>
+    </div>
+    <!-- Speed slider: speedLines | leftParticle | slider | rightParticle | speedLines -->
+    <div style="display:flex;align-items:center;gap:0;">
+      <canvas id="speedLinesL" width="36" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;margin-right:-8px;"></canvas>
+      <canvas class="psel-icon pslider-icon" data-side="left"  width="44" height="36" style="margin-right:8px;"></canvas>
+      <input type="range" id="v9SpeedSlider" min="0.1" max="2.0" step="0.05" value="2.0" style="flex:1;min-width:80px;">
+      <canvas class="psel-icon pslider-icon" data-side="right" width="44" height="36" style="margin-left:8px;"></canvas>
+      <canvas id="speedLinesR" width="36" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;transform:scaleX(-1);margin-left:-8px;"></canvas>
+    </div>
+  </div>
 
   <label class="toggle-label">
     <input type="checkbox" id="fieldToggle" checked>
@@ -350,15 +425,9 @@
       style="width:56px;background:rgba(10,8,30,0.8);color:var(--accent1);border:1px solid var(--accent1-dim);border-radius:6px;padding:2px 4px;font-size:11px;font-family:inherit;outline:none;">
   </label>
 
-  <div style="display:flex;flex-direction:column;gap:4px;">
-    <div class="slider-group">
-      <label>Electric: <span id="v9ElecVal">400</span></label>
-      <input type="range" id="v9ElecSlider" min="10" max="600" step="10" value="400">
-    </div>
-    <div class="slider-group">
-      <label>Speed: <span id="v9SpeedVal">2.00</span></label>
-      <input type="range" id="v9SpeedSlider" min="0.1" max="2.0" step="0.05" value="2.0">
-    </div>
+  <div class="slider-group">
+    <label>Electric: <span id="v9ElecVal">400</span></label>
+    <input type="range" id="v9ElecSlider" min="10" max="600" step="10" value="400">
   </div>
 </div>
 
@@ -370,9 +439,9 @@
   <div id="scrubLeft">
     <canvas id="energyGraph" height="150"></canvas>
     <div id="phaseTimeline">
-      <div class="phase-seg" id="phaseSeg-approach" style="background:rgba(255,255,255,0.05);color:var(--text-dim);">Approaching</div>
-      <div class="phase-seg" id="phaseSeg-collision" style="background:rgba(255,45,120,0.18);color:var(--accent1);display:none;">Collision</div>
-      <div class="phase-seg" id="phaseSeg-escape"    style="background:rgba(26,110,255,0.15);color:var(--accent2);display:none;">Escaping</div>
+      <div class="phase-seg" id="phaseSeg-approach" style="background:rgba(255,255,255,0.05);color:var(--text-dim);">Before</div>
+      <div class="phase-seg" id="phaseSeg-collision" style="background:rgba(255,45,120,0.18);color:var(--accent1);display:none;">During</div>
+      <div class="phase-seg" id="phaseSeg-escape"    style="background:rgba(26,110,255,0.15);color:var(--accent2);display:none;">After</div>
     </div>
     <div id="scrubControls">
       <span class="scrub-label">Time</span>
@@ -477,6 +546,7 @@ let approachSpeed   = 2.0;
 // ============================================================
 let particles = [];
 let running   = false;
+let paused    = false;
 let animId    = null;
 
 // ============================================================
@@ -1746,8 +1816,8 @@ function drawBarChart() {
     escapeAnim:  '#00ff88',
     escape:      '#00ff88',
   };
-  let phaseLabel = { approach: 'Approaching', collision: 'Collision', escapeAnim: 'Escaping', escape: 'Escaping' }[collisionPhase] || '';
-  if (coulombScatterEscape) phaseLabel = 'Escaping';
+  let phaseLabel = { approach: 'Before', collision: 'During', escapeAnim: 'After', escape: 'After' }[collisionPhase] || '';
+  if (coulombScatterEscape) phaseLabel = 'After';
   const pCol = phaseColors[collisionPhase] || 'rgba(0,200,255,0.5)';
   ctx.save();
   ctx.shadowColor = pCol; ctx.shadowBlur = 16;
@@ -1949,8 +2019,8 @@ function draw() {
     const isProton = p.type === 'proton';
     const mid      = isProton ? '#ff1a65' : '#70707f';
     const core     = isProton ? '#ff80b0' : '#b0b0c4';
-    const jx       = p.x + (Math.random() - 0.5) * 0.9;
-    const jy       = p.y + (Math.random() - 0.5) * 0.9;
+    const jx = p.x + (p._jx || 0);
+    const jy = p.y + (p._jy || 0);
 
     // Outer halo — soft fade
     const baseGrad = ctx.createRadialGradient(jx, jy, 0, jx, jy, R * 1.1);
@@ -2076,8 +2146,9 @@ function resetState() {
 
 function resetAndSetup() {
   running = false;
+  paused  = false;
   cancelAnimationFrame(animId);
-  goBtn.textContent = 'Go';
+  goBtn.textContent = '▶';
   goBtn.classList.remove('running');
   resetState();
   snapshot = null;
@@ -2094,16 +2165,27 @@ function resetAndSetup() {
 // ============================================================
 goBtn.addEventListener('click', () => {
   if (running) {
+    // Pause
     running = false;
-    goBtn.textContent = 'New';
-    goBtn.classList.remove('running');
+    paused  = true;
     cancelAnimationFrame(animId);
+    goBtn.textContent = '▶';
+    goBtn.classList.remove('running');
+  } else if (paused) {
+    // Resume from pause
+    paused  = false;
+    running = true;
+    goBtn.textContent = '⏸';
+    goBtn.classList.add('running');
+    loop();
   } else {
+    // Fresh start
     if (hasRunOnce) resetAndSetup();
     else if (particles.length === 0) setupScenario();
     hasRunOnce = true;
+    paused     = false;
     running    = true;
-    goBtn.textContent = 'Stop';
+    goBtn.textContent = '⏸';
     goBtn.classList.add('running');
     takeSnapshot();
     loop();
@@ -2116,9 +2198,8 @@ goBtn.addEventListener('click', () => {
 replayBtn.addEventListener('click', () => {
   if (!snapshot) return;
   running = false;
+  paused  = false;
   cancelAnimationFrame(animId);
-  goBtn.textContent = 'Go';
-  goBtn.classList.remove('running');
   resetState();
   restoreSnapshot();
   const eSnap  = computeEnergy();
@@ -2127,9 +2208,18 @@ replayBtn.addEventListener('click', () => {
   updateCamera();
   draw();
   running = true;
-  goBtn.textContent = 'Stop';
+  goBtn.textContent = '⏸';
   goBtn.classList.add('running');
   loop();
+});
+
+// ============================================================
+//  CLEAR
+// ============================================================
+document.getElementById('clearBtn').addEventListener('click', () => {
+  hasRunOnce = false;
+  paused = false;
+  resetAndSetup();
 });
 
 // ============================================================
@@ -2285,7 +2375,7 @@ document.getElementById('v9ElecSlider').addEventListener('input', function() {
 });
 document.getElementById('v9SpeedSlider').addEventListener('input', function() {
   approachSpeed = parseFloat(this.value);
-  document.getElementById('v9SpeedVal').textContent = approachSpeed.toFixed(2);
+  drawSpeedLines();
 });
 function applyComboSieOffset() {
   const entry = getComboEntry();
@@ -2294,16 +2384,187 @@ function applyComboSieOffset() {
     document.getElementById('sieOffsetInput').value = sieOffset;
   }
 }
-document.getElementById('leftChoice').addEventListener('change', function() {
-  leftChoice = this.value; applyComboSieOffset(); resetAndSetup();
+// ============================================================
+//  PARTICLE SELECTOR ICONS
+// ============================================================
+const pselIcons    = Array.from(document.querySelectorAll('.psel-icon'));
+const pselTriggers = Array.from(document.querySelectorAll('.pwheel-trigger'));
+const psliderIcons = Array.from(document.querySelectorAll('.pslider-icon'));
+
+// Compute He-4 bounding extents once — used as the universal nucleon scale reference
+// so all cluster icons have the same nucleon size regardless of how many particles they contain.
+const _he4halo = PARTICLE_RADIUS * 1.35;
+const _he4def  = CLUSTER_DEFS['he'];
+const _he4cmx  = _he4def.reduce((s, p) => s + p.x, 0) / _he4def.length;
+const _he4cmy  = _he4def.reduce((s, p) => s + p.y, 0) / _he4def.length;
+let _he4maxX   = _he4halo, _he4maxY = _he4halo;
+for (const p of _he4def) {
+  _he4maxX = Math.max(_he4maxX, Math.abs(p.x - _he4cmx) + _he4halo);
+  _he4maxY = Math.max(_he4maxY, Math.abs(p.y - _he4cmy) + _he4halo);
+}
+
+function drawClusterIcon(canvas) {
+  const W   = canvas.width, H = canvas.height;
+  const ic  = canvas.getContext('2d');
+  const key = canvas.dataset.key;
+  const def = CLUSTER_DEFS[key];
+
+  // Centre on visual mean position
+  const cmx = def.reduce((s, p) => s + p.x, 0) / def.length;
+  const cmy = def.reduce((s, p) => s + p.y, 0) / def.length;
+
+  // Use He-4 as the scale reference so all nucleons are the same size
+  const PAD   = 3;
+  const scale = Math.min((W / 2 - PAD) / _he4maxX, (H / 2 - PAD) / _he4maxY);
+  const R     = PARTICLE_RADIUS * scale;
+
+  ic.clearRect(0, 0, W, H);
+
+  for (const p of def) {
+    const jx = W / 2 + (p.x - cmx) * scale + (p._jx || 0) * scale;
+    const jy = H / 2 + (p.y - cmy) * scale + (p._jy || 0) * scale;
+    const isProton = p.type === 'proton';
+    const mid  = isProton ? '#ff1a65' : '#70707f';
+    const core = isProton ? '#ff80b0' : '#b0b0c4';
+
+    const baseGrad = ic.createRadialGradient(jx, jy, 0, jx, jy, R * 1.1);
+    baseGrad.addColorStop(0,    mid);
+    baseGrad.addColorStop(0.82, mid);
+    baseGrad.addColorStop(1,    'rgba(0,0,0,0)');
+    ic.fillStyle = baseGrad;
+    ic.beginPath(); ic.arc(jx, jy, R * 1.1, 0, Math.PI * 2); ic.fill();
+
+    const innerGlow = ic.createRadialGradient(jx, jy, 0, jx, jy, R);
+    innerGlow.addColorStop(0,   core);
+    innerGlow.addColorStop(0.5, core);
+    innerGlow.addColorStop(1,   'rgba(0,0,0,0)');
+    ic.save();
+    ic.shadowColor = core;
+    ic.shadowBlur  = 5;
+    ic.globalAlpha = 0.82;
+    ic.fillStyle   = innerGlow;
+    ic.beginPath(); ic.arc(jx, jy, R, 0, Math.PI * 2); ic.fill();
+    ic.restore();
+    ic.globalAlpha = 1;
+
+    if (isProton) {
+      ic.fillStyle    = 'rgba(255,255,255,0.88)';
+      ic.font         = `bold ${Math.round(R * 1.1)}px "JetBrains Mono", monospace`;
+      ic.textAlign    = 'center';
+      ic.textBaseline = 'middle';
+      ic.fillText('+', jx, jy + 0.5);
+    }
+  }
+}
+
+function updatePselSelection() {
+  // Highlight selected option in dropdowns
+  pselIcons.forEach(c => c.classList.toggle('selected',
+    !c.classList.contains('pwheel-trigger') && !c.classList.contains('pslider-icon') && (
+      (c.dataset.side === 'left'  && c.dataset.key === leftChoice) ||
+      (c.dataset.side === 'right' && c.dataset.key === rightChoice)
+    )
+  ));
+  // Sync trigger and slider canvases to current selection
+  [...pselTriggers, ...psliderIcons].forEach(c => {
+    c.dataset.key = c.dataset.side === 'left' ? leftChoice : rightChoice;
+  });
+}
+
+// Clicks on dropdown options (not triggers, not slider icons)
+pselIcons.forEach(canvas => {
+  if (canvas.classList.contains('pwheel-trigger')) return;
+  if (canvas.classList.contains('pslider-icon'))  return;
+  canvas.addEventListener('click', () => {
+    if (canvas.dataset.side === 'left') leftChoice  = canvas.dataset.key;
+    else                                rightChoice = canvas.dataset.key;
+    updatePselSelection();
+    // Close the wheel
+    canvas.closest('.pwheel').classList.remove('open');
+    applyComboSieOffset();
+    resetAndSetup();
+  });
 });
-document.getElementById('rightChoice').addEventListener('change', function() {
-  rightChoice = this.value; applyComboSieOffset(); resetAndSetup();
-});
+
+// Hover open/close with delay so mouse can travel to dropdown
+function bindWheelHover(wheelEl) {
+  let tid = null;
+  wheelEl.addEventListener('mouseenter', () => { clearTimeout(tid); wheelEl.classList.add('open'); });
+  wheelEl.addEventListener('mouseleave', () => { tid = setTimeout(() => wheelEl.classList.remove('open'), 120); });
+}
+document.querySelectorAll('.pwheel').forEach(bindWheelHover);
+
+updatePselSelection();
+
+// Speed lines (grey horizontal lines whose length reflects slider value)
+function drawSpeedLines() {
+  ['speedLinesL', 'speedLinesR'].forEach(id => {
+    const canvas = document.getElementById(id);
+    if (!canvas) return;
+    const c = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    const slider = document.getElementById('v9SpeedSlider');
+    const t = (parseFloat(slider.value) - parseFloat(slider.min))
+            / (parseFloat(slider.max) - parseFloat(slider.min));
+    c.clearRect(0, 0, w, h);
+    const maxLen = w - 2;
+    const scales = [0.65, 1.0, 0.80];
+    const ys     = [h * 0.28, h * 0.5, h * 0.72];
+    scales.forEach((scale, i) => {
+      const len = (0.18 + 0.82 * t) * maxLen * scale;
+      const x = w - len, y = Math.round(ys[i]);
+      c.save();
+      c.strokeStyle = 'rgba(180,180,210,0.25)';
+      c.lineWidth = 4;
+      c.beginPath(); c.moveTo(x, y); c.lineTo(w, y); c.stroke();
+      c.strokeStyle = 'rgba(210,210,230,0.85)';
+      c.lineWidth = 1.5;
+      c.beginPath(); c.moveTo(x, y); c.lineTo(w, y); c.stroke();
+      c.restore();
+    });
+  });
+}
+drawSpeedLines();
+
+(function animateIcons() {
+  pselIcons.forEach(c => drawClusterIcon(c));
+  requestAnimationFrame(animateIcons);
+})();
 
 // ============================================================
 //  ANIMATION LOOP
 // ============================================================
+// v12-style damped random walk jitter — updates _jx/_jy on all live particles
+// and on CLUSTER_DEFS entries (for icon canvases). Called every frame.
+function updateJitter() {
+  // Main canvas particles
+  for (const p of particles) {
+    if (p.type === 'gamma') continue;
+    if (p._jx === undefined) { p._jx = 0; p._jy = 0; }
+    p._jx += (Math.random() - 0.5) * 0.7;
+    p._jy += (Math.random() - 0.5) * 0.7;
+    p._jx *= 0.78;
+    p._jy *= 0.78;
+  }
+  // Icon particles (CLUSTER_DEFS entries shared across all canvases)
+  for (const def of Object.values(CLUSTER_DEFS)) {
+    for (const p of def) {
+      if (p._jx === undefined) { p._jx = 0; p._jy = 0; }
+      p._jx += (Math.random() - 0.5) * 0.7;
+      p._jy += (Math.random() - 0.5) * 0.7;
+      p._jx *= 0.78;
+      p._jy *= 0.78;
+    }
+  }
+}
+
+// Always-on jitter loop — redraws when sim is idle so particles never freeze
+(function idleJitter() {
+  updateJitter();
+  if (!running) draw();
+  requestAnimationFrame(idleJitter);
+})();
+
 function loop() {
   if (!running) return;
 
@@ -2394,8 +2655,10 @@ function loop() {
     });
     if (allGone) {
       running = false;
-      goBtn.textContent = 'New';
+      paused  = false;
+      goBtn.textContent = '▶';
       goBtn.classList.remove('running');
+      replayBtn.disabled = false;
       draw();
       return;
     }
@@ -2531,8 +2794,10 @@ function loop() {
     photonEscapeFrames++;
     if (photonEscapeFrames > 90) {
       running = false;
-      goBtn.textContent = 'New';
+      paused  = false;
+      goBtn.textContent = '▶';
       goBtn.classList.remove('running');
+      replayBtn.disabled = false;
       draw();
       return;
     }
