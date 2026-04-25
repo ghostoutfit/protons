@@ -3588,8 +3588,9 @@ body { background:#000; color:#fff; font-family:system-ui,sans-serif; overflow:s
 
     var simCv = null;
     var simStateJson = note.sim_state || null; // captured explicitly per card
+    var isV12State = parsedState && (!parsedState.simVersion || parsedState.simVersion === 'v12');
 
-    if (parsedState) {
+    if (isV12State) {
       var srcW = parsedState.canvasWidth || 1280;
       var srcH = parsedState.canvasHeight || 800;
       simCv = document.createElement('canvas');
@@ -3646,9 +3647,11 @@ body { background:#000; color:#fff; font-family:system-ui,sans-serif; overflow:s
       controls.appendChild(timeSlider); controls.appendChild(zoomGroup);
       thumbWrap.appendChild(controls);
     } else {
+      // Non-v12 note: show version label placeholder
       var ph = document.createElement('div');
+      var vLabel = parsedState && parsedState.simVersion ? '[' + parsedState.simVersion + ' sim]' : opener.npGetStudentName(note.student_id);
       ph.style.cssText = 'height:80px;display:flex;align-items:center;justify-content:center;font-size:11px;color:rgba(255,255,255,0.15)';
-      ph.textContent = opener.npGetStudentName(note.student_id);
+      ph.textContent = vLabel;
       thumbWrap.appendChild(ph);
     }
     card.appendChild(thumbWrap);
@@ -3719,7 +3722,11 @@ function buildNoteCard(note, isOwn) {
   let parsedState = null;
   try { if (note.sim_state) parsedState = JSON.parse(note.sim_state); } catch(e) {}
 
-  if (parsedState) {
+  // Only use SideSim for v12 notes (or old notes without a version tag).
+  // Notes from other sim versions degrade to a static screenshot placeholder.
+  const isV12State = parsedState && (!parsedState.simVersion || parsedState.simVersion === 'v12');
+
+  if (isV12State) {
     const srcW = parsedState.canvasWidth  || 1280;
     const srcH = parsedState.canvasHeight || 800;
     const simCv = document.createElement('canvas');
@@ -3805,10 +3812,22 @@ function buildNoteCard(note, isOwn) {
     controls.appendChild(zoomGroup);
     wrap.appendChild(controls);
   } else {
-    const ph = document.createElement('div');
-    ph.style.cssText = 'height:90px;display:flex;align-items:center;justify-content:center;font-size:10px;color:rgba(255,255,255,0.15)';
-    ph.textContent = isOwn ? '' : npGetStudentName(note.student_id);
-    wrap.appendChild(ph);
+    // No v12 sim state: show screenshot if available, otherwise a dim placeholder.
+    const localShot = npLocalScreenshots.get(note.id);
+    const shotSrc   = localShot || note.screenshot || null;
+    if (shotSrc) {
+      const img = document.createElement('img');
+      img.className = 'obs-sim-canvas';
+      img.style.cssText = 'width:100%;display:block;border-radius:4px';
+      img.src = shotSrc;
+      wrap.appendChild(img);
+    } else {
+      const ph = document.createElement('div');
+      const vLabel = parsedState && parsedState.simVersion ? parsedState.simVersion : '';
+      ph.style.cssText = 'height:90px;display:flex;align-items:center;justify-content:center;font-size:10px;color:rgba(255,255,255,0.15)';
+      ph.textContent = vLabel ? `[${vLabel} sim]` : (isOwn ? '' : npGetStudentName(note.student_id));
+      wrap.appendChild(ph);
+    }
   }
   card.appendChild(wrap);
 
