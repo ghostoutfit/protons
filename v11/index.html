@@ -594,8 +594,25 @@
     box-shadow: 0 0 24px rgba(26,110,255,0.12);
     cursor: grab;
     user-select: none;
+    min-width: 140px;
+    min-height: 140px;
+    overflow: visible;
   }
   #forcePanel:active { cursor: grabbing; }
+  /* Resize handles */
+  .fp-rh {
+    position: absolute;
+    z-index: 2;
+  }
+  .fp-rh:hover { background: rgba(26,110,255,0.35); border-radius: 3px; }
+  .fp-rh.n  { top:0; left:10px; right:10px; height:6px; cursor:n-resize; }
+  .fp-rh.s  { bottom:0; left:10px; right:10px; height:6px; cursor:s-resize; }
+  .fp-rh.e  { right:0; top:10px; bottom:10px; width:6px; cursor:e-resize; }
+  .fp-rh.w  { left:0; top:10px; bottom:10px; width:6px; cursor:w-resize; }
+  .fp-rh.nw { top:0; left:0; width:12px; height:12px; cursor:nw-resize; }
+  .fp-rh.ne { top:0; right:0; width:12px; height:12px; cursor:ne-resize; }
+  .fp-rh.sw { bottom:0; left:0; width:12px; height:12px; cursor:sw-resize; }
+  .fp-rh.se { bottom:0; right:0; width:12px; height:12px; cursor:se-resize; }
   #forcePanelLabel { display: none; }
   #forcePanelKey {
     display: flex;
@@ -795,6 +812,10 @@
 
 <!-- FORCE PANEL — fixed right-side overlay, shown when force arrows are on -->
 <div id="forcePanel">
+  <div class="fp-rh nw" data-dir="nw"></div><div class="fp-rh ne" data-dir="ne"></div>
+  <div class="fp-rh sw" data-dir="sw"></div><div class="fp-rh se" data-dir="se"></div>
+  <div class="fp-rh n"  data-dir="n"></div><div class="fp-rh s" data-dir="s"></div>
+  <div class="fp-rh e"  data-dir="e"></div><div class="fp-rh w" data-dir="w"></div>
   <div id="forcePanelLabel"></div>
   <div id="forcePanelKey">
     <span><span style="color:#46a5ff">■</span><span style="color:rgba(255,255,255,0.7)">Electric force</span></span>
@@ -1051,6 +1072,9 @@ function applyBiggestClusterStability() {
   if (N < row.minN) {
     strongForceStrength = row.strong;
     stabilityCheckFrame = loopFrame + 5;
+  } else if (N <= row.maxN) {
+    // Stable isotope range — snap strong force to 1
+    if (strongForceStrength !== 1) strongForceStrength = 1;
   } else if (strongForceStrength !== strongForceBaseline) {
     strongForceStrength = strongForceBaseline;
   }
@@ -1069,8 +1093,8 @@ const MIN_DIST = 20;         // Minimum distance for force calc = 2*PARTICLE_RAD
 //  of the simulation (equilibrium distance, fusion threshold, etc.)
 // ============================================================
 const coulombStrength = 139;      // K in F = K/r² (Coulomb repulsion, proton-proton only)
-let strongForceStrength = 0.25;   // Constant attractive force magnitude within cutoff
-let strongForceBaseline = 0.25;   // Stable baseline; stability logic restores to this
+let strongForceStrength = 0.6;    // Constant attractive force magnitude within cutoff
+let strongForceBaseline = 0.6;    // Stable baseline; stability logic restores to this
 let strongForceRange = 1.2;       // Cutoff = PARTICLE_RADIUS * 2 * strongForceRange
 const COULOMB_CUTOFF_SQ = (PARTICLE_RADIUS * 40) ** 2;  // 400px — Coulomb force negligible beyond this
 const equilibriumRatio = 0.6;     // Ratio r_eq / r_cutoff (informational, not used directly)
@@ -1311,7 +1335,7 @@ function buildPackedCluster(numProtons, numNeutrons, spacing = PARTICLE_RADIUS *
 // ============================================================
 function buildRandomProtons(n) {
   if (n === 0) return [];
-  const minDist = strongCutoff() * 1.8;          // clear margin above strong range
+  const minDist = strongCutoff() * 1.023;        // clear margin above strong range
   const radius  = minDist * Math.sqrt(n) * 0.85; // disk sized for n non-overlapping protons
   const placed  = [];
 
@@ -2239,12 +2263,51 @@ forcePanelEl.addEventListener('mousedown', e => {
   forcePanelEl.style.top  = rect.top  + 'px';
   _fpDrag = { sx: e.clientX, sy: e.clientY, ol: rect.left, ot: rect.top };
 });
-window.addEventListener('mousemove', e => {
-  if (!_fpDrag) return;
-  forcePanelEl.style.left = (_fpDrag.ol + e.clientX - _fpDrag.sx) + 'px';
-  forcePanelEl.style.top  = (_fpDrag.ot + e.clientY - _fpDrag.sy) + 'px';
+
+// ---- Force panel resize ----
+let _fpResize = null;
+document.querySelectorAll('.fp-rh').forEach(h => {
+  h.addEventListener('mousedown', e => {
+    e.stopPropagation();
+    const rect = forcePanelEl.getBoundingClientRect();
+    forcePanelEl.style.right  = 'auto';
+    forcePanelEl.style.left   = rect.left   + 'px';
+    forcePanelEl.style.top    = rect.top    + 'px';
+    forcePanelEl.style.width  = rect.width  + 'px';
+    forcePanelEl.style.height = rect.height + 'px';
+    _fpResize = { dir: h.dataset.dir, sx: e.clientX, sy: e.clientY,
+                  ow: rect.width, oh: rect.height, ol: rect.left, ot: rect.top };
+  });
 });
-window.addEventListener('mouseup', () => { _fpDrag = null; });
+
+window.addEventListener('mousemove', e => {
+  if (_fpDrag) {
+    forcePanelEl.style.left = (_fpDrag.ol + e.clientX - _fpDrag.sx) + 'px';
+    forcePanelEl.style.top  = (_fpDrag.ot + e.clientY - _fpDrag.sy) + 'px';
+  }
+  if (!_fpResize) return;
+  const { dir, sx, sy, ow, oh, ol, ot } = _fpResize;
+  const dx = e.clientX - sx, dy = e.clientY - sy;
+  let w = ow, h = oh, l = ol, t = ot;
+  if (dir.includes('e')) w = Math.max(140, ow + dx);
+  if (dir.includes('s')) h = Math.max(140, oh + dy);
+  if (dir.includes('w')) { w = Math.max(140, ow - dx); l = ol + ow - w; }
+  if (dir.includes('n')) { h = Math.max(140, oh - dy); t = ot + oh - h; }
+  forcePanelEl.style.width  = w + 'px';
+  forcePanelEl.style.height = h + 'px';
+  forcePanelEl.style.left   = l + 'px';
+  forcePanelEl.style.top    = t + 'px';
+  // Resize canvas to fill panel minus header
+  const keyH = document.getElementById('forcePanelKey').offsetHeight;
+  const cw = Math.max(80, (w - 20)) | 0;
+  const ch = Math.max(80, (h - keyH - 26)) | 0;
+  if (forcePanelCv.width !== cw || forcePanelCv.height !== ch) {
+    forcePanelCv.width = cw;
+    forcePanelCv.height = ch;
+  }
+});
+
+window.addEventListener('mouseup', () => { _fpDrag = null; _fpResize = null; });
 
 function drawForcePanel() {
   if (arrowMode === 0) { forcePanelEl.style.display = 'none'; return; }
@@ -2267,8 +2330,8 @@ function drawForcePanel() {
   const isProton = pi.type === 'proton';
   const t = currentTheme;
   const PR = PARTICLE_RADIUS * 2;
-  const MAX_LEN = 72;
-  const refDist = PR * 2;
+  const MAX_LEN = 36;
+  const refDist = PARTICLE_RADIUS * 2;
 
   // Draw particle — exactly matches main canvas rendering + same jitter
   const jx = jitter[selectedParticle] ? jitter[selectedParticle].x : 0;
@@ -2315,7 +2378,7 @@ function drawForcePanel() {
     if (dist === 0) continue;
     const nx = dx / dist, ny = dy / dist;
     if (isProton && pj.type === 'proton') {
-      const len = MAX_LEN * Math.min(1, (refDist / Math.max(dist, refDist)) * 2.4);
+      const len = MAX_LEN * (refDist / Math.max(dist, refDist)) * 2.4;
       coulombVecs.push({ nx, ny, len });
     }
     if (currentTab === 'nucleus' && dist < cutoff) {
@@ -2329,13 +2392,14 @@ function drawForcePanel() {
     strongVecs.forEach(v  => drawArrowOnCtx(forcePanelCtx, ppx + v.nx * PR, ppy + v.ny * PR, v.nx, v.ny, v.len, STRONG_ARROW_COLOR, 3));
   } else {
     const sum = (vecs) => vecs.reduce((a, v) => ({ x: a.x + v.nx * v.len, y: a.y + v.ny * v.len }), { x: 0, y: 0 });
-    const drawNet = (vec, color) => {
-      const len = Math.sqrt(vec.x * vec.x + vec.y * vec.y);
+    const drawNet = (vec, color, scale = x => x) => {
+      const mag = Math.sqrt(vec.x * vec.x + vec.y * vec.y);
+      const len = scale(mag);
       if (len < 1) return;
-      drawArrowOnCtx(forcePanelCtx, ppx + (vec.x/len) * PR, ppy + (vec.y/len) * PR, vec.x/len, vec.y/len, Math.min(len, MAX_LEN), color, 3);
+      drawArrowOnCtx(forcePanelCtx, ppx + (vec.x/mag) * PR, ppy + (vec.y/mag) * PR, vec.x/mag, vec.y/mag, len, color, 3);
     };
     const cSum = sum(coulombVecs), sSum = sum(strongVecs);
-    drawNet(cSum, ELEC_ARROW_COLOR);
+    drawNet(cSum, ELEC_ARROW_COLOR, x => Math.sqrt(x) * 6);
     drawNet(sSum, STRONG_ARROW_COLOR);
   }
 }
@@ -2921,6 +2985,7 @@ function ambientLoop() {
 ambientLoop();
 iconAnimLoop();
 setForceModeActive(arrowMode);
+
 
 // If linked from v13 with #nucleus hash, auto-switch to Protons + Neutrons tab
 if (location.hash === '#nucleus') {
