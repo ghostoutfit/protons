@@ -2419,23 +2419,17 @@ function drawForcePanel() {
     for (const i of group) { gcx += particles[i].x; gcy += particles[i].y; }
     gcx /= group.length; gcy /= group.length;
 
-    // Find max radius from centroid so we can scale particles to fit
-    let maxR = PARTICLE_RADIUS;
-    for (const i of group) {
-      const dx = particles[i].x - gcx, dy = particles[i].y - gcy;
-      maxR = Math.max(maxR, Math.sqrt(dx * dx + dy * dy) + PARTICLE_RADIUS);
-    }
-    // Scale group to fill ~38% of panel (leaves room for arrows)
-    const panelR = Math.min(cx, cy) * 0.38;
-    const groupScale = panelR / maxR;
-    const PR = Math.max(PARTICLE_RADIUS * groupScale * 2, 5); // drawn radius
+    // Use the same zoom as the main canvas so size + spacing match what the user sees
+    const drawnRadius = PARTICLE_RADIUS * zoom;
 
-    // Draw each particle in the group
+    // Draw each particle at its zoom-scaled position relative to the centroid
+    const groupSet = new Set(group);
     for (const i of group) {
       const p = particles[i];
-      const px = cx + (p.x - gcx) * groupScale;
-      const py = cy + (p.y - gcy) * groupScale;
+      const px = cx + (p.x - gcx) * zoom;
+      const py = cy + (p.y - gcy) * zoom;
       const isP = p.type === 'proton';
+      const PR = drawnRadius;
       const baseGrad = forcePanelCtx.createRadialGradient(px, py, 0, px, py, PR * 1.1);
       const mid = isP ? t.protonMid : t.neutronMid;
       baseGrad.addColorStop(0, mid); baseGrad.addColorStop(0.82, mid); baseGrad.addColorStop(1, 'rgba(0,0,0,0)');
@@ -2450,60 +2444,76 @@ function drawForcePanel() {
       forcePanelCtx.globalAlpha = 1;
       if (isP) {
         forcePanelCtx.fillStyle = 'rgba(255,255,255,0.88)';
-        forcePanelCtx.font = `bold ${Math.max(10, PR)}px "JetBrains Mono", monospace`;
+        forcePanelCtx.font = `bold ${Math.max(10, PR * 1.1)}px "JetBrains Mono", monospace`;
         forcePanelCtx.textAlign = 'center'; forcePanelCtx.textBaseline = 'middle';
         forcePanelCtx.fillText('+', px, py + 1);
       }
     }
 
-    // Compute net forces on group from external particles (internal forces cancel)
-    const groupSet = new Set(group);
-    const coulombVecs = [], strongVecs = [];
-    for (let j = 0; j < particles.length; j++) {
-      if (groupSet.has(j)) continue;
-      const pj = particles[j];
-      let fCx = 0, fCy = 0, fSx = 0, fSy = 0;
-      for (const i of group) {
-        const pi = particles[i];
-        const dx = pi.x - pj.x, dy = pi.y - pj.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist === 0) continue;
-        const nx = dx / dist, ny = dy / dist;
-        if (pi.type === 'proton' && pj.type === 'proton') {
-          const len = MAX_LEN * (refDist / Math.max(dist, refDist)) * 2.4;
-          fCx += nx * len; fCy += ny * len;
-        }
-        if (dist < cutoff) {
-          const slen = MAX_LEN * (1 - dist / cutoff) * 0.85 * 5;
-          fSx += -nx * slen; fSy += -ny * slen;
-        }
-      }
-      if (fCx !== 0 || fCy !== 0) coulombVecs.push({ x: fCx, y: fCy });
-      if (fSx !== 0 || fSy !== 0) strongVecs.push({ x: fSx, y: fSy });
-    }
-
-    const drawGroupArrow = (vec, color) => {
-      const mag = Math.sqrt(vec.x * vec.x + vec.y * vec.y);
-      if (mag < 1) return;
-      const nx = vec.x / mag, ny = vec.y / mag;
-      drawArrowOnCtx(forcePanelCtx, cx + nx * PR, cy + ny * PR, nx, ny, mag, color, 3);
-    };
+    const PR = drawnRadius;
+    const SIDE_OFF = 3; // px perpendicular offset so parallel arrows don't overlap
 
     if (arrowMode === 1) {
-      coulombVecs.forEach(v => drawGroupArrow(v, ELEC_ARROW_COLOR));
-      strongVecs.forEach(v  => drawGroupArrow(v, STRONG_ARROW_COLOR));
+      // Per-source arrows anchored at each individual group particle
+      for (const i of group) {
+        const pi = particles[i];
+        const px = cx + (pi.x - gcx) * zoom;
+        const py = cy + (pi.y - gcy) * zoom;
+        for (let j = 0; j < particles.length; j++) {
+          if (groupSet.has(j)) continue;
+          const pj = particles[j];
+          const dx = pi.x - pj.x, dy = pi.y - pj.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist === 0) continue;
+          const nx = dx / dist, ny = dy / dist;
+          if (pi.type === 'proton' && pj.type === 'proton') {
+            const len = MAX_LEN * (refDist / Math.max(dist, refDist)) * 2.4;
+            drawArrowOnCtx(forcePanelCtx, px + nx * PR, py + ny * PR, nx, ny, len, ELEC_ARROW_COLOR, 2);
+          }
+          if (dist < cutoff) {
+            const slen = MAX_LEN * (1 - dist / cutoff) * 0.85 * 5;
+            drawArrowOnCtx(forcePanelCtx, px - nx * PR, py - ny * PR, -nx, -ny, slen, STRONG_ARROW_COLOR, 2);
+          }
+        }
+      }
     } else {
-      const sumVec = vecs => vecs.reduce((a, v) => ({ x: a.x + v.x, y: a.y + v.y }), { x: 0, y: 0 });
-      const cSum = sumVec(coulombVecs), sSum = sumVec(strongVecs);
-      const drawNetGroup = (vec, color, scl = x => x) => {
-        const mag = Math.sqrt(vec.x * vec.x + vec.y * vec.y);
-        const len = scl(mag);
-        if (len < 1) return;
-        const nx = vec.x / mag, ny = vec.y / mag;
-        drawArrowOnCtx(forcePanelCtx, cx + nx * PR, cy + ny * PR, nx, ny, len, color, 3);
-      };
-      drawNetGroup(cSum, ELEC_ARROW_COLOR, x => Math.sqrt(x) * 6);
-      drawNetGroup(sSum, STRONG_ARROW_COLOR);
+      // Total force mode: net Coulomb + net strong per particle, offset slightly so they don't overlap
+      for (const i of group) {
+        const pi = particles[i];
+        const px = cx + (pi.x - gcx) * zoom;
+        const py = cy + (pi.y - gcy) * zoom;
+        let cFx = 0, cFy = 0, sFx = 0, sFy = 0;
+        for (let j = 0; j < particles.length; j++) {
+          if (groupSet.has(j)) continue;
+          const pj = particles[j];
+          const dx = pi.x - pj.x, dy = pi.y - pj.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist === 0) continue;
+          const nx = dx / dist, ny = dy / dist;
+          if (pi.type === 'proton' && pj.type === 'proton') {
+            const len = MAX_LEN * (refDist / Math.max(dist, refDist)) * 2.4;
+            cFx += nx * len; cFy += ny * len;
+          }
+          if (dist < cutoff) {
+            const slen = MAX_LEN * (1 - dist / cutoff) * 0.85 * 5;
+            sFx += -nx * slen; sFy += -ny * slen;
+          }
+        }
+        const cMag = Math.sqrt(cFx * cFx + cFy * cFy);
+        const sMag = Math.sqrt(sFx * sFx + sFy * sFy);
+        // Offset each arrow perpendicular to its direction so they stay distinct
+        if (cMag > 0.5) {
+          const cnx = cFx / cMag, cny = cFy / cMag;
+          const ox = -cny * SIDE_OFF, oy = cnx * SIDE_OFF;
+          const cLen = Math.sqrt(cMag) * 6;
+          drawArrowOnCtx(forcePanelCtx, px + cnx * PR + ox, py + cny * PR + oy, cnx, cny, cLen, ELEC_ARROW_COLOR, 3);
+        }
+        if (sMag > 0.5) {
+          const snx = sFx / sMag, sny = sFy / sMag;
+          const ox = sny * SIDE_OFF, oy = -snx * SIDE_OFF;
+          drawArrowOnCtx(forcePanelCtx, px + snx * PR + ox, py + sny * PR + oy, snx, sny, sMag, STRONG_ARROW_COLOR, 3);
+        }
+      }
     }
 
     // Label
