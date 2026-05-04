@@ -411,6 +411,60 @@
      Track: dim line with a faint glow
      Thumb: thin bright pill with bloom shadow
      ======================================== */
+  /* Periodic table element buttons (nucleus tab only) */
+  .element-btn {
+    position: relative;
+    width: 38px;
+    height: 47px;
+    padding: 0;
+    border: 1px solid var(--accent1);
+    border-radius: 5px;
+    background: var(--accent1-dim);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-transform: none;
+    box-shadow:
+      inset 0 0 6px var(--accent1-dim),
+      0 0 2px var(--accent1),
+      0 0 8px var(--accent1),
+      0 0 18px var(--accent1-glow),
+      0 0 40px var(--accent1-dim);
+    transition: all 0.2s;
+  }
+  .element-btn:hover {
+    background: var(--accent1-glow);
+    box-shadow:
+      inset 0 0 10px var(--accent1-glow),
+      0 0 4px var(--accent1),
+      0 0 14px var(--accent1),
+      0 0 28px var(--accent1-glow),
+      0 0 60px var(--accent1-dim);
+  }
+  .element-btn .el-num {
+    position: absolute;
+    top: 3px;
+    left: 4px;
+    font-size: 7px;
+    font-weight: 400;
+    line-height: 1;
+    color: rgba(255,255,255,0.55);
+    text-shadow: none;
+    letter-spacing: 0;
+  }
+  .element-btn .el-sym {
+    font-size: 15px;
+    font-weight: 700;
+    color: rgba(255,255,255,0.85);
+    text-shadow:
+      0 0 4px rgba(255,255,255,0.5),
+      0 0 10px var(--accent1),
+      0 0 22px var(--accent1-glow);
+    letter-spacing: 0;
+    line-height: 1;
+  }
+
   .neutron-slider-wrap {
     display: flex;
     align-items: center;
@@ -581,8 +635,9 @@
   #forcePanel {
     display: none;
     position: fixed;
-    right: 16px;
-    top: 130px;
+    right: 0;
+    top: 200px;
+    border-radius: 12px 0 0 12px;
     width: 220px;
     background: rgba(8,6,24,0.90);
     border: 1px solid rgba(26,110,255,0.45);
@@ -731,9 +786,8 @@
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
     <div id="tabBar">
       <button class="tab-btn active" id="tabA">Protons</button>
-      <button class="tab-btn" id="tabB">Protons + Neutrons</button>
-      <a href="../v13/index.html" class="tab-btn">Fission</a>
-      <a href="../v13/index.html" class="tab-btn">Chain Reaction</a>
+      <button class="tab-btn" id="tabB">Investigate Stability</button>
+
     </div>
     <div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
       <button class="theme-btn active" id="themeA" title="Synthwave"></button>
@@ -757,7 +811,7 @@
           <span id="statProtons">Protons: 0</span>
           <span id="statNeutrons" style="visibility:hidden">Neutrons: 0</span>
         </div>
-        <button class="btn" id="centerBtn" style="visibility:hidden;font-size:11px;padding:2px 8px;margin-top:4px">Center</button>
+        <label id="centerLabel" style="visibility:hidden;font-size:11px;margin-top:4px;display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--text-dim)"><input type="checkbox" id="centerChk"> Center</label>
       </div>
       <!-- Right col: proton buttons + neutron row -->
       <div style="display:flex;flex-direction:column;gap:8px;justify-content:center;align-self:stretch">
@@ -770,8 +824,15 @@
             <button class="btn particle-add-btn" data-count="20">20</button>
             <button class="btn particle-add-btn" data-count="36">36</button>
           </div>
+          <div id="particleBtnsNucleus" style="display:none;gap:6px">
+            <button class="element-btn particle-add-btn" data-count="1"><span class="el-num">1</span><span class="el-sym">H</span></button>
+            <button class="element-btn particle-add-btn" data-count="2"><span class="el-num">2</span><span class="el-sym">He</span></button>
+            <button class="element-btn particle-add-btn" data-count="6"><span class="el-num">6</span><span class="el-sym">C</span></button>
+            <button class="element-btn particle-add-btn" data-count="20"><span class="el-num">20</span><span class="el-sym">Ca</span></button>
+            <button class="element-btn particle-add-btn" data-count="36"><span class="el-num">36</span><span class="el-sym">Kr</span></button>
+          </div>
         </div>
-        <div id="neutronFrame" style="display:flex;align-items:center;gap:6px;visibility:hidden">
+        <div id="neutronFrame" style="display:flex;align-items:center;gap:6px;visibility:hidden;margin-top:5px">
           <canvas id="neutronIconCanvas" class="particle-icon-canvas" width="32" height="32"></canvas>
           <div class="neutron-slider-wrap">
             <button id="neutronDecBtn" style="width:24px;height:24px;padding:0;font-size:12px;line-height:1;flex-shrink:0;">&#9664;</button>
@@ -1143,6 +1204,7 @@ function resize() {
   const scrubH = document.getElementById('scrubBar').offsetHeight;
   canvas.width  = window.innerWidth;
   canvas.height = window.innerHeight - scrubH;
+  updateCam();
   if (!running) draw();
 }
 window.addEventListener('resize', resize);
@@ -1159,10 +1221,10 @@ function getCanvasPos(e) {
   const rect = canvas.getBoundingClientRect();
   const sx = e.clientX - rect.left;
   const sy = e.clientY - rect.top;
-  // Invert the centered zoom transform applied in draw()
+  // Invert the centered zoom + camera transform applied in draw()
   const cx = canvas.width / 2;
   const cy = canvas.height / 2;
-  return { x: (sx - cx) / zoom + cx, y: (sy - cy) / zoom + cy };
+  return { x: (sx - camX - cx) / zoom + cx, y: (sy - camY - cy) / zoom + cy };
 }
 
 function findParticleAt(x, y) {
@@ -1512,12 +1574,14 @@ document.getElementById('zoomSlider').addEventListener('input', function() {
 // Electric field: toggles Coulomb heatmap visualization.
 document.getElementById('electricFieldToggle').addEventListener('change', function() {
   showElectricField = this.checked;
+  hmComposite.width = 0; // invalidate cache so stale field doesn't ghost on next frame
   if (!running) draw();
 });
 
 // Strong field: toggles strong nuclear heatmap visualization.
 document.getElementById('strongFieldToggle').addEventListener('change', function() {
   showStrongField = this.checked;
+  hmComposite.width = 0; // invalidate cache
   if (!running) draw();
 });
 
@@ -1533,9 +1597,11 @@ function applyTab(tab) {
   currentTabIsProton = isProtonOnly;
   currentTab = isProtonOnly ? 'proton' : 'nucleus';
   neutronFrame.style.visibility = isNucleus ? 'visible' : 'hidden';
+  document.getElementById('particleBtns').style.display        = isNucleus ? 'none' : 'flex';
+  document.getElementById('particleBtnsNucleus').style.display = isNucleus ? 'flex' : 'none';
   document.getElementById('tabA').classList.toggle('active', isProtonOnly);
   document.getElementById('tabB').classList.toggle('active', isNucleus);
-  document.getElementById('centerBtn').style.visibility = isNucleus ? 'visible' : 'hidden';
+  document.getElementById('centerLabel').style.visibility = isNucleus ? 'visible' : 'hidden';
   document.getElementById('strongFieldLabel').style.visibility = 'visible';
   // Reset strong force to tab default
   if (isProtonOnly) {
@@ -1599,25 +1665,7 @@ function findBiggestCluster() {
   return findAllClusters().reduce((best, c) => c.length > best.length ? c : best, []);
 }
 
-document.getElementById('centerBtn').addEventListener('click', () => {
-  const cluster = findBiggestCluster();
-  if (cluster.length === 0) return;
-
-  // Position: translate so cluster centroid is at canvas centre
-  let cx = 0, cy = 0;
-  for (const p of cluster) { cx += p.x; cy += p.y; }
-  cx /= cluster.length; cy /= cluster.length;
-  const dx = canvas.width / 2 - cx;
-  const dy = canvas.height / 2 - cy;
-  for (const p of particles) { p.x += dx; p.y += dy; }
-  for (const f of quantumFlashes) { f.x += dx; f.y += dy; }
-
-  // Velocity: subtract cluster CM velocity from all particles
-  let cvx = 0, cvy = 0;
-  for (const p of cluster) { cvx += p.vx; cvy += p.vy; }
-  cvx /= cluster.length; cvy /= cluster.length;
-  for (const p of particles) { p.vx -= cvx; p.vy -= cvy; }
-
+document.getElementById('centerChk').addEventListener('change', () => {
   if (!running) draw();
 });
 
@@ -1630,6 +1678,7 @@ document.querySelectorAll('.particle-add-btn').forEach(btn => {
     } else {
       placeNucleus(count, parseInt(neutronSlider.value));
     }
+    updateCam();
   });
 });
 
@@ -1654,10 +1703,15 @@ document.getElementById('neutronIncBtn').addEventListener('click', () => stepNeu
 
 // Force mode buttons — always visible, gray/blue
 function setForceModeActive(mode) {
+  const wasVisible = arrowMode > 0;
   arrowMode = mode;
   document.querySelectorAll('.force-mode-btn[data-mode]').forEach(btn => {
     btn.classList.toggle('active', parseInt(btn.dataset.mode) === mode);
   });
+  if ((arrowMode > 0) !== wasVisible) {
+    draw();       // let drawForcePanel() show/hide the panel so offsetWidth is correct
+    updateCam();  // now recentre with accurate panel width
+  }
   if (!running) draw();
 }
 document.querySelectorAll('.force-mode-btn[data-mode]').forEach(btn => {
@@ -2122,7 +2176,10 @@ function drawCombinedHeatmap() {
   }
   strongPairs.sort((a, b) => b.mag - a.mag);
 
-  if (elecPairs.length === 0 && strongPairs.length === 0) return;
+  if (elecPairs.length === 0 && strongPairs.length === 0) {
+    hmComposite.width = 0;
+    return;
+  }
 
   ensureHmBuffers(w, h);
   if (elecPairs.length   > 0) hmDataElec.fill(0);
@@ -2133,9 +2190,9 @@ function drawCombinedHeatmap() {
 
   // Single pixel loop — computes both fields at once
   for (let py = 0; py < h; py++) {
-    const worldY = (py * invScale - cyH) / zoom + cyH;
+    const worldY = (py * invScale - cyH - camY) / zoom + cyH;
     for (let px = 0; px < w; px++) {
-      const worldX = (px * invScale - cxH) / zoom + cxH;
+      const worldX = (px * invScale - cxH - camX) / zoom + cxH;
       const di = (py * w + px) * 4;
 
       // Electric field
@@ -2253,50 +2310,30 @@ const forcePanelEl  = document.getElementById('forcePanel');
 const forcePanelCv  = document.getElementById('forcePanelCanvas');
 const forcePanelCtx = forcePanelCv.getContext('2d');
 
-// ---- Force panel drag ----
-let _fpDrag = null;
-forcePanelEl.addEventListener('mousedown', e => {
-  e.stopPropagation();
-  const rect = forcePanelEl.getBoundingClientRect();
-  forcePanelEl.style.right = 'auto';
-  forcePanelEl.style.left = rect.left + 'px';
-  forcePanelEl.style.top  = rect.top  + 'px';
-  _fpDrag = { sx: e.clientX, sy: e.clientY, ol: rect.left, ot: rect.top };
-});
-
 // ---- Force panel resize ----
 let _fpResize = null;
 document.querySelectorAll('.fp-rh').forEach(h => {
   h.addEventListener('mousedown', e => {
     e.stopPropagation();
     const rect = forcePanelEl.getBoundingClientRect();
-    forcePanelEl.style.right  = 'auto';
-    forcePanelEl.style.left   = rect.left   + 'px';
-    forcePanelEl.style.top    = rect.top    + 'px';
     forcePanelEl.style.width  = rect.width  + 'px';
     forcePanelEl.style.height = rect.height + 'px';
     _fpResize = { dir: h.dataset.dir, sx: e.clientX, sy: e.clientY,
-                  ow: rect.width, oh: rect.height, ol: rect.left, ot: rect.top };
+                  ow: rect.width, oh: rect.height };
   });
 });
 
 window.addEventListener('mousemove', e => {
-  if (_fpDrag) {
-    forcePanelEl.style.left = (_fpDrag.ol + e.clientX - _fpDrag.sx) + 'px';
-    forcePanelEl.style.top  = (_fpDrag.ot + e.clientY - _fpDrag.sy) + 'px';
-  }
   if (!_fpResize) return;
-  const { dir, sx, sy, ow, oh, ol, ot } = _fpResize;
+  const { dir, sx, sy, ow, oh } = _fpResize;
   const dx = e.clientX - sx, dy = e.clientY - sy;
-  let w = ow, h = oh, l = ol, t = ot;
-  if (dir.includes('e')) w = Math.max(140, ow + dx);
+  let w = ow, h = oh;
+  // Panel is pinned right:0 so only left-edge and vertical handles resize width/height
+  if (dir.includes('w') || dir.includes('e')) w = Math.max(140, ow - dx);
   if (dir.includes('s')) h = Math.max(140, oh + dy);
-  if (dir.includes('w')) { w = Math.max(140, ow - dx); l = ol + ow - w; }
-  if (dir.includes('n')) { h = Math.max(140, oh - dy); t = ot + oh - h; }
+  if (dir.includes('n')) h = Math.max(140, oh - dy);
   forcePanelEl.style.width  = w + 'px';
   forcePanelEl.style.height = h + 'px';
-  forcePanelEl.style.left   = l + 'px';
-  forcePanelEl.style.top    = t + 'px';
   // Resize canvas to fill panel minus header
   const keyH = document.getElementById('forcePanelKey').offsetHeight;
   const cw = Math.max(80, (w - 20)) | 0;
@@ -2307,7 +2344,7 @@ window.addEventListener('mousemove', e => {
   }
 });
 
-window.addEventListener('mouseup', () => { _fpDrag = null; _fpResize = null; });
+window.addEventListener('mouseup', () => { _fpResize = null; });
 
 function drawForcePanel() {
   if (arrowMode === 0) { forcePanelEl.style.display = 'none'; return; }
@@ -2368,7 +2405,7 @@ function drawForcePanel() {
   if (isProton) forcePanelCtx.fillText('+', ppx, ppy + 1);
 
   const coulombVecs = [], strongVecs = [];
-  const cutoff = currentTab === 'nucleus' ? strongCutoff() : 0;
+  const cutoff = strongCutoff();
 
   for (let j = 0; j < particles.length; j++) {
     if (j === selectedParticle) continue;
@@ -2381,7 +2418,7 @@ function drawForcePanel() {
       const len = MAX_LEN * (refDist / Math.max(dist, refDist)) * 2.4;
       coulombVecs.push({ nx, ny, len });
     }
-    if (currentTab === 'nucleus' && dist < cutoff) {
+    if (dist < cutoff) {
       const slen = MAX_LEN * (1 - dist / cutoff) * 0.85 * 5;
       strongVecs.push({ nx: -nx, ny: -ny, len: slen });
     }
@@ -2413,16 +2450,35 @@ function drawForcePanel() {
 //  Everything is drawn inside a centered zoom transform so the
 //  zoom slider scales visuals without touching physics coordinates.
 // ============================================================
+// Camera offset (screen pixels) — shifts the zoom pivot so the biggest cluster
+// is centered in the available space (left of force panel horizontally, full canvas vertically).
+let camX = 0, camY = 0;
+
+// Compute camX/camY instantly (no lerp). Uses findBiggestCluster() which already exists.
+function updateCam() {
+  const cluster = particles.length > 0 ? findBiggestCluster() : [];
+  if (cluster.length === 0) { camX = 0; camY = 0; return; }
+
+  let cx = 0, cy = 0;
+  for (const p of cluster) { cx += p.x; cy += p.y; }
+  cx /= cluster.length; cy /= cluster.length;
+
+  const fpW = (arrowMode > 0) ? forcePanelEl.offsetWidth : 0;
+  const availW = canvas.width - fpW;
+  camX = availW / 2 - (zoom * (cx - canvas.width  / 2) + canvas.width  / 2);
+  camY = canvas.height / 2 - (zoom * (cy - canvas.height / 2) + canvas.height / 2);
+}
+
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   // Heatmaps render in screen space before the zoom transform.
   if ((showElectricField || showStrongField) && particles.length >= 2) drawCombinedHeatmap();
 
-  // Centered zoom: scale around canvas center so existing particles stay visible
+  // Centered zoom with camera offset
   const _cx = canvas.width / 2, _cy = canvas.height / 2;
   ctx.save();
-  ctx.translate(_cx, _cy);
+  ctx.translate(_cx + camX, _cy + camY);
   ctx.scale(zoom, zoom);
   ctx.translate(-_cx, -_cy);
 
@@ -2593,6 +2649,7 @@ function loop() {
   loopFrame++;
   applyBiggestClusterStability();
   updateQuantumStability();
+  if (document.getElementById('centerChk').checked) updateCam();
   step(speed);
   computeEnergy();
   updateStats();
