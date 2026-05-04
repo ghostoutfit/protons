@@ -866,6 +866,7 @@
         <button class="force-mode-btn active" data-mode="0">Off</button>
         <button class="force-mode-btn" data-mode="1">All forces</button>
         <button class="force-mode-btn" data-mode="2">Total force</button>
+        <label style="font-size:10px;margin-top:3px;display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--text-dim)"><input type="checkbox" id="groupSelChk"> Group select</label>
       </div>
     </div>
   </div>
@@ -942,6 +943,9 @@ const antispin = true;            // Always on; suppresses runaway cluster spin
 // ---- Selection & force arrows ----
 let selectedParticle = null;  // Index of the clicked particle
 let arrowMode = 0;            // 0=off, 1=per-source arrows, 2=net force arrow
+let groupSelectMode = false;  // drag-to-select-group mode
+let selectedGroup = [];       // particle indices in the current group selection
+let selBox = null;            // rubber-band rect while dragging { x1,y1,x2,y2 } world coords
 let currentTabIsProton = true; // true = Tab A (protons only)
 let currentTab = 'proton';    // 'proton' | 'nucleus'
 
@@ -1288,8 +1292,12 @@ function separateOverlaps() {
 let didDrag = false;
 canvas.addEventListener('mousedown', (e) => {
   const pos = getCanvasPos(e);
-  const idx = findParticleAt(pos.x, pos.y);
   didDrag = false;
+  if (groupSelectMode) {
+    selBox = { x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y };
+    return;
+  }
+  const idx = findParticleAt(pos.x, pos.y);
   if (idx >= 0) {
     dragging = idx;
     dragOffsetX = particles[idx].x - pos.x;
@@ -1306,6 +1314,16 @@ canvas.addEventListener('mousedown', (e) => {
 });
 
 window.addEventListener('mousemove', (e) => {
+  if (groupSelectMode) {
+    if (selBox) {
+      const pos = getCanvasPos(e);
+      selBox.x2 = pos.x; selBox.y2 = pos.y;
+      didDrag = true;
+      if (!running) draw();
+    }
+    canvas.style.cursor = 'crosshair';
+    return;
+  }
   if (dragging === null) {
     const pos = getCanvasPos(e);
     const idx = findParticleAt(pos.x, pos.y);
@@ -1323,12 +1341,28 @@ window.addEventListener('mousemove', (e) => {
 });
 
 window.addEventListener('mouseup', (e) => {
+  if (groupSelectMode && selBox) {
+    const minX = Math.min(selBox.x1, selBox.x2), maxX = Math.max(selBox.x1, selBox.x2);
+    const minY = Math.min(selBox.y1, selBox.y2), maxY = Math.max(selBox.y1, selBox.y2);
+    if ((maxX - minX) > 5 || (maxY - minY) > 5) {
+      selectedGroup = [];
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+        if (p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY) selectedGroup.push(i);
+      }
+    } else {
+      selectedGroup = [];  // click without meaningful drag = clear
+    }
+    selBox = null;
+    if (!running) draw();
+    return;
+  }
   if (dragging !== null) {
     separateOverlaps();
     if (!running) { computeEnergy(); draw(); }
   }
   dragging = null;
-  canvas.style.cursor = 'default';
+  canvas.style.cursor = groupSelectMode ? 'crosshair' : 'default';
 });
 
 // ============================================================
@@ -1446,6 +1480,8 @@ function resetSim() {
   timeSlider.max = 0;
   timeSlider.disabled = true;
   timeLabelEl.textContent = '–';
+  selectedGroup = [];
+  selBox = null;
 }
 
 function placeCluster(numProtons, numNeutrons, spacing) {
@@ -1666,6 +1702,13 @@ function findBiggestCluster() {
 }
 
 document.getElementById('centerChk').addEventListener('change', () => {
+  if (!running) draw();
+});
+
+document.getElementById('groupSelChk').addEventListener('change', function() {
+  groupSelectMode = this.checked;
+  if (!groupSelectMode) { selectedGroup = []; selBox = null; }
+  canvas.style.cursor = groupSelectMode ? 'crosshair' : 'default';
   if (!running) draw();
 });
 
@@ -2354,6 +2397,124 @@ function drawForcePanel() {
   const cx = W / 2, cy = H / 2;
   forcePanelCtx.clearRect(0, 0, W, H);
 
+  // ---- Group selection mode ----
+  if (groupSelectMode) {
+    const group = selectedGroup.filter(i => i < particles.length);
+    if (group.length === 0) {
+      forcePanelCtx.fillStyle = 'rgba(100,220,255,0.35)';
+      forcePanelCtx.font = '10px "JetBrains Mono", monospace';
+      forcePanelCtx.textAlign = 'center';
+      forcePanelCtx.textBaseline = 'middle';
+      forcePanelCtx.fillText('drag to select group', cx, cy);
+      return;
+    }
+
+    const t = currentTheme;
+    const MAX_LEN = 36;
+    const refDist = PARTICLE_RADIUS * 2;
+    const cutoff = strongCutoff();
+
+    // Centroid of group (world coords)
+    let gcx = 0, gcy = 0;
+    for (const i of group) { gcx += particles[i].x; gcy += particles[i].y; }
+    gcx /= group.length; gcy /= group.length;
+
+    // Find max radius from centroid so we can scale particles to fit
+    let maxR = PARTICLE_RADIUS;
+    for (const i of group) {
+      const dx = particles[i].x - gcx, dy = particles[i].y - gcy;
+      maxR = Math.max(maxR, Math.sqrt(dx * dx + dy * dy) + PARTICLE_RADIUS);
+    }
+    // Scale group to fill ~38% of panel (leaves room for arrows)
+    const panelR = Math.min(cx, cy) * 0.38;
+    const groupScale = panelR / maxR;
+    const PR = Math.max(PARTICLE_RADIUS * groupScale * 2, 5); // drawn radius
+
+    // Draw each particle in the group
+    for (const i of group) {
+      const p = particles[i];
+      const px = cx + (p.x - gcx) * groupScale;
+      const py = cy + (p.y - gcy) * groupScale;
+      const isP = p.type === 'proton';
+      const baseGrad = forcePanelCtx.createRadialGradient(px, py, 0, px, py, PR * 1.1);
+      const mid = isP ? t.protonMid : t.neutronMid;
+      baseGrad.addColorStop(0, mid); baseGrad.addColorStop(0.82, mid); baseGrad.addColorStop(1, 'rgba(0,0,0,0)');
+      forcePanelCtx.fillStyle = baseGrad;
+      forcePanelCtx.beginPath(); forcePanelCtx.arc(px, py, PR * 1.1, 0, Math.PI * 2); forcePanelCtx.fill();
+      const coreGrad = forcePanelCtx.createRadialGradient(px, py, 0, px, py, PR);
+      const core = isP ? t.protonCore : t.neutronCore;
+      coreGrad.addColorStop(0, core); coreGrad.addColorStop(0.5, core); coreGrad.addColorStop(1, 'rgba(0,0,0,0)');
+      forcePanelCtx.globalAlpha = 0.82;
+      forcePanelCtx.fillStyle = coreGrad;
+      forcePanelCtx.beginPath(); forcePanelCtx.arc(px, py, PR, 0, Math.PI * 2); forcePanelCtx.fill();
+      forcePanelCtx.globalAlpha = 1;
+      if (isP) {
+        forcePanelCtx.fillStyle = 'rgba(255,255,255,0.88)';
+        forcePanelCtx.font = `bold ${Math.max(10, PR)}px "JetBrains Mono", monospace`;
+        forcePanelCtx.textAlign = 'center'; forcePanelCtx.textBaseline = 'middle';
+        forcePanelCtx.fillText('+', px, py + 1);
+      }
+    }
+
+    // Compute net forces on group from external particles (internal forces cancel)
+    const groupSet = new Set(group);
+    const coulombVecs = [], strongVecs = [];
+    for (let j = 0; j < particles.length; j++) {
+      if (groupSet.has(j)) continue;
+      const pj = particles[j];
+      let fCx = 0, fCy = 0, fSx = 0, fSy = 0;
+      for (const i of group) {
+        const pi = particles[i];
+        const dx = pi.x - pj.x, dy = pi.y - pj.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist === 0) continue;
+        const nx = dx / dist, ny = dy / dist;
+        if (pi.type === 'proton' && pj.type === 'proton') {
+          const len = MAX_LEN * (refDist / Math.max(dist, refDist)) * 2.4;
+          fCx += nx * len; fCy += ny * len;
+        }
+        if (dist < cutoff) {
+          const slen = MAX_LEN * (1 - dist / cutoff) * 0.85 * 5;
+          fSx += -nx * slen; fSy += -ny * slen;
+        }
+      }
+      if (fCx !== 0 || fCy !== 0) coulombVecs.push({ x: fCx, y: fCy });
+      if (fSx !== 0 || fSy !== 0) strongVecs.push({ x: fSx, y: fSy });
+    }
+
+    const drawGroupArrow = (vec, color) => {
+      const mag = Math.sqrt(vec.x * vec.x + vec.y * vec.y);
+      if (mag < 1) return;
+      const nx = vec.x / mag, ny = vec.y / mag;
+      drawArrowOnCtx(forcePanelCtx, cx + nx * PR, cy + ny * PR, nx, ny, mag, color, 3);
+    };
+
+    if (arrowMode === 1) {
+      coulombVecs.forEach(v => drawGroupArrow(v, ELEC_ARROW_COLOR));
+      strongVecs.forEach(v  => drawGroupArrow(v, STRONG_ARROW_COLOR));
+    } else {
+      const sumVec = vecs => vecs.reduce((a, v) => ({ x: a.x + v.x, y: a.y + v.y }), { x: 0, y: 0 });
+      const cSum = sumVec(coulombVecs), sSum = sumVec(strongVecs);
+      const drawNetGroup = (vec, color, scl = x => x) => {
+        const mag = Math.sqrt(vec.x * vec.x + vec.y * vec.y);
+        const len = scl(mag);
+        if (len < 1) return;
+        const nx = vec.x / mag, ny = vec.y / mag;
+        drawArrowOnCtx(forcePanelCtx, cx + nx * PR, cy + ny * PR, nx, ny, len, color, 3);
+      };
+      drawNetGroup(cSum, ELEC_ARROW_COLOR, x => Math.sqrt(x) * 6);
+      drawNetGroup(sSum, STRONG_ARROW_COLOR);
+    }
+
+    // Label
+    forcePanelCtx.fillStyle = 'rgba(100,220,255,0.5)';
+    forcePanelCtx.font = '9px "JetBrains Mono", monospace';
+    forcePanelCtx.textAlign = 'center'; forcePanelCtx.textBaseline = 'top';
+    forcePanelCtx.fillText(`group (${group.length})`, cx, 6);
+    return;
+  }
+
+  // ---- Single particle mode (default) ----
   if (selectedParticle === null || selectedParticle >= particles.length) {
     forcePanelCtx.fillStyle = 'rgba(255,255,255,0.2)';
     forcePanelCtx.font = '10px "JetBrains Mono", monospace';
@@ -2490,11 +2651,12 @@ function draw() {
     const jy = jitter[i] ? jitter[i].y : 0;
     const px = p.x + jx, py = p.y + jy;
 
-    // Selection ring
-    if (i === selectedParticle && arrowMode > 0) {
+    // Selection ring — single particle (normal mode) or group member
+    const inGroup = groupSelectMode && selectedGroup.includes(i);
+    if (inGroup || (!groupSelectMode && i === selectedParticle && arrowMode > 0)) {
       ctx.beginPath();
       ctx.arc(px, py, PARTICLE_RADIUS + 6, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(250,204,21,0.6)';
+      ctx.strokeStyle = inGroup ? 'rgba(100,220,255,0.7)' : 'rgba(250,204,21,0.6)';
       ctx.lineWidth = 1.5;
       ctx.stroke();
     }
@@ -2573,6 +2735,19 @@ function draw() {
       ctx.stroke();
       return true;
     });
+  }
+
+  // Rubber-band selection box (drawn in world space, before restore)
+  if (groupSelectMode && selBox) {
+    const bx = Math.min(selBox.x1, selBox.x2), by = Math.min(selBox.y1, selBox.y2);
+    const bw = Math.abs(selBox.x2 - selBox.x1), bh = Math.abs(selBox.y2 - selBox.y1);
+    ctx.fillStyle = 'rgba(100,220,255,0.08)';
+    ctx.fillRect(bx, by, bw, bh);
+    ctx.strokeStyle = 'rgba(100,220,255,0.75)';
+    ctx.lineWidth = 1 / zoom;
+    ctx.setLineDash([5 / zoom, 4 / zoom]);
+    ctx.strokeRect(bx, by, bw, bh);
+    ctx.setLineDash([]);
   }
 
   ctx.restore();
