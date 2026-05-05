@@ -445,7 +445,7 @@
     <div style="display:flex;align-items:center;gap:0;">
       <canvas id="speedLinesL" width="36" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;margin-right:-8px;"></canvas>
       <canvas class="psel-icon pslider-icon" data-side="left"  width="44" height="36" style="margin-right:8px;"></canvas>
-      <input type="range" id="v9SpeedSlider" min="0.1" max="2.0" step="0.05" value="2.0" style="flex:1;min-width:80px;">
+      <input type="range" id="v9SpeedSlider" min="0.1" max="2.0" step="0.05" value="1.05" style="flex:1;min-width:80px;">
       <canvas class="psel-icon pslider-icon" data-side="right" width="44" height="36" style="margin-left:8px;"></canvas>
       <canvas id="speedLinesR" width="36" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;transform:scaleX(-1);margin-left:-8px;"></canvas>
     </div>
@@ -577,7 +577,7 @@ function speedScale() { return (approachSpeed / 2.0) ** 2; }
 // ============================================================
 let coulombStrength = 400;
 const COULOMB_CUTOFF_SQ = (PARTICLE_RADIUS * 40) ** 2;  // Skip pairs beyond this distance
-let approachSpeed   = 2.0;
+let approachSpeed   = 1.05;
 
 // ============================================================
 //  SIMULATION STATE
