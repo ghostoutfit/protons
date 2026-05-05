@@ -2813,8 +2813,12 @@ function loop() {
         // EIE stays frozen — N is neutral, no inter-cluster Coulomb
       } else if (isCategory2()) {
         fireCategory2Escape(); escapeAnimFrame = 0; collisionPhase = 'escapeAnim';
-        collisionDisplayKE = escEntry ? escEntry.keOut * escScale : collisionPeakKE * 0.88;
-        // EIE unfreeze handled inside fireDDtoTP() only (only charged-charged product pair)
+        if (collisionDisplayEIE === null) {
+          // D+D→T+p: both products charged — let physics show Coulomb-driven KE rise
+          collisionDisplayKE = null;
+        } else {
+          collisionDisplayKE = escEntry ? escEntry.keOut * escScale : collisionPeakKE * 0.88;
+        }
       } else if (isCategory3()) {
         if (!photonCaptureFired) firePhotonCapture();
         collisionPhase = 'escape';
