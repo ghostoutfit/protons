@@ -507,7 +507,7 @@
   </div>
   <div id="scrubRight">
     <label class="toggle-label">
-      <input type="checkbox" id="splitIEToggle" checked>
+      <input type="checkbox" id="splitIEToggle">
       Split IE → <span style="color:#7b6fff">EIE</span>&nbsp;+&nbsp;<span style="color:var(--accent1)">SIE</span>
     </label>
     <button id="fullTimelineBtn">Full Timeline</button>
@@ -663,7 +663,7 @@ let cameraSiteX = 0, cameraSiteY = 0;
 // ============================================================
 let showField = true;
 const barYRange = 120;
-let splitIE   = true;
+let splitIE   = false;
 let sieOffset = 0;
 let simSpeed  = 7;       // 1–10 speed slider; wired up later
 let scaledEnergy = false; // "Show Energy Changes to Scale"
