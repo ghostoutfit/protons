@@ -481,6 +481,7 @@
       <span class="slider-icon" title="Fast">🐇</span>
     </div>
     <label class="toggle-label"><input type="checkbox" id="scaledEnergyToggle"> Show Energy Changes to Scale</label>
+    <label class="toggle-label">SIE offset: <input type="number" id="sieOffsetInput" value="0" step="1" style="width:56px;background:rgba(10,8,30,0.8);color:var(--accent2);border:1px solid rgba(26,110,255,0.35);border-radius:6px;padding:2px 4px;font-size:11px;font-family:inherit;outline:none;"></label>
   </div>
 
   </div><!-- close flex row -->
@@ -2426,6 +2427,10 @@ document.getElementById('v9SpeedSlider').addEventListener('input', function() {
 document.getElementById('simSpeedSlider').addEventListener('input', function() {
   simSpeed = parseInt(this.value);
 });
+document.getElementById('sieOffsetInput').addEventListener('input', function() {
+  sieOffset = parseFloat(this.value) || 0;
+  if (!running) draw();
+});
 document.getElementById('scaledEnergyToggle').addEventListener('change', function() {
   scaledEnergy = this.checked;
   if (!running) draw();
@@ -2434,6 +2439,7 @@ function applyComboSieOffset() {
   const entry = getComboEntry();
   if (entry) {
     sieOffset = entry.sieOffset;
+    document.getElementById('sieOffsetInput').value = sieOffset;
   }
 }
 // ============================================================
