@@ -642,7 +642,8 @@ let pnJiggleFrame        = 0;
 let pnBound              = false;
 let photonEscapeFrames   = 0;
 let coulombScatterEscape = false;  // true when escape is pure Coulomb (run physics, not coast)
-let chargedNuclearEscape = false;  // true when nuclear products include free charged particles (e.g. D+D→T+p)
+let chargedNuclearEscape = false;  // true when D+D→T+p in not-to-scale mode (run physics, cap KE)
+let escapeKECap = Infinity;        // max displayed KE during chargedNuclearEscape
 
 // ============================================================
 //  PHASE STATE
@@ -1334,9 +1335,15 @@ function fireDDtoTP(targetKE = null) {
   escapeAnimTargetPos = particles.map(p => ({ x: p.x, y: p.y }));
   for (let i = 0; i < 4; i++) { particles[i].x = escapeAnimStartPos[i].x; particles[i].y = escapeAnimStartPos[i].y; }
   applyCategory2Velocities(3, 1, targetKE);
-  // T and P are both charged — unfreeze EIE and run live physics during escape
+  // T and P are both charged — unfreeze EIE
   collisionDisplayEIE = null;
-  chargedNuclearEscape = true;
+  if (!scaledEnergy) {
+    // Not-to-scale: hard-code KE display (collision peak = 11, escape cap = 13)
+    const scale = speedScale();
+    collisionDisplayKE  = 11 * scale;
+    escapeKECap         = 13 * scale;
+    chargedNuclearEscape = true;
+  }
 }
 
 // T+T → He4 + 2N  (3-body, full 2D momentum conservation)
@@ -2194,6 +2201,7 @@ function resetState() {
   photonEscapeFrames  = 0;
   coulombScatterEscape = false;
   chargedNuclearEscape = false;
+  escapeKECap = Infinity;
   particleHistory  = [];
   scrubFrame       = -1;
   graphZoomStart   = 0;
@@ -2723,9 +2731,12 @@ function loop() {
   // ── ESCAPE  (coast for nuclear products; physics for Coulomb scatter) ───
   } else if (collisionPhase === 'escape') {
     if (coulombScatterEscape || chargedNuclearEscape) {
-      // Run real physics: Coulomb scatter or charged nuclear products (e.g. D+D→T+p)
+      // Run real physics: Coulomb scatter or D+D→T+p not-to-scale
       step(frameSpeed());
       lockClusterVelocities();
+      if (chargedNuclearEscape) {
+        collisionDisplayKE = Math.min(computeEnergy().ke, escapeKECap);
+      }
     } else {
       for (const p of particles) {
         p.x += p.vx * frameSpeed();
@@ -2816,8 +2827,10 @@ function loop() {
         // EIE stays frozen — N is neutral, no inter-cluster Coulomb
       } else if (isCategory2()) {
         fireCategory2Escape(); escapeAnimFrame = 0; collisionPhase = 'escapeAnim';
-        if (collisionDisplayEIE === null) {
-          // D+D→T+p: both products charged — let physics show Coulomb-driven KE rise
+        if (chargedNuclearEscape) {
+          // D+D→T+p not-to-scale: collisionDisplayKE already hardcoded in fireDDtoTP
+        } else if (collisionDisplayEIE === null) {
+          // D+D→T+p to-scale: show actual physics KE
           collisionDisplayKE = null;
         } else {
           collisionDisplayKE = escEntry ? escEntry.keOut * escScale : collisionPeakKE * 0.88;
