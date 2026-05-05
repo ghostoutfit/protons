@@ -2615,10 +2615,17 @@ function updateJitter() {
   }
 }
 
-// Always-on jitter loop — redraws when sim is idle so particles never freeze
+// Always-on jitter loop — redraws when sim is idle so particles never freeze.
+// Skips redraw when scrubbing (scrubFrame >= 0) so the historical frame isn't overwritten.
 (function idleJitter() {
   updateJitter();
-  if (!running) draw();
+  if (!running) {
+    if (scrubFrame >= 0) {
+      renderFrame(scrubFrame); // keep showing the scrubbed frame with fresh jitter
+    } else {
+      draw();
+    }
+  }
   requestAnimationFrame(idleJitter);
 })();
 
