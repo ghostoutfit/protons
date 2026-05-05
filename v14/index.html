@@ -477,7 +477,7 @@
   <div class="ctrl-box-blue">
     <div class="slider-group">
       <span class="slider-icon" title="Slow">🐢</span>
-      <input type="range" id="simSpeedSlider" min="1" max="10" step="1" value="5">
+      <input type="range" id="simSpeedSlider" min="1" max="10" step="1" value="7">
       <span class="slider-icon" title="Fast">🐇</span>
     </div>
     <label class="toggle-label"><input type="checkbox" id="scaledEnergyToggle"> Show Energy Changes to Scale</label>
@@ -665,7 +665,7 @@ let showField = true;
 const barYRange = 120;
 let splitIE   = true;
 let sieOffset = 0;
-let simSpeed  = 5;       // 1–10 speed slider; wired up later
+let simSpeed  = 7;       // 1–10 speed slider; wired up later
 let scaledEnergy = false; // "Show Energy Changes to Scale"
 
 // ============================================================
@@ -2651,7 +2651,7 @@ function updateJitter() {
   requestAnimationFrame(idleJitter);
 })();
 
-function frameSpeed() { return FRAME_SPEED * simSpeed / 5; }
+function frameSpeed() { return FRAME_SPEED * (0.1 + (simSpeed - 1) * (1.4 / 9)); }
 
 function loop() {
   if (!running) return;
