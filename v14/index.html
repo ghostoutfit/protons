@@ -1770,7 +1770,9 @@ function drawBarChart() {
   ctx.restore();
 
   const ds         = scaledEnergy ? 1 : 0.2;
-  const displayKE  = collisionDisplayKE !== null ? collisionDisplayKE * ds : e.ke;
+  const displayKE  = collisionDisplayKE !== null
+    ? (chargedNuclearEscape ? collisionDisplayKE : collisionDisplayKE * ds)
+    : e.ke;
   const displayEIE = (collisionPhase !== 'approach' && collisionDisplayEIE !== null)
                      ? collisionDisplayEIE : e.eie;
   const totalVal   = initialTotal + sieOffset - gammaCarriedEnergy * ds;
@@ -1904,7 +1906,9 @@ function drawBarChart() {
 function getDisplayEnergy() {
   const ds  = scaledEnergy ? 1 : 0.2;
   const e   = computeEnergy();
-  const ke  = collisionDisplayKE !== null ? collisionDisplayKE * ds : e.ke;
+  const ke  = collisionDisplayKE !== null
+    ? (chargedNuclearEscape ? collisionDisplayKE : collisionDisplayKE * ds)
+    : e.ke;
   const eie = (collisionPhase !== 'approach' && collisionDisplayEIE !== null)
               ? collisionDisplayEIE : e.eie;
   const tot = initialTotal + sieOffset - gammaCarriedEnergy * ds;
