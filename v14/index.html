@@ -644,6 +644,7 @@ let photonEscapeFrames   = 0;
 let coulombScatterEscape = false;  // true when escape is pure Coulomb (run physics, not coast)
 let chargedNuclearEscape = false;  // true when D+D→T+p in not-to-scale mode (run physics, cap KE)
 let escapeKECap = Infinity;        // max displayed KE during chargedNuclearEscape
+let chargedEscapeEIEBase = 0;      // EIE at collision onset, used to mirror KE ramp inversely
 
 // ============================================================
 //  PHASE STATE
@@ -1336,6 +1337,7 @@ function fireDDtoTP(targetKE = null) {
   for (let i = 0; i < 4; i++) { particles[i].x = escapeAnimStartPos[i].x; particles[i].y = escapeAnimStartPos[i].y; }
   applyCategory2Velocities(3, 1, targetKE);
   // T and P are both charged — unfreeze EIE
+  chargedEscapeEIEBase = collisionDisplayEIE ?? 0; // save before clearing
   collisionDisplayEIE = null;
   if (!scaledEnergy) {
     // Not-to-scale: hard-code KE display (collision peak = 11, escape cap = 13)
@@ -1902,8 +1904,10 @@ function getDisplayEnergy() {
   const ke  = collisionDisplayKE !== null
     ? (chargedNuclearEscape ? collisionDisplayKE : collisionDisplayKE * ds)
     : e.ke;
-  const eie = (collisionPhase !== 'approach' && collisionDisplayEIE !== null)
-              ? collisionDisplayEIE : e.eie;
+  const eie = chargedNuclearEscape
+    ? Math.max(0, chargedEscapeEIEBase - (collisionDisplayKE - 11 * speedScale()))
+    : (collisionPhase !== 'approach' && collisionDisplayEIE !== null)
+      ? collisionDisplayEIE : e.eie;
   const tot = initialTotal + sieOffset - gammaCarriedEnergy * ds;
   const sie = Math.max(0, tot - Math.max(0, ke) - eie);
   const ie  = eie + sie;
@@ -2137,6 +2141,7 @@ function renderFrame(idx) {
   const liveCF      = collisionFrames;
   const liveGCE     = gammaCarriedEnergy;
   const liveCNE     = chargedNuclearEscape;
+  const liveCEEB    = chargedEscapeEIEBase;
   const liveCamX    = cameraSiteX, liveCamY = cameraSiteY;
   const livePhoton  = photon;
   particles            = frame.p;
@@ -2146,6 +2151,7 @@ function renderFrame(idx) {
   collisionDisplayEIE  = frame.collisionDisplayEIE ?? null;
   gammaCarriedEnergy   = frame.gammaCarriedEnergy  ?? 0;
   chargedNuclearEscape = frame.chargedNuclearEscape ?? false;
+  chargedEscapeEIEBase = frame.chargedEscapeEIEBase ?? 0;
   photon               = frame.photon || null;
   if (frame.camX !== undefined) { cameraSiteX = frame.camX; cameraSiteY = frame.camY; }
   draw();
@@ -2156,6 +2162,7 @@ function renderFrame(idx) {
   collisionDisplayEIE  = liveCDEIE;
   gammaCarriedEnergy   = liveGCE;
   chargedNuclearEscape = liveCNE;
+  chargedEscapeEIEBase = liveCEEB;
   photon               = livePhoton;
   cameraSiteX          = liveCamX;  cameraSiteY = liveCamY;
 }
@@ -2202,6 +2209,7 @@ function resetState() {
   coulombScatterEscape = false;
   chargedNuclearEscape = false;
   escapeKECap = Infinity;
+  chargedEscapeEIEBase = 0;
   particleHistory  = [];
   scrubFrame       = -1;
   graphZoomStart   = 0;
@@ -2930,6 +2938,7 @@ function loop() {
     collisionDisplayEIE,
     gammaCarriedEnergy,
     chargedNuclearEscape,
+    chargedEscapeEIEBase,
     photon: photon ? { ...photon } : null,
     camX: cameraSiteX, camY: cameraSiteY,
     edisp: getDisplayEnergy(),
