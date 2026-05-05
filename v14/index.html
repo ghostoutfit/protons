@@ -561,10 +561,10 @@ const COMBO_TABLE = {
   'n+t':   { sieOffset: 100, immediateKE: 58, keOut:  8, gammaKE:  0 },
   't+n':   { sieOffset: 100, immediateKE: 58, keOut:  8, gammaKE:  0 },
   // Cat 2 — productive fusion (KE Out = immediateKE − 2)
-  't+d':   { sieOffset: 250, immediateKE: 70, keOut: 68, gammaKE:  0 },
-  'd+t':   { sieOffset: 250, immediateKE: 70, keOut: 68, gammaKE:  0 },
-  'd+d':   { sieOffset: 150, immediateKE: 20, keOut: 18, gammaKE:  0 },
-  't+t':   { sieOffset: 300, immediateKE: 37, keOut: 35, gammaKE:  0 },
+  't+d':   { sieOffset: 250, sieOffsetUnscaled: 172, immediateKE: 70, keOut: 68, gammaKE:  0 },
+  'd+t':   { sieOffset: 250, sieOffsetUnscaled: 172, immediateKE: 70, keOut: 68, gammaKE:  0 },
+  'd+d':   { sieOffset: 150, sieOffsetUnscaled:  85, immediateKE: 20, keOut: 18, gammaKE:  0 },
+  't+t':   { sieOffset: 300, sieOffsetUnscaled: 250, immediateKE: 37, keOut: 35, gammaKE:  0 },
   // Cat 3 — gamma emission
   'p+n':   { sieOffset: 100, immediateKE: 54, keOut:  4, gammaKE: 50 },
   'n+p':   { sieOffset: 100, immediateKE: 54, keOut:  4, gammaKE: 50 },
@@ -2433,12 +2433,14 @@ document.getElementById('sieOffsetInput').addEventListener('input', function() {
 });
 document.getElementById('scaledEnergyToggle').addEventListener('change', function() {
   scaledEnergy = this.checked;
+  applyComboSieOffset();
   if (!running) draw();
 });
 function applyComboSieOffset() {
   const entry = getComboEntry();
   if (entry) {
-    sieOffset = entry.sieOffset;
+    sieOffset = (!scaledEnergy && entry.sieOffsetUnscaled != null)
+                ? entry.sieOffsetUnscaled : entry.sieOffset;
     document.getElementById('sieOffsetInput').value = sieOffset;
   }
 }
