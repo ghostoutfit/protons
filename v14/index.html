@@ -642,6 +642,7 @@ let pnJiggleFrame        = 0;
 let pnBound              = false;
 let photonEscapeFrames   = 0;
 let coulombScatterEscape = false;  // true when escape is pure Coulomb (run physics, not coast)
+let chargedNuclearEscape = false;  // true when nuclear products include free charged particles (e.g. D+D→T+p)
 
 // ============================================================
 //  PHASE STATE
@@ -1333,8 +1334,9 @@ function fireDDtoTP(targetKE = null) {
   escapeAnimTargetPos = particles.map(p => ({ x: p.x, y: p.y }));
   for (let i = 0; i < 4; i++) { particles[i].x = escapeAnimStartPos[i].x; particles[i].y = escapeAnimStartPos[i].y; }
   applyCategory2Velocities(3, 1, targetKE);
-  // T and P are both charged — unfreeze EIE so it shows actual decreasing Coulomb
+  // T and P are both charged — unfreeze EIE and run live physics during escape
   collisionDisplayEIE = null;
+  chargedNuclearEscape = true;
 }
 
 // T+T → He4 + 2N  (3-body, full 2D momentum conservation)
@@ -2191,6 +2193,7 @@ function resetState() {
   pnBound             = false;
   photonEscapeFrames  = 0;
   coulombScatterEscape = false;
+  chargedNuclearEscape = false;
   particleHistory  = [];
   scrubFrame       = -1;
   graphZoomStart   = 0;
@@ -2719,8 +2722,8 @@ function loop() {
 
   // ── ESCAPE  (coast for nuclear products; physics for Coulomb scatter) ───
   } else if (collisionPhase === 'escape') {
-    if (coulombScatterEscape) {
-      // Coulomb scatter: keep running forces so EIE→KE conversion completes.
+    if (coulombScatterEscape || chargedNuclearEscape) {
+      // Run real physics: Coulomb scatter or charged nuclear products (e.g. D+D→T+p)
       step(frameSpeed());
       lockClusterVelocities();
     } else {
