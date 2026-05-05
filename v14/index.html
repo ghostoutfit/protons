@@ -2443,7 +2443,7 @@ for (const p of _he4def) {
 }
 
 // Maps each cluster key to [mainText, superscriptText]
-const CLUSTER_LABEL = { p: ['H', ''], n: ['N', ''], d: ['H', '2'], t: ['H', '3'], he: ['He', '4'] };
+const CLUSTER_LABEL = { p: 'H', n: 'N', d: 'H-2', t: 'H-3', he: 'He-4' };
 
 function drawClusterIcon(canvas) {
   const W   = canvas.width, H = canvas.height;
@@ -2503,33 +2503,15 @@ function drawClusterIcon(canvas) {
     }
   }
 
-  // Label: main symbol + superscript mass number, drawn in the right portion
+  // Label drawn in the right portion of the canvas
   if (!isSlider && CLUSTER_LABEL[key]) {
-    const [main, sup] = CLUSTER_LABEL[key];
-    const mainSz = 15, supSz = 9;
-
-    // Measure widths with correct fonts
-    ic.font = `bold ${mainSz}px "JetBrains Mono", monospace`;
-    const mainW = ic.measureText(main).width;
-    ic.font = `bold ${supSz}px "JetBrains Mono", monospace`;
-    const supW = sup ? ic.measureText(sup).width : 0;
-
-    const totalLabelW = mainW + (sup ? supW + 1 : 0);
-    const labelCx = imgW + (W - imgW) / 2;          // center of label area
-    const startX  = labelCx - totalLabelW / 2;
-    const baseY   = H / 2 + mainSz * 0.35;          // baseline for main text
-
-    ic.fillStyle = 'rgba(255,255,255,0.82)';
-    ic.textAlign    = 'left';
-    ic.textBaseline = 'alphabetic';
-
-    ic.font = `bold ${mainSz}px "JetBrains Mono", monospace`;
-    ic.fillText(main, startX, baseY);
-
-    if (sup) {
-      ic.font = `bold ${supSz}px "JetBrains Mono", monospace`;
-      ic.fillText(sup, startX + mainW + 1, baseY - mainSz * 0.52);
-    }
+    const label = CLUSTER_LABEL[key];
+    const fontSize = 17;
+    ic.font = `bold ${fontSize}px "JetBrains Mono", monospace`;
+    ic.fillStyle    = 'rgba(255,255,255,0.82)';
+    ic.textAlign    = 'center';
+    ic.textBaseline = 'middle';
+    ic.fillText(label, imgW + (W - imgW) / 2, H / 2);
   }
 }
 
