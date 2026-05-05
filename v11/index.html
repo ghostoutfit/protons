@@ -2477,12 +2477,10 @@ function drawForcePanel() {
         }
       }
     } else {
-      // Total force mode: net Coulomb + net strong per particle, offset slightly so they don't overlap
+      // Total force mode: one net Coulomb + one net strong arrow for the whole group
+      let cFx = 0, cFy = 0, sFx = 0, sFy = 0;
       for (const i of group) {
         const pi = particles[i];
-        const px = cx + (pi.x - gcx) * zoom;
-        const py = cy + (pi.y - gcy) * zoom;
-        let cFx = 0, cFy = 0, sFx = 0, sFy = 0;
         for (let j = 0; j < particles.length; j++) {
           if (groupSet.has(j)) continue;
           const pj = particles[j];
@@ -2499,20 +2497,20 @@ function drawForcePanel() {
             sFx += -nx * slen; sFy += -ny * slen;
           }
         }
-        const cMag = Math.sqrt(cFx * cFx + cFy * cFy);
-        const sMag = Math.sqrt(sFx * sFx + sFy * sFy);
-        // Offset each arrow perpendicular to its direction so they stay distinct
-        if (cMag > 0.5) {
-          const cnx = cFx / cMag, cny = cFy / cMag;
-          const ox = -cny * SIDE_OFF, oy = cnx * SIDE_OFF;
-          const cLen = Math.sqrt(cMag) * 6;
-          drawArrowOnCtx(forcePanelCtx, px + cnx * PR + ox, py + cny * PR + oy, cnx, cny, cLen, ELEC_ARROW_COLOR, 3);
-        }
-        if (sMag > 0.5) {
-          const snx = sFx / sMag, sny = sFy / sMag;
-          const ox = sny * SIDE_OFF, oy = -snx * SIDE_OFF;
-          drawArrowOnCtx(forcePanelCtx, px + snx * PR + ox, py + sny * PR + oy, snx, sny, sMag, STRONG_ARROW_COLOR, 3);
-        }
+      }
+      const cMag = Math.sqrt(cFx * cFx + cFy * cFy);
+      const sMag = Math.sqrt(sFx * sFx + sFy * sFy);
+      // Both arrows originate from centroid (cx,cy), offset perpendicular so they don't overlap
+      if (cMag > 0.5) {
+        const cnx = cFx / cMag, cny = cFy / cMag;
+        const ox = -cny * SIDE_OFF, oy = cnx * SIDE_OFF;
+        const cLen = Math.sqrt(cMag) * 6;
+        drawArrowOnCtx(forcePanelCtx, cx + cnx * PR + ox, cy + cny * PR + oy, cnx, cny, cLen, ELEC_ARROW_COLOR, 3);
+      }
+      if (sMag > 0.5) {
+        const snx = sFx / sMag, sny = sFy / sMag;
+        const ox = sny * SIDE_OFF, oy = -snx * SIDE_OFF;
+        drawArrowOnCtx(forcePanelCtx, cx + snx * PR + ox, cy + sny * PR + oy, snx, sny, sMag, STRONG_ARROW_COLOR, 3);
       }
     }
 
