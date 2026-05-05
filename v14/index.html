@@ -2677,6 +2677,7 @@ function loop() {
   // ── ESCAPE ANIMATION  (lerp positions + cluster velocities) ───
   if (collisionPhase === 'escapeAnim') {
     escapeAnimFrame++;
+    if (chargedNuclearEscape) escapeAnimFrame = ESCAPE_ANIM_FRAMES; // snap immediately, skip type-swap lerp
     const t    = escapeAnimFrame / ESCAPE_ANIM_FRAMES;
     const ease = t * t * (3 - 2 * t); // smoothstep
     const n    = particles.length;
@@ -2834,6 +2835,9 @@ function loop() {
         } else if (collisionDisplayEIE === null) {
           // D+D→T+p to-scale: show actual physics KE
           collisionDisplayKE = null;
+        } else if (!scaledEnergy && leftChoice === 'd' && rightChoice === 'd') {
+          // D+D→He3+n not-to-scale: small drop from 11 to 10.6
+          collisionDisplayKE = 10.6 * escScale / 0.2;
         } else {
           collisionDisplayKE = escEntry ? escEntry.keOut * escScale : collisionPeakKE * 0.88;
         }
