@@ -1779,7 +1779,7 @@ function drawBarChart() {
       ];
 
   const pad      = 12;
-  const labelH   = 22;
+  const labelH   = 42;
   const controlH = 8;
   const barW     = (W - pad * 2) / bars.length;
   const chartH   = H - labelH - controlH - pad - 36; // room for phase title
@@ -1845,7 +1845,7 @@ function drawBarChart() {
     ctx.save();
     ctx.shadowColor = bar.glow; ctx.shadowBlur = 6;
     ctx.fillStyle   = bar.color;
-    ctx.font        = 'bold 9px "JetBrains Mono", monospace';
+    ctx.font        = 'bold 12px "JetBrains Mono", monospace';
     const words = bar.label.split(' ');
     const mid   = Math.ceil(words.length / 2);
     ctx.fillText(words.slice(0, mid).join(' '),  x + bw / 2, baseline + 13);
