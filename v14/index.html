@@ -486,10 +486,14 @@
       <span class="slider-icon" title="Fast">🐇</span>
     </div>
     <label class="toggle-label"><input type="checkbox" id="scaledEnergyToggle"> Show Energy Changes to Scale</label>
-    <label class="toggle-label">SIE offset: <input type="number" id="sieOffsetInput" value="0" step="1" style="width:56px;background:rgba(10,8,30,0.8);color:var(--accent2);border:1px solid rgba(26,110,255,0.35);border-radius:6px;padding:2px 4px;font-size:11px;font-family:inherit;outline:none;"></label>
   </div>
 
   </div><!-- close flex row -->
+</div>
+
+<div style="padding:6px 10px 8px;border-top:1px solid rgba(255,255,255,0.08);">
+  <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-bottom:5px;">Development Values</div>
+  <label style="font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:6px;">SIE offset: <input type="number" id="sieOffsetInput" value="0" step="1" style="width:56px;background:rgba(10,8,30,0.8);color:var(--accent2);border:1px solid rgba(26,110,255,0.35);border-radius:6px;padding:2px 4px;font-size:11px;font-family:inherit;outline:none;"></label>
 </div>
 
 <div id="canvasWrap">
@@ -539,6 +543,7 @@ const PARTICLE_RADIUS     = 10;
 const SUBSTEPS            = 20;
 const strongForceStrength = 4;
 const strongForceRange    = 2.0;   // fixed — no slider
+let   strongRangeMult     = 1.0;   // temporary reduction during Cat2 collision onset
 const equilibriumRatio    = 0.35;
 
 // Timing
@@ -906,7 +911,7 @@ function restoreSnapshot() { if (!snapshot) return; particles = snapshot.map(p =
 // ============================================================
 //  FORCE MODEL
 // ============================================================
-function strongCutoff() { return PARTICLE_RADIUS * 2 * strongForceRange; }
+function strongCutoff() { return PARTICLE_RADIUS * 2 * strongForceRange * strongRangeMult; }
 
 function pairForce(dist, distSq, aType, bType) {
   if (aType === 'gamma' || bType === 'gamma') return 0;
@@ -1220,9 +1225,11 @@ function fireCategory1Escape() {
   const newRvx = cmvx - (lSize / rSize) * vl * cosT;
   const newRvy = cmvy - (lSize / rSize) * vl * sinT;
 
-  // Save target velocities for the lerp; do NOT apply them yet —
-  // escapeAnim will interpolate from start → target each frame.
+  // Velocity starts at escape speed immediately — no ramp-up during escapeAnim.
+  // Position still lerps from collision positions to snapped geometry, so the
+  // visual is one smooth motion (no "separate then shoot" two-phase look).
   escapeAnimTargetVel = { lv: { vx: newLvx, vy: newLvy }, rv: { vx: newRvx, vy: newRvy } };
+  escapeAnimStartVel  = { lv: { vx: newLvx, vy: newLvy }, rv: { vx: newRvx, vy: newRvy } };
 }
 
 // ============================================================
@@ -1275,6 +1282,7 @@ function applyCategory2Velocities(newLSize, newRSize, overrideTargetKE = null) {
   const newRvy = cmvy - (newLSize / newRSize) * vl * sinT;
 
   escapeAnimTargetVel = { lv: { vx: newLvx, vy: newLvy }, rv: { vx: newRvx, vy: newRvy } };
+  escapeAnimStartVel  = { lv: { vx: newLvx, vy: newLvy }, rv: { vx: newRvx, vy: newRvy } };
 }
 
 // Helper: teleport a single particle (idx) outside He/T cluster CM
@@ -1430,6 +1438,7 @@ function fireTTEscape(targetKE = null) {
   targetVels.push({ vx: N1vx, vy: N1vy });
   targetVels.push({ vx: N2vx, vy: N2vy });
   escapeAnimTargetVel = { perParticle: targetVels };
+  escapeAnimStartVel  = { perParticle: targetVels.map(v => ({ vx: v.vx, vy: v.vy })) };
 }
 
 function fireCategory2Escape() {
@@ -2206,6 +2215,7 @@ function resetState() {
   photonEscapeFrames  = 0;
   coulombScatterEscape = false;
   chargedNuclearEscape = false;
+  strongRangeMult      = 1.0;
   escapeKECap = Infinity;
   chargedEscapeEIEBase = 0;
   particleHistory  = [];
@@ -2776,6 +2786,9 @@ function loop() {
 
   // ── COLLISION  (free physics for up to COLLISION_FRAMES) ──────
   } else if (collisionPhase === 'collision') {
+    // Cat2: shrink strong-force range 20% for the first 8 frames so the
+    // Coulomb barrier can push clusters apart and prevent He-4 lock-in.
+    strongRangeMult = (isCategory2() && collisionFrames < 8) ? 0.8 : 1.0;
     step(frameSpeed());
     collisionFrames++;
     updateCamera();
@@ -2794,6 +2807,22 @@ function loop() {
         const relV = (particles[1].vx - particles[0].vx) * (dx / d) +
                      (particles[1].vy - particles[0].vy) * (dy / d);
         if (relV >= 0) fireEscape = true;
+      }
+    }
+    // Category 2 early escape: fire as soon as cluster CMs separate (min 5 frames).
+    // Prevents D+D (and other Cat2) from visually "hanging" as a fused nucleus
+    // while the strong force temporarily traps all particles in a common well.
+    if (!fireEscape && isCategory2() && collisionFrames >= 5) {
+      const lSz3 = lSz2, rSz3 = n2 - lSz3;
+      let lcx3=0,lcy3=0,rcx3=0,rcy3=0,lvx3=0,lvy3=0,rvx3=0,rvy3=0;
+      for (let i=0;     i<lSz3; i++) { lcx3+=particles[i].x; lcy3+=particles[i].y; lvx3+=particles[i].vx; lvy3+=particles[i].vy; }
+      for (let i=lSz3;  i<n2;   i++) { rcx3+=particles[i].x; rcy3+=particles[i].y; rvx3+=particles[i].vx; rvy3+=particles[i].vy; }
+      lcx3/=lSz3; lcy3/=lSz3; lvx3/=lSz3; lvy3/=lSz3;
+      rcx3/=rSz3; rcy3/=rSz3; rvx3/=rSz3; rvy3/=rSz3;
+      const cdx3=rcx3-lcx3, cdy3=rcy3-lcy3, cd3=Math.sqrt(cdx3*cdx3+cdy3*cdy3);
+      if (cd3>0.01) {
+        const relV3=(rvx3-lvx3)*(cdx3/cd3)+(rvy3-lvy3)*(cdy3/cd3);
+        if (relV3>=0) fireEscape=true;
       }
     }
 
@@ -2827,6 +2856,7 @@ function loop() {
         // EIE stays frozen — single charged product, no inter-cluster Coulomb drop
       }
     } else if (fireEscape) {
+      strongRangeMult = 1.0;  // restore before escape physics runs
       escapeStartFrame = particleHistory.length;
       const escEntry = getComboEntry();
       const escScale = speedScale();
