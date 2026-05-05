@@ -422,8 +422,6 @@
       <div class="pwheel" id="leftWheel">
         <canvas class="pwheel-trigger psel-icon" data-side="left" data-key="d" width="130" height="77"></canvas>
         <div class="pwheel-drop">
-          <canvas class="psel-icon" data-side="left" data-key="p"  width="130" height="77"></canvas>
-          <canvas class="psel-icon" data-side="left" data-key="n"  width="130" height="77"></canvas>
           <canvas class="psel-icon" data-side="left" data-key="d"  width="130" height="77"></canvas>
           <canvas class="psel-icon" data-side="left" data-key="t"  width="130" height="77"></canvas>
           <canvas class="psel-icon" data-side="left" data-key="he" width="130" height="77"></canvas>
@@ -433,8 +431,6 @@
       <div class="pwheel" id="rightWheel">
         <canvas class="pwheel-trigger psel-icon" data-side="right" data-key="t" width="130" height="77"></canvas>
         <div class="pwheel-drop">
-          <canvas class="psel-icon" data-side="right" data-key="p"  width="130" height="77"></canvas>
-          <canvas class="psel-icon" data-side="right" data-key="n"  width="130" height="77"></canvas>
           <canvas class="psel-icon" data-side="right" data-key="d"  width="130" height="77"></canvas>
           <canvas class="psel-icon" data-side="right" data-key="t"  width="130" height="77"></canvas>
           <canvas class="psel-icon" data-side="right" data-key="he" width="130" height="77"></canvas>
@@ -451,21 +447,6 @@
     </div>
   </div>
 
-  <label class="toggle-label">
-    <input type="checkbox" id="fieldToggle" checked>
-    Field
-  </label>
-
-  <label class="toggle-label">
-    SIE offset:
-    <input type="number" id="sieOffsetInput" value="0" step="1"
-      style="width:56px;background:rgba(10,8,30,0.8);color:var(--accent1);border:1px solid var(--accent1-dim);border-radius:6px;padding:2px 4px;font-size:11px;font-family:inherit;outline:none;">
-  </label>
-
-  <div class="slider-group">
-    <label>Electric: <span id="v9ElecVal">400</span></label>
-    <input type="range" id="v9ElecSlider" min="10" max="600" step="10" value="400">
-  </div>
   </div><!-- close flex row -->
 </div>
 
@@ -2391,25 +2372,12 @@ timeSlider.addEventListener('input', () => {
 // ============================================================
 //  CONTROLS
 // ============================================================
-document.getElementById('fieldToggle').addEventListener('change', function() {
-  showField = this.checked;
-  if (!running) draw();
-});
 document.getElementById('splitIEToggle').addEventListener('change', function() {
   splitIE = this.checked;
   if (!running) draw();
 });
 document.getElementById('fullTimelineBtn').addEventListener('click', () => {
   resetGraphZoom();
-});
-document.getElementById('sieOffsetInput').addEventListener('input', function() {
-  sieOffset = parseFloat(this.value) || 0;
-  if (!running) draw();
-});
-document.getElementById('v9ElecSlider').addEventListener('input', function() {
-  coulombStrength = parseFloat(this.value);
-  document.getElementById('v9ElecVal').textContent = coulombStrength;
-  if (!running) draw();
 });
 document.getElementById('v9SpeedSlider').addEventListener('input', function() {
   approachSpeed = parseFloat(this.value);
@@ -2419,7 +2387,6 @@ function applyComboSieOffset() {
   const entry = getComboEntry();
   if (entry) {
     sieOffset = entry.sieOffset;
-    document.getElementById('sieOffsetInput').value = sieOffset;
   }
 }
 // ============================================================
