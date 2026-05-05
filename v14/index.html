@@ -1779,7 +1779,7 @@ function drawBarChart() {
       ];
 
   const pad      = 12;
-  const labelH   = 52;
+  const labelH   = 62;
   const controlH = 8;
   const barW     = (W - pad * 2) / bars.length;
   const chartH   = H - labelH - controlH - pad - 36; // room for phase title
@@ -1847,8 +1847,9 @@ function drawBarChart() {
     ctx.fillStyle   = bar.color;
     ctx.font        = 'bold 14px "JetBrains Mono", monospace';
     const words = bar.label.split(' ');
-    ctx.fillText(words.slice(0, words.length - 1).join(' '), x + bw / 2, baseline + 16);
-    ctx.fillText(words[words.length - 1],                    x + bw / 2, baseline + 33);
+    ctx.fillText(words.slice(0, 2).join(' '), x + bw / 2, baseline + 16);
+    ctx.fillText(words[2] || '',              x + bw / 2, baseline + 33);
+    if (words[3]) ctx.fillText(words[3],      x + bw / 2, baseline + 50);
     ctx.restore();
   });
 
