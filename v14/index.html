@@ -2651,6 +2651,8 @@ function updateJitter() {
   requestAnimationFrame(idleJitter);
 })();
 
+function frameSpeed() { return FRAME_SPEED * simSpeed / 5; }
+
 function loop() {
   if (!running) return;
 
@@ -2719,12 +2721,12 @@ function loop() {
   } else if (collisionPhase === 'escape') {
     if (coulombScatterEscape) {
       // Coulomb scatter: keep running forces so EIE→KE conversion completes.
-      step(FRAME_SPEED);
+      step(frameSpeed());
       lockClusterVelocities();
     } else {
       for (const p of particles) {
-        p.x += p.vx * FRAME_SPEED;
-        p.y += p.vy * FRAME_SPEED;
+        p.x += p.vx * frameSpeed();
+        p.y += p.vy * frameSpeed();
       }
     }
     updateCamera();
@@ -2751,7 +2753,7 @@ function loop() {
 
   // ── COLLISION  (free physics for up to COLLISION_FRAMES) ──────
   } else if (collisionPhase === 'collision') {
-    step(FRAME_SPEED);
+    step(frameSpeed());
     collisionFrames++;
     updateCamera();
 
@@ -2823,7 +2825,7 @@ function loop() {
 
   // ── APPROACH  (rigid-cluster) ─────────────────────────────────
   } else {
-    step(FRAME_SPEED);
+    step(frameSpeed());
     lockClusterVelocities();
     const { lcx, lcy, rcx, rcy } = updateCamera();
 
