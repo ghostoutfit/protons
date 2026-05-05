@@ -1769,24 +1769,17 @@ function drawBarChart() {
   ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx, gy + H); ctx.stroke();
   ctx.restore();
 
-  const ds         = scaledEnergy ? 1 : 0.2;
-  const displayKE  = collisionDisplayKE !== null
-    ? (chargedNuclearEscape ? collisionDisplayKE : collisionDisplayKE * ds)
-    : e.ke;
-  const displayEIE = (collisionPhase !== 'approach' && collisionDisplayEIE !== null)
-                     ? collisionDisplayEIE : e.eie;
-  const totalVal   = initialTotal + sieOffset - gammaCarriedEnergy * ds;
-  const displaySIE = totalVal - displayKE - displayEIE;
+  const { ke: displayKE, eie: displayEIE, sie: displaySIE, ie: displayIE } = getDisplayEnergy();
 
   const bars = splitIE
     ? [
-        { label: 'Energy in Motion',        value: Math.max(0, displayKE),  color: '#ff2060', glow: 'rgba(255,20,80,0.9)'    },
-        { label: 'Energy in Electric Field', value: displayEIE,              color: '#00e5ff', glow: 'rgba(0,220,255,0.9)'   },
-        { label: 'Energy in Strong Field',   value: displaySIE,              color: '#ff8040', glow: 'rgba(255,128,64,0.9)'  },
+        { label: 'Energy in Motion',        value: displayKE,  color: '#ff2060', glow: 'rgba(255,20,80,0.9)'    },
+        { label: 'Energy in Electric Field', value: displayEIE, color: '#00e5ff', glow: 'rgba(0,220,255,0.9)'   },
+        { label: 'Energy in Strong Field',   value: displaySIE, color: '#ff8040', glow: 'rgba(255,128,64,0.9)'  },
       ]
     : [
-        { label: 'Energy in Motion',  value: Math.max(0, displayKE),        color: '#ff2060', glow: 'rgba(255,20,80,0.9)'    },
-        { label: 'Energy in Fields',  value: displayEIE + displaySIE,       color: '#7b6fff', glow: 'rgba(120,100,255,0.9)' },
+        { label: 'Energy in Motion',  value: displayKE,  color: '#ff2060', glow: 'rgba(255,20,80,0.9)'    },
+        { label: 'Energy in Fields',  value: displayIE,  color: '#7b6fff', glow: 'rgba(120,100,255,0.9)' },
       ];
 
   const pad      = 12;
@@ -2143,25 +2136,28 @@ function renderFrame(idx) {
   const liveCDEIE   = collisionDisplayEIE;
   const liveCF      = collisionFrames;
   const liveGCE     = gammaCarriedEnergy;
+  const liveCNE     = chargedNuclearEscape;
   const liveCamX    = cameraSiteX, liveCamY = cameraSiteY;
   const livePhoton  = photon;
-  particles           = frame.p;
-  collisionPhase      = frame.collisionPhase || 'approach';
-  collisionFrames     = frame.collisionFrames ?? 999;
-  collisionDisplayKE  = frame.collisionDisplayKE ?? null;
-  collisionDisplayEIE = frame.collisionDisplayEIE ?? null;
-  gammaCarriedEnergy  = frame.gammaCarriedEnergy  ?? 0;
-  photon              = frame.photon || null;
+  particles            = frame.p;
+  collisionPhase       = frame.collisionPhase || 'approach';
+  collisionFrames      = frame.collisionFrames ?? 999;
+  collisionDisplayKE   = frame.collisionDisplayKE ?? null;
+  collisionDisplayEIE  = frame.collisionDisplayEIE ?? null;
+  gammaCarriedEnergy   = frame.gammaCarriedEnergy  ?? 0;
+  chargedNuclearEscape = frame.chargedNuclearEscape ?? false;
+  photon               = frame.photon || null;
   if (frame.camX !== undefined) { cameraSiteX = frame.camX; cameraSiteY = frame.camY; }
   draw();
-  particles           = liveP;
-  collisionPhase      = livePhase;
-  collisionFrames     = liveCF;
-  collisionDisplayKE  = liveCDKE;
-  collisionDisplayEIE = liveCDEIE;
-  gammaCarriedEnergy  = liveGCE;
-  photon              = livePhoton;
-  cameraSiteX         = liveCamX;  cameraSiteY = liveCamY;
+  particles            = liveP;
+  collisionPhase       = livePhase;
+  collisionFrames      = liveCF;
+  collisionDisplayKE   = liveCDKE;
+  collisionDisplayEIE  = liveCDEIE;
+  gammaCarriedEnergy   = liveGCE;
+  chargedNuclearEscape = liveCNE;
+  photon               = livePhoton;
+  cameraSiteX          = liveCamX;  cameraSiteY = liveCamY;
 }
 
 // ============================================================
@@ -2923,6 +2919,7 @@ function loop() {
     collisionDisplayKE,
     collisionDisplayEIE,
     gammaCarriedEnergy,
+    chargedNuclearEscape,
     photon: photon ? { ...photon } : null,
     camX: cameraSiteX, camY: cameraSiteY,
     edisp: getDisplayEnergy(),
