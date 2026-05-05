@@ -2735,7 +2735,9 @@ function loop() {
       step(frameSpeed());
       lockClusterVelocities();
       if (chargedNuclearEscape) {
-        collisionDisplayKE = Math.min(computeEnergy().ke, escapeKECap);
+        // Ramp displayed KE gradually from 11 → escapeKECap over ~60 frames
+        const rampStep = (escapeKECap - 11 * speedScale()) / 60 * frameSpeed() / FRAME_SPEED;
+        collisionDisplayKE = Math.min(collisionDisplayKE + rampStep, escapeKECap);
       }
     } else {
       for (const p of particles) {
@@ -2861,8 +2863,12 @@ function loop() {
       const colE    = computeEnergy();
       const colEntry = getComboEntry();
       const scale    = speedScale();
-      collisionDisplayKE  = colEntry ? colEntry.immediateKE * scale
-                                     : Math.max(initialKE, colE.ke);
+      if (!scaledEnergy && leftChoice === 'd' && rightChoice === 'd') {
+        collisionDisplayKE = 11 * scale / 0.2; // displays as 11 after ds=0.2
+      } else {
+        collisionDisplayKE = colEntry ? colEntry.immediateKE * scale
+                                      : Math.max(initialKE, colE.ke);
+      }
       collisionPeakKE     = collisionDisplayKE;
       collisionDisplayEIE = colE.eie;
     } else {
