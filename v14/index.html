@@ -1745,10 +1745,11 @@ function drawBarChart() {
   ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx, gy + H); ctx.stroke();
   ctx.restore();
 
-  const displayKE  = collisionDisplayKE !== null ? collisionDisplayKE : e.ke;
+  const ds         = scaledEnergy ? 1 : 0.2;
+  const displayKE  = collisionDisplayKE !== null ? collisionDisplayKE * ds : e.ke;
   const displayEIE = (collisionPhase === 'collision' && collisionDisplayEIE !== null)
                      ? collisionDisplayEIE : e.eie;
-  const totalVal   = initialTotal + sieOffset - gammaCarriedEnergy;
+  const totalVal   = initialTotal + sieOffset * ds - gammaCarriedEnergy * ds;
   const displaySIE = totalVal - displayKE - displayEIE;
 
   const bars = splitIE
@@ -1877,11 +1878,12 @@ function drawBarChart() {
 //  DISPLAY ENERGY  (same values shown in bar chart)
 // ============================================================
 function getDisplayEnergy() {
+  const ds  = scaledEnergy ? 1 : 0.2;
   const e   = computeEnergy();
-  const ke  = collisionDisplayKE !== null ? collisionDisplayKE : e.ke;
+  const ke  = collisionDisplayKE !== null ? collisionDisplayKE * ds : e.ke;
   const eie = (collisionPhase === 'collision' && collisionDisplayEIE !== null)
               ? collisionDisplayEIE : e.eie;
-  const tot = initialTotal + sieOffset - gammaCarriedEnergy;
+  const tot = initialTotal + sieOffset * ds - gammaCarriedEnergy * ds;
   const sie = Math.max(0, tot - Math.max(0, ke) - eie);
   const ie  = eie + sie;
   return { ke: Math.max(0, ke), eie: Math.max(0, eie), sie, ie, tot };
