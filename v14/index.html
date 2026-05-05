@@ -468,16 +468,21 @@
     <div style="display:flex;align-items:center;gap:0;">
       <canvas id="speedLinesL" width="36" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;margin-right:-8px;"></canvas>
       <canvas class="psel-icon pslider-icon" data-side="left"  width="44" height="36" style="margin-right:8px;"></canvas>
-      <input type="range" id="v9SpeedSlider" min="0.1" max="2.0" step="0.05" value="1.05" style="flex:1;min-width:80px;">
+      <div style="flex:1;min-width:80px;display:flex;flex-direction:column;align-items:stretch;gap:1px;">
+        <input type="range" id="v9SpeedSlider" min="0.1" max="2.0" step="0.05" value="1.05" style="width:100%;">
+        <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-dim);padding:0 2px;">
+          <span>Slower</span><span>Faster</span>
+        </div>
+      </div>
       <canvas class="psel-icon pslider-icon" data-side="right" width="44" height="36" style="margin-left:8px;"></canvas>
       <canvas id="speedLinesR" width="36" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;transform:scaleX(-1);margin-left:-8px;"></canvas>
     </div>
   </div>
 
   <div class="ctrl-box-blue">
-    <div class="slider-group">
+    <div style="display:flex;align-items:center;gap:6px;width:100%;">
       <span class="slider-icon" title="Slow">🐢</span>
-      <input type="range" id="simSpeedSlider" min="1" max="10" step="1" value="7">
+      <input type="range" id="simSpeedSlider" min="1" max="10" step="1" value="7" style="flex:1;">
       <span class="slider-icon" title="Fast">🐇</span>
     </div>
     <label class="toggle-label"><input type="checkbox" id="scaledEnergyToggle"> Show Energy Changes to Scale</label>
@@ -507,8 +512,8 @@
   </div>
   <div id="scrubRight">
     <label class="toggle-label">
-      <input type="checkbox" id="splitIEToggle">
-      Split IE → <span style="color:#7b6fff">EIE</span>&nbsp;+&nbsp;<span style="color:var(--accent1)">SIE</span>
+      <input type="checkbox" id="splitIEToggle" checked>
+      Combine Energy in Fields
     </label>
     <button id="fullTimelineBtn">Full Timeline</button>
   </div>
@@ -563,7 +568,7 @@ const COMBO_TABLE = {
   // Cat 2 — productive fusion (KE Out = immediateKE − 2)
   't+d':   { sieOffset: 250, sieOffsetUnscaled: 172, immediateKE: 70, keOut: 68, gammaKE:  0 },
   'd+t':   { sieOffset: 250, sieOffsetUnscaled: 172, immediateKE: 70, keOut: 68, gammaKE:  0 },
-  'd+d':   { sieOffset: 150, sieOffsetUnscaled:  85, immediateKE: 20, keOut: 18, gammaKE:  0 },
+  'd+d':   { sieOffset: 150, sieOffsetUnscaled: 100, immediateKE: 20, keOut: 18, gammaKE:  0 },
   't+t':   { sieOffset: 300, sieOffsetUnscaled: 250, immediateKE: 37, keOut: 35, gammaKE:  0 },
   // Cat 3 — gamma emission
   'p+n':   { sieOffset: 100, immediateKE: 54, keOut:  4, gammaKE: 50 },
@@ -1839,13 +1844,6 @@ function drawBarChart() {
       ctx.restore();
     }
 
-    // Value label above bar
-    const labelY = Math.max(gy + 44, barTop - 6);
-    ctx.save();
-    ctx.shadowColor = bar.glow; ctx.shadowBlur = 8;
-    ctx.fillStyle   = bar.color;
-    ctx.fillText(bar.value.toFixed(1), x + bw / 2, labelY);
-    ctx.restore();
 
     // Axis label below baseline — two lines at small font
     ctx.save();
@@ -2433,7 +2431,7 @@ timeSlider.addEventListener('input', () => {
 //  CONTROLS
 // ============================================================
 document.getElementById('splitIEToggle').addEventListener('change', function() {
-  splitIE = this.checked;
+  splitIE = !this.checked; // checked = combined (not split)
   if (!running) draw();
 });
 document.getElementById('fullTimelineBtn').addEventListener('click', () => {
