@@ -1764,7 +1764,7 @@ function drawBarChart() {
   const displayKE  = collisionDisplayKE !== null ? collisionDisplayKE * ds : e.ke;
   const displayEIE = (collisionPhase !== 'approach' && collisionDisplayEIE !== null)
                      ? collisionDisplayEIE : e.eie;
-  const totalVal   = initialTotal + sieOffset * ds - gammaCarriedEnergy * ds;
+  const totalVal   = initialTotal + sieOffset - gammaCarriedEnergy * ds;
   const displaySIE = totalVal - displayKE - displayEIE;
 
   const bars = splitIE
@@ -1898,7 +1898,7 @@ function getDisplayEnergy() {
   const ke  = collisionDisplayKE !== null ? collisionDisplayKE * ds : e.ke;
   const eie = (collisionPhase !== 'approach' && collisionDisplayEIE !== null)
               ? collisionDisplayEIE : e.eie;
-  const tot = initialTotal + sieOffset * ds - gammaCarriedEnergy * ds;
+  const tot = initialTotal + sieOffset - gammaCarriedEnergy * ds;
   const sie = Math.max(0, tot - Math.max(0, ke) - eie);
   const ie  = eie + sie;
   return { ke: Math.max(0, ke), eie: Math.max(0, eie), sie, ie, tot };
@@ -2241,7 +2241,7 @@ goBtn.addEventListener('click', () => {
   } else {
     // Fresh start
     if (hasRunOnce) resetAndSetup();
-    else if (particles.length === 0) setupScenario();
+    else setupScenario();
     hasRunOnce = true;
     paused     = false;
     running    = true;
