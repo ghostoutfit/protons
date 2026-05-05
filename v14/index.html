@@ -128,6 +128,41 @@
     background: transparent; box-shadow: none; text-shadow: none; cursor: not-allowed;
   }
 
+  /* ── Tab-style title label (matches v11 tab styling) ─────────────────────── */
+  .tab-btn {
+    padding: 4px 14px;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    color: rgba(255,255,255,0.18);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    cursor: default;
+    white-space: nowrap;
+    transition: all 0.2s;
+    box-shadow: none;
+    text-shadow: none;
+    font-family: inherit;
+  }
+  .tab-btn.active {
+    color: #e8e4ff;
+    border-color: #7b6fff;
+    background: rgba(123,111,255,0.12);
+    box-shadow:
+      inset 0 0 6px rgba(123,111,255,0.15),
+      0 0 2px #7b6fff, 0 0 8px #7b6fff,
+      0 0 18px rgba(123,111,255,0.5),
+      0 0 40px rgba(123,111,255,0.2),
+      0 0 70px rgba(123,111,255,0.1);
+    text-shadow:
+      0 0 4px #e8e4ff,
+      0 0 10px #7b6fff,
+      0 0 22px rgba(123,111,255,0.5),
+      0 0 44px rgba(123,111,255,0.2);
+  }
+
   /* ── Particle selector ─────────────────────────────────────────────────────── */
   .ctrl-box-pink {
     display: flex;
@@ -372,8 +407,11 @@
 </div>
 
 <div id="toolbar">
-  <div style="display:flex;flex-direction:column;align-items:center;gap:4px;margin-right:8px;">
-    <span style="font-size:10px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--accent1);text-shadow:0 0 8px var(--accent1-glow),0 0 20px var(--accent1-dim);">FUSION</span>
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
+    <span class="tab-btn active">FUSION</span>
+  </div>
+  <div style="display:flex;align-items:stretch;gap:12px;">
+  <div style="display:flex;flex-direction:column;justify-content:flex-end;align-self:stretch;gap:6px;padding-bottom:10px;margin-right:4px;">
     <button class="btn" id="goBtn">&#9654;</button>
     <button class="btn" id="replayBtn" disabled>&#8634;</button>
     <button class="btn" id="clearBtn">Clear</button>
@@ -383,24 +421,24 @@
     <div style="display:flex;gap:40px;justify-content:center;">
       <!-- Left particle wheel -->
       <div class="pwheel" id="leftWheel">
-        <canvas class="pwheel-trigger psel-icon" data-side="left" data-key="d" width="91" height="77"></canvas>
+        <canvas class="pwheel-trigger psel-icon" data-side="left" data-key="d" width="130" height="77"></canvas>
         <div class="pwheel-drop">
-          <canvas class="psel-icon" data-side="left" data-key="p"  width="91" height="77"></canvas>
-          <canvas class="psel-icon" data-side="left" data-key="n"  width="91" height="77"></canvas>
-          <canvas class="psel-icon" data-side="left" data-key="d"  width="91" height="77"></canvas>
-          <canvas class="psel-icon" data-side="left" data-key="t"  width="91" height="77"></canvas>
-          <canvas class="psel-icon" data-side="left" data-key="he" width="91" height="77"></canvas>
+          <canvas class="psel-icon" data-side="left" data-key="p"  width="130" height="77"></canvas>
+          <canvas class="psel-icon" data-side="left" data-key="n"  width="130" height="77"></canvas>
+          <canvas class="psel-icon" data-side="left" data-key="d"  width="130" height="77"></canvas>
+          <canvas class="psel-icon" data-side="left" data-key="t"  width="130" height="77"></canvas>
+          <canvas class="psel-icon" data-side="left" data-key="he" width="130" height="77"></canvas>
         </div>
       </div>
       <!-- Right particle wheel -->
       <div class="pwheel" id="rightWheel">
-        <canvas class="pwheel-trigger psel-icon" data-side="right" data-key="t" width="91" height="77"></canvas>
+        <canvas class="pwheel-trigger psel-icon" data-side="right" data-key="t" width="130" height="77"></canvas>
         <div class="pwheel-drop">
-          <canvas class="psel-icon" data-side="right" data-key="p"  width="91" height="77"></canvas>
-          <canvas class="psel-icon" data-side="right" data-key="n"  width="91" height="77"></canvas>
-          <canvas class="psel-icon" data-side="right" data-key="d"  width="91" height="77"></canvas>
-          <canvas class="psel-icon" data-side="right" data-key="t"  width="91" height="77"></canvas>
-          <canvas class="psel-icon" data-side="right" data-key="he" width="91" height="77"></canvas>
+          <canvas class="psel-icon" data-side="right" data-key="p"  width="130" height="77"></canvas>
+          <canvas class="psel-icon" data-side="right" data-key="n"  width="130" height="77"></canvas>
+          <canvas class="psel-icon" data-side="right" data-key="d"  width="130" height="77"></canvas>
+          <canvas class="psel-icon" data-side="right" data-key="t"  width="130" height="77"></canvas>
+          <canvas class="psel-icon" data-side="right" data-key="he" width="130" height="77"></canvas>
         </div>
       </div>
     </div>
@@ -429,6 +467,7 @@
     <label>Electric: <span id="v9ElecVal">400</span></label>
     <input type="range" id="v9ElecSlider" min="10" max="600" step="10" value="400">
   </div>
+  </div><!-- close flex row -->
 </div>
 
 <div id="canvasWrap">
@@ -2403,26 +2442,34 @@ for (const p of _he4def) {
   _he4maxY = Math.max(_he4maxY, Math.abs(p.y - _he4cmy) + _he4halo);
 }
 
+// Maps each cluster key to [mainText, superscriptText]
+const CLUSTER_LABEL = { p: ['H', ''], n: ['N', ''], d: ['H', '2'], t: ['H', '3'], he: ['He', '4'] };
+
 function drawClusterIcon(canvas) {
   const W   = canvas.width, H = canvas.height;
   const ic  = canvas.getContext('2d');
   const key = canvas.dataset.key;
   const def = CLUSTER_DEFS[key];
+  if (!def) return;
+
+  ic.clearRect(0, 0, W, H);
+
+  // For slider icons (small, no room for label) use the full width for the image
+  const isSlider = canvas.classList.contains('pslider-icon');
+  const imgW = isSlider ? W : H;  // image occupies a square H×H on the left
 
   // Centre on visual mean position
   const cmx = def.reduce((s, p) => s + p.x, 0) / def.length;
   const cmy = def.reduce((s, p) => s + p.y, 0) / def.length;
 
-  // Use He-4 as the scale reference so all nucleons are the same size
+  // Use He-4 as the scale reference so all nucleons are the same visual size
   const PAD   = 3;
-  const scale = Math.min((W / 2 - PAD) / _he4maxX, (H / 2 - PAD) / _he4maxY);
+  const scale = Math.min((imgW / 2 - PAD) / _he4maxX, (H / 2 - PAD) / _he4maxY);
   const R     = PARTICLE_RADIUS * scale;
 
-  ic.clearRect(0, 0, W, H);
-
   for (const p of def) {
-    const jx = W / 2 + (p.x - cmx) * scale + (p._jx || 0) * scale;
-    const jy = H / 2 + (p.y - cmy) * scale + (p._jy || 0) * scale;
+    const jx = imgW / 2 + (p.x - cmx) * scale + (p._jx || 0) * scale;
+    const jy = H / 2    + (p.y - cmy) * scale + (p._jy || 0) * scale;
     const isProton = p.type === 'proton';
     const mid  = isProton ? '#ff1a65' : '#70707f';
     const core = isProton ? '#ff80b0' : '#b0b0c4';
@@ -2453,6 +2500,35 @@ function drawClusterIcon(canvas) {
       ic.textAlign    = 'center';
       ic.textBaseline = 'middle';
       ic.fillText('+', jx, jy + 0.5);
+    }
+  }
+
+  // Label: main symbol + superscript mass number, drawn in the right portion
+  if (!isSlider && CLUSTER_LABEL[key]) {
+    const [main, sup] = CLUSTER_LABEL[key];
+    const mainSz = 15, supSz = 9;
+
+    // Measure widths with correct fonts
+    ic.font = `bold ${mainSz}px "JetBrains Mono", monospace`;
+    const mainW = ic.measureText(main).width;
+    ic.font = `bold ${supSz}px "JetBrains Mono", monospace`;
+    const supW = sup ? ic.measureText(sup).width : 0;
+
+    const totalLabelW = mainW + (sup ? supW + 1 : 0);
+    const labelCx = imgW + (W - imgW) / 2;          // center of label area
+    const startX  = labelCx - totalLabelW / 2;
+    const baseY   = H / 2 + mainSz * 0.35;          // baseline for main text
+
+    ic.fillStyle = 'rgba(255,255,255,0.82)';
+    ic.textAlign    = 'left';
+    ic.textBaseline = 'alphabetic';
+
+    ic.font = `bold ${mainSz}px "JetBrains Mono", monospace`;
+    ic.fillText(main, startX, baseY);
+
+    if (sup) {
+      ic.font = `bold ${supSz}px "JetBrains Mono", monospace`;
+      ic.fillText(sup, startX + mainW + 1, baseY - mainSz * 0.52);
     }
   }
 }
