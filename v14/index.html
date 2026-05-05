@@ -363,7 +363,7 @@
   #scrubLeft {
     flex: 1; min-width: 0;
     display: flex; flex-direction: column;
-    padding-bottom: 8px; gap: 4px;
+    padding-bottom: 4px; gap: 0;
   }
 
   #energyGraph {
@@ -373,9 +373,9 @@
   }
 
   #phaseTimeline {
-    display: none; align-items: stretch;
-    height: 18px; margin: 0 16px;
-    border-radius: 4px; overflow: hidden; gap: 0;
+    display: flex; align-items: stretch;
+    height: 18px; margin: 0;
+    border-radius: 0; overflow: hidden; gap: 0;
   }
   #phaseTimeline .phase-seg {
     display: flex; align-items: center; justify-content: center;
@@ -383,16 +383,7 @@
     overflow: hidden; white-space: nowrap; min-width: 0; transition: flex 0.1s;
   }
 
-  #scrubControls {
-    display: flex; align-items: center;
-    padding: 0 16px; gap: 14px; margin-top: 2px;
-  }
-  #scrubBar .scrub-label { font-size: 10px; color: var(--text-dim); white-space: nowrap; }
-  #scrubBar .scrub-time {
-    font-size: 10px; color: var(--text-dim); white-space: nowrap;
-    min-width: 5em; text-align: right; font-variant-numeric: tabular-nums;
-  }
-  #timeSlider { flex: 1; }
+  #timeSlider { display: block; width: 100%; margin: 0; padding: 0; box-sizing: border-box; }
 
   #scrubRight {
     width: 280px; flex-shrink: 0;
@@ -466,16 +457,18 @@
     </div>
     <!-- Speed slider: speedLines | leftParticle | slider | rightParticle | speedLines -->
     <div style="display:flex;align-items:center;gap:0;">
-      <canvas id="speedLinesL" width="36" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;margin-right:-8px;"></canvas>
-      <canvas class="psel-icon pslider-icon" data-side="left"  width="44" height="36" style="margin-right:8px;"></canvas>
+      <canvas id="speedLinesL" width="36" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;margin-right:-11px;"></canvas>
+      <canvas class="psel-icon pslider-icon" data-side="left"  width="44" height="36" style="margin-right:5px;"></canvas>
       <div style="flex:1;min-width:80px;display:flex;flex-direction:column;align-items:stretch;gap:1px;">
-        <input type="range" id="v9SpeedSlider" min="0.1" max="2.0" step="0.05" value="1.05" style="width:100%;">
-        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-dim);padding:0 2px;margin-top:3px;">
-          <span>Slower</span><span>Faster</span>
+        <input type="range" id="v9SpeedSlider" min="0.1" max="2.1" step="0.05" value="1.05" style="width:100%;">
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--text-dim);padding:0 2px;margin-top:8px;">
+          <span>Slower</span>
+          <span id="speedKeV" style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent2);margin-top:5px;"></span>
+          <span>Faster</span>
         </div>
       </div>
-      <canvas class="psel-icon pslider-icon" data-side="right" width="44" height="36" style="margin-left:8px;"></canvas>
-      <canvas id="speedLinesR" width="36" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;transform:scaleX(-1);margin-left:-8px;"></canvas>
+      <canvas class="psel-icon pslider-icon" data-side="right" width="44" height="36" style="margin-left:5px;"></canvas>
+      <canvas id="speedLinesR" width="36" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;transform:scaleX(-1);margin-left:-11px;"></canvas>
     </div>
   </div>
 
@@ -486,6 +479,7 @@
       <span class="slider-icon" title="Fast">🐇</span>
     </div>
     <label class="toggle-label"><input type="checkbox" id="scaledEnergyToggle"> Show Energy Changes to Scale</label>
+    <label class="toggle-label"><input type="checkbox" id="splitIEToggle"> Show Energy in Separate Fields</label>
   </div>
 
 <div style="padding:6px 10px 8px;border-top:1px solid rgba(255,255,255,0.08);">
@@ -504,23 +498,16 @@
 <div id="scrubBar">
   <div id="scrubLeft">
     <canvas id="energyGraph" height="150"></canvas>
-    <div id="phaseTimeline">
-      <div class="phase-seg" id="phaseSeg-approach" style="background:rgba(255,255,255,0.05);color:var(--text-dim);">Before</div>
+    <div id="phaseTimeline" style="display:flex;">
+      <div class="phase-seg" id="phaseSeg-approach" style="background:rgba(255,255,255,0.05);color:var(--text-dim);flex:1;font-size:0px;">Before</div>
       <div class="phase-seg" id="phaseSeg-collision" style="background:rgba(255,45,120,0.18);color:var(--accent1);display:none;">During</div>
       <div class="phase-seg" id="phaseSeg-escape"    style="background:rgba(26,110,255,0.15);color:var(--accent2);display:none;">After</div>
     </div>
-    <div id="scrubControls">
-      <span class="scrub-label">Time</span>
-      <input type="range" id="timeSlider" min="0" max="0" value="0" disabled>
-      <span class="scrub-time" id="timeLabel">–</span>
-    </div>
+    <input type="range" id="timeSlider" min="0" max="0" value="0" disabled style="display:block;width:100%;margin:0;padding:0;box-sizing:border-box;">
   </div>
   <div id="scrubRight">
-    <label class="toggle-label" style="font-size:16px;white-space:normal;max-width:160px;line-height:1.3;text-align:center;justify-content:center;">
-      <input type="checkbox" id="splitIEToggle" checked>
-      Combine Energy in Fields
-    </label>
-    <button id="fullTimelineBtn" style="margin-top:8px;">Full Timeline</button>
+    <button id="fullTimelineBtn" style="font-size:15px;padding:6px 18px;">Full Timeline</button>
+    <div style="font-size:10px;color:var(--text-dim);text-align:center;line-height:1.4;margin-top:6px;max-width:140px;">Click and drag on the line graph to zoom in</div>
   </div>
 </div>
 
@@ -533,7 +520,7 @@ const ctx         = canvas.getContext('2d');
 const goBtn       = document.getElementById('goBtn');
 const replayBtn   = document.getElementById('replayBtn');
 const timeSlider  = document.getElementById('timeSlider');
-const timeLabelEl = document.getElementById('timeLabel');
+const timeLabelEl = { textContent: '' }; // timeLabel element removed; stub to avoid errors
 const energyGraph = document.getElementById('energyGraph');
 const egCtx       = energyGraph.getContext('2d');
 
@@ -545,6 +532,7 @@ const SUBSTEPS            = 20;
 const strongForceStrength = 4;
 const strongForceRange    = 2.0;   // fixed — no slider
 let   strongRangeMult     = 1.0;   // temporary reduction during Cat2 collision onset
+let   coulombMult         = 1.0;   // temporary boost during Cat2 collision onset
 const equilibriumRatio    = 0.35;
 
 // Timing
@@ -572,8 +560,8 @@ const COMBO_TABLE = {
   'n+t':   { sieOffset: 100, immediateKE: 58, keOut:  8, gammaKE:  0 },
   't+n':   { sieOffset: 100, immediateKE: 58, keOut:  8, gammaKE:  0 },
   // Cat 2 — productive fusion (KE Out = immediateKE − 2)
-  't+d':   { sieOffset: 250, sieOffsetUnscaled: 172, immediateKE: 70, keOut: 68, gammaKE:  0 },
-  'd+t':   { sieOffset: 250, sieOffsetUnscaled: 172, immediateKE: 70, keOut: 68, gammaKE:  0 },
+  't+d':   { sieOffset: 18000, sieOffsetUnscaled: 172, immediateKE: 70, keOut: 68, keInScaled: 17600, keOutScaled: 16700, gammaKE:  0 },
+  'd+t':   { sieOffset: 18000, sieOffsetUnscaled: 172, immediateKE: 70, keOut: 68, keInScaled: 17600, keOutScaled: 16700, gammaKE:  0 },
   'd+d':   { sieOffset: 150, sieOffsetUnscaled: 100, immediateKE: 20, keOut: 18, gammaKE:  0 },
   't+t':   { sieOffset: 300, sieOffsetUnscaled: 250, immediateKE: 37, keOut: 35, gammaKE:  0 },
   // Cat 3 — gamma emission
@@ -636,13 +624,15 @@ let egDragCurPx    = null;
 //  so KE is exactly conserved on escape.
 // ============================================================
 let initialTotal = 0;
-let initialKE    = 0;   // CM-frame KE at sim start — escape KE must match this exactly
+let initialKE    = 0;   // CM-frame KE at sim start in sim units — used by escape physics
+let keVPerSimUnit = 1;  // conversion factor: sim-unit → keV, for approach-phase bar display
 // Phase timeline boundary frames (indices into particleHistory)
 let collisionStartFrame = -1;
 let escapeStartFrame    = -1;
 
 let collisionDisplayKE  = null;  // explicit KE override for bar chart; null = show actual physics
 let collisionDisplayEIE = null;  // frozen EIE for collision phase; null = show actual physics
+let maxApproachEIE      = 0;     // peak EIE seen during approach phase (used for D+T freeze)
 let collisionPeakKE     = 0;     // KE at collision onset (for fallback when no table entry)
 let gammaCarriedEnergy  = 0;     // energy carried away by photon; subtracts from displayed total
 
@@ -668,6 +658,7 @@ let escapeAnimStartPos  = null;   // particle positions at collision end
 let escapeAnimTargetPos = null;   // target positions after snap / teleport
 let escapeAnimStartVel  = null;   // {lv, rv} cluster velocities at collision end
 let escapeAnimTargetVel = null;   // {lv, rv} final escape cluster velocities
+let cat2EscapeFrame     = 0;      // counts frames since Cat2 AFTER began (for physics assist)
 
 // Camera: geometric midpoint between cluster centroids
 let cameraSiteX = 0, cameraSiteY = 0;
@@ -676,7 +667,9 @@ let cameraSiteX = 0, cameraSiteY = 0;
 //  DISPLAY STATE
 // ============================================================
 let showField = true;
-const barYRange = 120;
+let barYRange = 120;
+let barYRangeScaled = null;  // null = auto (use combo max); set by drag when scaledEnergy
+let barScaleDrag = null;     // { startY, startRange } while dragging the scale
 let splitIE   = false;
 let sieOffset = 0;
 let simSpeed  = 7;       // 1–10 speed slider; wired up later
@@ -900,14 +893,22 @@ function setupScenario() {
   }
 
   const e0  = computeEnergy();
-  initialTotal = e0.total;
-  initialKE    = e0.ke;
+  initialTotal  = e0.total;
+  initialKE     = e0.ke;
+  keVPerSimUnit = (scaledEnergy && e0.ke > 0) ? speedToKeV(approachSpeed) / e0.ke : 1;
   updateCamera();
 }
 
 let snapshot = null;
-function takeSnapshot()    { snapshot = particles.map(p => ({ ...p })); replayBtn.disabled = false; }
-function restoreSnapshot() { if (!snapshot) return; particles = snapshot.map(p => ({ ...p })); }
+function takeSnapshot() {
+  snapshot = { particles: particles.map(p => ({ ...p })), leftClusterSize };
+  replayBtn.disabled = false;
+}
+function restoreSnapshot() {
+  if (!snapshot) return;
+  particles = snapshot.particles.map(p => ({ ...p }));
+  leftClusterSize = snapshot.leftClusterSize;
+}
 
 // ============================================================
 //  FORCE MODEL
@@ -918,7 +919,7 @@ function pairForce(dist, distSq, aType, bType) {
   if (aType === 'gamma' || bType === 'gamma') return 0;
   let force = 0;
   if (aType === 'proton' && bType === 'proton') {
-    force += coulombStrength / Math.max(distSq, PARTICLE_RADIUS * PARTICLE_RADIUS);
+    force += coulombStrength * coulombMult / Math.max(distSq, PARTICLE_RADIUS * PARTICLE_RADIUS);
   }
   const cutoff = strongCutoff();
   if (dist < cutoff) {
@@ -1273,9 +1274,28 @@ function applyCategory2Velocities(newLSize, newRSize, overrideTargetKE = null) {
   // with momentum conservation → v_r = -(newLSize/newRSize) v_l
   const vl = Math.sqrt(2 * targetCmKE * newRSize / (newLSize * n));
 
-  // Random scatter: uniform over all angles (full 2π, not just backscatter)
+  // Random scatter: uniform over all angles (full 2π, not just backscatter).
+  // Then guarantee the right cluster moves away from the left cluster using
+  // the intended separation direction from escapeAnimTargetPos.
   const theta = Math.random() * 2 * Math.PI;
-  const cosT = Math.cos(theta), sinT = Math.sin(theta);
+  let cosT = Math.cos(theta), sinT = Math.sin(theta);
+
+  if (escapeAnimTargetPos) {
+    // Compute intended separation: right target CM minus left target CM
+    let tlcx=0, tlcy=0, trcx=0, trcy=0;
+    for (let i=0;        i<newLSize; i++) { tlcx+=escapeAnimTargetPos[i].x; tlcy+=escapeAnimTargetPos[i].y; }
+    for (let i=newLSize; i<n;        i++) { trcx+=escapeAnimTargetPos[i].x; trcy+=escapeAnimTargetPos[i].y; }
+    tlcx/=newLSize; tlcy/=newLSize;
+    trcx/=newRSize; trcy/=newRSize;
+    const sdx=trcx-tlcx, sdy=trcy-tlcy, sdist=Math.sqrt(sdx*sdx+sdy*sdy);
+    if (sdist > 0.01) {
+      const snx=sdx/sdist, sny=sdy/sdist;
+      // Right cluster's CM-frame velocity = -(newLSize/newRSize)*vl*(cosT,sinT).
+      // It must have a positive dot product with (snx,sny) i.e. -(cosT*snx+sinT*sny)>0
+      // → cosT*snx+sinT*sny < 0. If not, flip theta by π.
+      if (cosT * snx + sinT * sny >= 0) { cosT = -cosT; sinT = -sinT; }
+    }
+  }
 
   const newLvx = cmvx + vl * cosT;
   const newLvy = cmvy + vl * sinT;
@@ -1764,9 +1784,30 @@ function drawStrongHeatmap() {
 //  approach / collision they all genuinely vary; the total
 //  stays constant by construction.
 // ============================================================
+// Convert a value to a fraction [0,1] of chart height — linear or log.
+function fmtMeV(keV) {
+  // Convert keV → MeV, at most 2 significant figures
+  return String(parseFloat((keV / 1000).toPrecision(2)));
+}
+
+function valToFrac(v, maxVal, useLog) {
+  if (!useLog) return Math.max(0, v / maxVal);
+  if (v <= 0) return 0;
+  return Math.log(v + 1) / Math.log(maxVal + 1);
+}
+
+// Returns a nice round tick interval for the given value range.
+function niceTickStep(range) {
+  const candidates = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000];
+  for (const s of candidates) {
+    const n = Math.floor(range / s);
+    if (n >= 3 && n <= 8) return s;
+  }
+  return Math.max(1, Math.round(range / 5));
+}
+
 function drawBarChart() {
   if (particles.length === 0) return;
-  const e = computeEnergy();
 
   const W  = 320;
   const H  = canvas.height;
@@ -1799,21 +1840,71 @@ function drawBarChart() {
         { label: 'Energy in Fields',  value: displayIE,  color: '#7b6fff', glow: 'rgba(120,100,255,0.9)' },
       ];
 
-  const pad      = 12;
-  const labelH   = 62;
+  // Layout — no Y-axis margin needed when not showing to scale
+  const yAxisW   = scaledEnergy ? 42 : 10;
+  const padR     = 10;    // right padding
+  const labelH   = 62;    // height of bar text labels below baseline
   const controlH = 8;
-  const barW     = (W - pad * 2) / bars.length;
-  const chartH   = H - labelH - controlH - pad - 36; // room for phase title
+  const titleH   = 36;    // room for phase title at top
+  const chartH   = H - labelH - controlH - titleH;
   const baseline = gy + H - labelH - controlH;
-  const maxVal   = barYRange;
+  const chartTop = gy + titleH;
+  const chartX   = gx + yAxisW;
+  const chartW   = W - yAxisW - padR;
+  const comboEntry = getComboEntry();
+  const autoMax  = Math.max(comboEntry?.keInScaled ?? 0, comboEntry?.keOutScaled ?? 0) || speedToKeV(approachSpeed);
+  const maxVal   = scaledEnergy
+    ? (barYRangeScaled ?? autoMax)
+    : barYRange;
 
-  ctx.font = 'bold 11px "JetBrains Mono", monospace';
+  // ── Gridlines + Y-axis labels (only when showing to scale) ──────
+  if (scaledEnergy) {
+    const step = niceTickStep(maxVal);
+    const ticks = [];
+    for (let v = 0; v <= maxVal; v += step) ticks.push(v);
+
+    ctx.save();
+    ctx.font      = '10px "JetBrains Mono", monospace';
+    ctx.textAlign = 'right';
+    ticks.forEach((v, idx) => {
+      const py = baseline - valToFrac(v, maxVal, false) * chartH;
+      if (py < chartTop - 2) return;
+      const isTop = (idx === ticks.length - 1);
+      ctx.save();
+      ctx.strokeStyle = v === 0 ? 'rgba(0,200,255,0.35)' : 'rgba(0,200,255,0.1)';
+      ctx.lineWidth   = v === 0 ? 1 : 0.75;
+      if (v === 0) { ctx.shadowColor = 'rgba(0,200,255,0.5)'; ctx.shadowBlur = 4; }
+      ctx.beginPath(); ctx.moveTo(gx, py); ctx.lineTo(gx + W, py); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = v === 0 ? 'rgba(0,200,255,0.5)' : 'rgba(0,200,255,0.35)';
+      ctx.fillText(isTop ? fmtMeV(v) + ' MeV' : fmtMeV(v), chartX - 4, py + 3.5);
+    });
+    ctx.restore();
+
+    // Drag-to-rescale affordance
+    ctx.save();
+    ctx.fillStyle = barScaleDrag ? 'rgba(0,200,255,0.7)' : 'rgba(0,200,255,0.28)';
+    ctx.font      = '10px "JetBrains Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('⇕ drag scale', gx + 4, chartTop + 13);
+    ctx.restore();
+  } else {
+    // Not to scale: just draw the baseline
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,200,255,0.5)'; ctx.shadowBlur = 4;
+    ctx.strokeStyle = 'rgba(0,200,255,0.35)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(gx, baseline); ctx.lineTo(gx + W, baseline); ctx.stroke();
+    ctx.restore();
+  }
+
+  // ── Bars ──────────────────────────────────────────────────────
+  const barW = chartW / bars.length;
   ctx.textAlign = 'center';
 
   bars.forEach((bar, i) => {
-    const barPx = Math.max(0, (bar.value / maxVal) * chartH);
-    const x  = gx + pad + i * barW + barW * 0.1;
-    const bw = barW * 0.8;
+    const barPx  = valToFrac(bar.value, maxVal, false) * chartH;
+    const x      = chartX + i * barW + barW * 0.1;
+    const bw     = barW * 0.8;
     const barTop = baseline - barPx;
 
     if (barPx > 0) {
@@ -1821,68 +1912,65 @@ function drawBarChart() {
       const rectH = barPx;
       const r     = Math.min(6, bw / 2, rectH / 2);
 
-      // Dim fill — half-brightness via alpha
+      // Dim fill
       ctx.save();
       ctx.fillStyle   = bar.color;
       ctx.globalAlpha = 0.22;
-      ctx.beginPath();
-      ctx.roundRect(x, rectY, bw, rectH, [r, r, 2, 2]);
-      ctx.fill();
+      ctx.beginPath(); ctx.roundRect(x, rectY, bw, rectH, [r, r, 2, 2]); ctx.fill();
       ctx.restore();
 
       // Outer glow
       ctx.save();
-      ctx.shadowColor = bar.glow;
-      ctx.shadowBlur  = 22;
-      ctx.strokeStyle = bar.color;
-      ctx.lineWidth   = 3;
-      ctx.globalAlpha = 0.5;
-      ctx.beginPath();
-      ctx.roundRect(x, rectY, bw, rectH, [r, r, 2, 2]);
-      ctx.stroke();
+      ctx.shadowColor = bar.glow; ctx.shadowBlur = 22;
+      ctx.strokeStyle = bar.color; ctx.lineWidth = 3; ctx.globalAlpha = 0.5;
+      ctx.beginPath(); ctx.roundRect(x, rectY, bw, rectH, [r, r, 2, 2]); ctx.stroke();
       ctx.restore();
 
       // Crisp neon outline
       ctx.save();
-      ctx.shadowColor = bar.glow;
-      ctx.shadowBlur  = 6;
-      ctx.strokeStyle = bar.color;
-      ctx.lineWidth   = 3;
-      ctx.beginPath();
-      ctx.roundRect(x, rectY, bw, rectH, [r, r, 2, 2]);
-      ctx.stroke();
+      ctx.shadowColor = bar.glow; ctx.shadowBlur = 6;
+      ctx.strokeStyle = bar.color; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.roundRect(x, rectY, bw, rectH, [r, r, 2, 2]); ctx.stroke();
       ctx.restore();
+
+      // Value label (only when showing to scale)
+      if (scaledEnergy) {
+        const valStr = fmtMeV(bar.value) + ' MeV';
+        const clipped = barTop < chartTop;  // bar taller than chart area
+        ctx.save();
+        ctx.shadowColor = bar.glow; ctx.shadowBlur = 6;
+        ctx.fillStyle   = bar.color;
+        ctx.font        = 'bold 13px "JetBrains Mono", monospace';
+        ctx.textAlign   = 'center';
+        if (clipped) {
+          // Draw value inside the bar near the top
+          ctx.fillText(valStr, x + bw / 2, chartTop + 14);
+        } else {
+          ctx.fillText(valStr, x + bw / 2, barTop - 4);
+        }
+        ctx.restore();
+      }
     }
 
-
-    // Axis label below baseline — two lines at small font
+    // Label below baseline — three lines
     ctx.save();
     ctx.shadowColor = bar.glow; ctx.shadowBlur = 6;
     ctx.fillStyle   = bar.color;
     ctx.font        = 'bold 14px "JetBrains Mono", monospace';
     const words = bar.label.split(' ');
+    // For negative bars: show value just above the label
+    if (scaledEnergy && bar.value < 0) {
+      ctx.font = 'bold 13px "JetBrains Mono", monospace';
+      ctx.fillText(fmtMeV(bar.value) + ' MeV', x + bw / 2, baseline + 3);
+      ctx.font = 'bold 14px "JetBrains Mono", monospace';
+    }
     ctx.fillText(words.slice(0, 2).join(' '), x + bw / 2, baseline + 16);
     ctx.fillText(words[2] || '',              x + bw / 2, baseline + 33);
     if (words[3]) ctx.fillText(words[3],      x + bw / 2, baseline + 50);
     ctx.restore();
   });
 
-  // Baseline
-  ctx.save();
-  ctx.shadowColor = 'rgba(0,200,255,0.5)'; ctx.shadowBlur = 4;
-  ctx.strokeStyle = 'rgba(0,200,255,0.3)'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(gx, baseline); ctx.lineTo(gx + W, baseline); ctx.stroke();
-  ctx.restore();
-
-  // Y-axis max
-  ctx.save();
-  ctx.fillStyle = 'rgba(0,200,255,0.4)';
-  ctx.font      = '10px "JetBrains Mono", monospace';
-  ctx.textAlign = 'left';
-  ctx.fillText(barYRange, gx + 6, gy + 48);
-  ctx.restore();
-
-  // Phase label
+  // ── Phase label ───────────────────────────────────────────────
   const phaseColors = {
     approach:    '#00e5ff',
     collision:   '#ff2060',
@@ -1897,7 +1985,7 @@ function drawBarChart() {
   ctx.fillStyle   = pCol;
   ctx.font        = 'bold 15px "JetBrains Mono", monospace';
   ctx.textAlign   = 'center';
-  ctx.fillText(phaseLabel, gx + W / 2, gy + 26);
+  ctx.fillText(phaseLabel, gx + W / 2, gy + 22);
   ctx.restore();
 
   ctx.restore();
@@ -1909,15 +1997,18 @@ function drawBarChart() {
 function getDisplayEnergy() {
   const ds  = scaledEnergy ? 1 : 0.2;
   const e   = computeEnergy();
+  // During approach (no collision table values yet), scale sim units → keV for display.
+  // During collision phases, collisionDisplayKE is already in display units.
+  const kv  = scaledEnergy ? keVPerSimUnit : 1;
   const ke  = collisionDisplayKE !== null
     ? (chargedNuclearEscape ? collisionDisplayKE : collisionDisplayKE * ds)
-    : e.ke;
+    : e.ke * kv;
   const eie = chargedNuclearEscape
     ? Math.max(0, chargedEscapeEIEBase - (collisionDisplayKE - 11 * speedScale()))
     : (collisionPhase !== 'approach' && collisionDisplayEIE !== null)
-      ? collisionDisplayEIE : e.eie;
+      ? collisionDisplayEIE : e.eie * kv;
   const tot = initialTotal + sieOffset - gammaCarriedEnergy * ds;
-  const sie = Math.max(0, tot - Math.max(0, ke) - eie);
+  const sie = tot - Math.max(0, ke) - eie;
   const ie  = eie + sie;
   return { ke: Math.max(0, ke), eie: Math.max(0, eie), sie, ie, tot };
 }
@@ -1957,7 +2048,10 @@ function drawEnergyGraph() {
   }
 
   const cur = scrubFrame >= 0 ? scrubFrame : n - 1;
-  const splitX = zLen > 0 ? ((cur - zStart) / zLen) * W : W;
+  // Offset by half the slider thumb width (5px) so the cursor line tracks
+  // directly above the slider thumb center rather than the raw canvas edge.
+  const thumbHalf = 5;
+  const splitX = zLen > 0 ? thumbHalf + ((cur - zStart) / zLen) * (W - thumbHalf * 2) : W - thumbHalf;
 
   function buildPath(getValue) {
     const path = new Path2D();
@@ -2157,6 +2251,7 @@ function renderFrame(idx) {
   collisionFrames      = frame.collisionFrames ?? 999;
   collisionDisplayKE   = frame.collisionDisplayKE ?? null;
   collisionDisplayEIE  = frame.collisionDisplayEIE ?? null;
+  maxApproachEIE       = frame.maxApproachEIE      ?? 0;
   gammaCarriedEnergy   = frame.gammaCarriedEnergy  ?? 0;
   chargedNuclearEscape = frame.chargedNuclearEscape ?? false;
   chargedEscapeEIEBase = frame.chargedEscapeEIEBase ?? 0;
@@ -2168,6 +2263,7 @@ function renderFrame(idx) {
   collisionFrames      = liveCF;
   collisionDisplayKE   = liveCDKE;
   collisionDisplayEIE  = liveCDEIE;
+  maxApproachEIE       = frame.maxApproachEIE ?? maxApproachEIE;
   gammaCarriedEnergy   = liveGCE;
   chargedNuclearEscape = liveCNE;
   chargedEscapeEIEBase = liveCEEB;
@@ -2199,11 +2295,12 @@ function resetState() {
   collisionFrames    = 0;
   collisionDisplayKE  = null;
   collisionDisplayEIE = null;
+  maxApproachEIE      = 0;
   collisionPeakKE     = 0;
   gammaCarriedEnergy  = 0;
   collisionStartFrame = -1;
   escapeStartFrame    = -1;
-  if (typeof phaseTimeline !== 'undefined') phaseTimeline.style.display = 'none';
+  if (typeof updatePhaseTimeline !== 'undefined') updatePhaseTimeline();
   escapeAnimFrame    = 0;
   escapeAnimStartPos  = null;
   escapeAnimTargetPos = null;
@@ -2217,6 +2314,8 @@ function resetState() {
   coulombScatterEscape = false;
   chargedNuclearEscape = false;
   strongRangeMult      = 1.0;
+  coulombMult          = 1.0;
+  cat2EscapeFrame      = 0;
   escapeKECap = Infinity;
   chargedEscapeEIEBase = 0;
   particleHistory  = [];
@@ -2241,8 +2340,9 @@ function resetAndSetup() {
   resetState();
   snapshot = null;
   replayBtn.disabled = true;
-  initialTotal = 0;
-  initialKE    = 0;
+  initialTotal  = 0;
+  initialKE     = 0;
+  keVPerSimUnit = 1;
 
   setupScenario();
   draw();
@@ -2292,7 +2392,8 @@ replayBtn.addEventListener('click', () => {
   restoreSnapshot();
   const eSnap  = computeEnergy();
   initialTotal = eSnap.total;
-  initialKE    = eSnap.ke;
+  initialKE     = eSnap.ke;
+  keVPerSimUnit = (scaledEnergy && eSnap.ke > 0) ? speedToKeV(approachSpeed) / eSnap.ke : 1;
   updateCamera();
   draw();
   running = true;
@@ -2320,32 +2421,37 @@ const segEscape       = document.getElementById('phaseSeg-escape');
 
 function updatePhaseTimeline() {
   const total = particleHistory.length;
+
+  // No history yet — keep the placeholder approach bar visible (no text), hide others.
   if (total === 0 || collisionStartFrame < 0) {
-    phaseTimeline.style.display = 'none';
+    segApproach.style.display  = 'flex';
+    segApproach.style.flex     = '1';
+    segApproach.style.fontSize = '0px';   // space reserved, label hidden
+    segCollision.style.display = 'none';
+    segEscape.style.display    = 'none';
     return;
   }
-  phaseTimeline.style.display = 'flex';
 
   // Full phase boundaries
-  const approachEnd   = collisionStartFrame;                         // [0, approachEnd)
-  const collisionEnd  = escapeStartFrame >= 0 ? escapeStartFrame : total; // [approachEnd, collisionEnd)
-  const escapeEnd     = total;                                        // [collisionEnd, escapeEnd)
+  const approachEnd  = collisionStartFrame;
+  const collisionEnd = escapeStartFrame >= 0 ? escapeStartFrame : total;
+  const escapeEnd    = total;
 
   // Zoom window
   const zStart = graphZoomStart;
-  const zEnd   = (graphZoomEnd ?? (total - 1)) + 1; // exclusive
+  const zEnd   = (graphZoomEnd ?? (total - 1)) + 1;
 
-  // Visible frames for each phase within zoom window
   const clamp = (a, b) => Math.max(0, Math.min(b, zEnd) - Math.max(a, zStart));
-  const visApproach   = clamp(0,          approachEnd);
-  const visCollision  = clamp(approachEnd, collisionEnd);
-  const visEscape     = clamp(collisionEnd, escapeEnd);
-  const visTotal      = visApproach + visCollision + visEscape;
+  const visApproach  = clamp(0,           approachEnd);
+  const visCollision = clamp(approachEnd, collisionEnd);
+  const visEscape    = clamp(collisionEnd, escapeEnd);
+  const visTotal     = visApproach + visCollision + visEscape;
 
   const setSegment = (el, frames) => {
     if (frames <= 0) { el.style.display = 'none'; return; }
-    el.style.display = 'flex';
-    el.style.flex    = String(frames);
+    el.style.display  = 'flex';
+    el.style.flex     = String(frames);
+    // Show label text only once segment is wide enough to hold it
     el.style.fontSize = frames / visTotal < 0.12 ? '0px' : '10px';
   };
 
@@ -2424,6 +2530,47 @@ energyGraph.addEventListener('mouseleave', e => {
 });
 
 // ============================================================
+//  BAR CHART SCALE DRAG  (vertical drag on chart panel to rescale)
+// ============================================================
+const BAR_CHART_W = 320;
+function inBarChartPanel(e) {
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  return x >= canvas.width - BAR_CHART_W;
+}
+
+canvas.addEventListener('mousedown', e => {
+  if (!inBarChartPanel(e)) return;
+  const comboEntry = getComboEntry();
+  const autoMax = comboEntry?.keOutScaled ?? speedToKeV(approachSpeed);
+  const startRange = scaledEnergy ? (barYRangeScaled ?? autoMax) : barYRange;
+  barScaleDrag = { startY: e.clientY, startRange, scaled: scaledEnergy };
+  e.preventDefault();
+});
+
+canvas.addEventListener('mousemove', e => {
+  canvas.style.cursor = inBarChartPanel(e) ? 'ns-resize' : '';
+  if (!barScaleDrag) return;
+  const dy = e.clientY - barScaleDrag.startY;
+  // drag down = bigger range (zoom out), drag up = smaller range (zoom in)
+  if (barScaleDrag.scaled) {
+    const sens = barScaleDrag.startRange > 1000 ? 50 : 1.2;
+    barYRangeScaled = Math.max(10, Math.round(barScaleDrag.startRange + dy * sens));
+  } else {
+    barYRange = Math.max(5, Math.min(5000, Math.round(barScaleDrag.startRange + dy * 1.2)));
+  }
+  if (!running) draw();
+});
+
+canvas.addEventListener('mouseup', e => {
+  if (barScaleDrag) { barScaleDrag = null; if (!running) draw(); }
+});
+
+canvas.addEventListener('mouseleave', e => {
+  if (barScaleDrag) { barScaleDrag = null; }
+});
+
+// ============================================================
 //  TIME SCRUBBER
 // ============================================================
 timeSlider.addEventListener('input', () => {
@@ -2442,16 +2589,25 @@ timeSlider.addEventListener('input', () => {
 //  CONTROLS
 // ============================================================
 document.getElementById('splitIEToggle').addEventListener('change', function() {
-  splitIE = !this.checked; // checked = combined (not split)
+  splitIE = this.checked; // checked = show separate fields
   if (!running) draw();
 });
 document.getElementById('fullTimelineBtn').addEventListener('click', () => {
   resetGraphZoom();
 });
+function speedToKeV(speed) {
+  return Math.round(10 + (speed - 0.1) / (2.1 - 0.1) * (120 - 10));
+}
+function updateSpeedKeV() {
+  const el = document.getElementById('speedKeV');
+  if (el) el.textContent = speedToKeV(approachSpeed) + ' keV';
+}
 document.getElementById('v9SpeedSlider').addEventListener('input', function() {
   approachSpeed = parseFloat(this.value);
   drawSpeedLines();
+  updateSpeedKeV();
 });
+updateSpeedKeV(); // seed on load
 document.getElementById('simSpeedSlider').addEventListener('input', function() {
   simSpeed = parseInt(this.value);
 });
@@ -2589,6 +2745,7 @@ pselIcons.forEach(canvas => {
     // Close the wheel
     canvas.closest('.pwheel').classList.remove('open');
     applyComboSieOffset();
+    barYRangeScaled = null;  // reset scaled axis to auto for new combo
     resetAndSetup();
   });
 });
@@ -2693,6 +2850,13 @@ function loop() {
 
   // ── ESCAPE ANIMATION  (lerp positions + cluster velocities) ───
   if (collisionPhase === 'escapeAnim') {
+    // Cat2 physics assist: boost Coulomb + shrink strong range for first 8 frames of AFTER
+    if (isCategory2()) {
+      const assist = cat2EscapeFrame < 8;
+      strongRangeMult = assist ? 0.8 : 1.0;
+      coulombMult     = assist ? 2.0 : 1.0;
+    }
+    cat2EscapeFrame++;
     escapeAnimFrame++;
     if (chargedNuclearEscape) escapeAnimFrame = ESCAPE_ANIM_FRAMES; // snap immediately, skip type-swap lerp
     const t    = escapeAnimFrame / ESCAPE_ANIM_FRAMES;
@@ -2748,6 +2912,13 @@ function loop() {
 
   // ── ESCAPE  (coast for nuclear products; physics for Coulomb scatter) ───
   } else if (collisionPhase === 'escape') {
+    // Continue Cat2 physics assist into escape phase until 8 AFTER frames elapsed
+    if (isCategory2()) {
+      const assist = cat2EscapeFrame < 8;
+      strongRangeMult = assist ? 0.8 : 1.0;
+      coulombMult     = assist ? 2.0 : 1.0;
+      cat2EscapeFrame++;
+    }
     if (coulombScatterEscape || chargedNuclearEscape) {
       // Run real physics: Coulomb scatter or D+D→T+p not-to-scale
       step(frameSpeed());
@@ -2776,6 +2947,7 @@ function loop() {
              sy < -margin || sy > canvas.height + margin;
     });
     if (allGone) {
+      strongRangeMult = 1.0; coulombMult = 1.0;
       running = false;
       paused  = false;
       goBtn.textContent = '▶';
@@ -2787,9 +2959,6 @@ function loop() {
 
   // ── COLLISION  (free physics for up to COLLISION_FRAMES) ──────
   } else if (collisionPhase === 'collision') {
-    // Cat2: shrink strong-force range 20% for the first 8 frames so the
-    // Coulomb barrier can push clusters apart and prevent He-4 lock-in.
-    strongRangeMult = (isCategory2() && collisionFrames < 8) ? 0.8 : 1.0;
     step(frameSpeed());
     collisionFrames++;
     updateCamera();
@@ -2853,17 +3022,17 @@ function loop() {
         // Switch display KE to keOut (nucleus keeps ~initialKE; gamma carries the rest)
         const pnEscEntry = getComboEntry();
         const pnScale    = speedScale();
-        collisionDisplayKE = pnEscEntry ? pnEscEntry.keOut * pnScale : initialKE;
+        collisionDisplayKE = pnEscEntry ? pnEscEntry.keOut * pnScale : initialKE * keVPerSimUnit;
         // EIE stays frozen — single charged product, no inter-cluster Coulomb drop
       }
     } else if (fireEscape) {
-      strongRangeMult = 1.0;  // restore before escape physics runs
+      cat2EscapeFrame = 0;  // start counting AFTER frames for physics assist
       escapeStartFrame = particleHistory.length;
       const escEntry = getComboEntry();
       const escScale = speedScale();
       if (isCategory1()) {
         fireCategory1Escape(); escapeAnimFrame = 0; collisionPhase = 'escapeAnim';
-        collisionDisplayKE = escEntry ? escEntry.keOut * escScale : initialKE;
+        collisionDisplayKE = escEntry ? escEntry.keOut * escScale : initialKE * keVPerSimUnit;
         // EIE stays frozen — N is neutral, no inter-cluster Coulomb
       } else if (isCategory2()) {
         fireCategory2Escape(); escapeAnimFrame = 0; collisionPhase = 'escapeAnim';
@@ -2876,12 +3045,15 @@ function loop() {
           // D+D→He3+n not-to-scale: small drop from 11 to 10.6
           collisionDisplayKE = 10.6 * escScale / 0.2;
         } else {
-          collisionDisplayKE = escEntry ? escEntry.keOut * escScale : collisionPeakKE * 0.88;
+          // When to-scale and the combo has a real keV value, use it directly (no speedScale)
+          collisionDisplayKE = (scaledEnergy && escEntry?.keOutScaled != null)
+            ? escEntry.keOutScaled
+            : escEntry ? escEntry.keOut * escScale : collisionPeakKE * 0.88;
         }
       } else if (isCategory3()) {
         if (!photonCaptureFired) firePhotonCapture();
         collisionPhase = 'escape';
-        collisionDisplayKE = escEntry ? escEntry.keOut * escScale : initialKE;
+        collisionDisplayKE = escEntry ? escEntry.keOut * escScale : initialKE * keVPerSimUnit;
         // EIE stays frozen — single charged product
       }
     }
@@ -2904,16 +3076,23 @@ function loop() {
       const colE    = computeEnergy();
       const colEntry = getComboEntry();
       const scale    = speedScale();
+      const isDT = (leftChoice === 'd' && rightChoice === 't') || (leftChoice === 't' && rightChoice === 'd');
       if (!scaledEnergy && leftChoice === 'd' && rightChoice === 'd') {
         collisionDisplayKE = 11 * scale / 0.2; // displays as 11 after ds=0.2
+      } else if (scaledEnergy && isDT && colEntry?.keInScaled != null) {
+        collisionDisplayKE = colEntry.keInScaled;  // D+T: spike to full fusion KE at DURING start
       } else {
         collisionDisplayKE = colEntry ? colEntry.immediateKE * scale
-                                      : Math.max(initialKE, colE.ke);
+                                      : Math.max(initialKE * keVPerSimUnit, colE.ke * keVPerSimUnit);
       }
       collisionPeakKE     = collisionDisplayKE;
-      collisionDisplayEIE = colE.eie;
+      // D+T: freeze EIE at the peak it reached during approach (protons stay bound)
+      collisionDisplayEIE = (scaledEnergy && isDT) ? maxApproachEIE * keVPerSimUnit : colE.eie;
     } else {
-      // No nuclear contact yet — check for Coulomb scatter reversal
+      // No nuclear contact yet — track peak EIE for D+T freeze
+      const curEIE = computeEnergy().eie;
+      if (curEIE > maxApproachEIE) maxApproachEIE = curEIE;
+      // Check for Coulomb scatter reversal
       const cdx = rcx - lcx, cdy = rcy - lcy;
       const cdist = Math.sqrt(cdx * cdx + cdy * cdy);
       if (cdist > 0.01) {
@@ -2965,6 +3144,7 @@ function loop() {
     collisionFrames,
     collisionDisplayKE,
     collisionDisplayEIE,
+    maxApproachEIE,
     gammaCarriedEnergy,
     chargedNuclearEscape,
     chargedEscapeEIEBase,
