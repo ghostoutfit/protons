@@ -603,8 +603,8 @@
       </div>
       <div style="display:flex;gap:10px;align-self:stretch;align-items:center">
         <div style="display:flex;flex-direction:column;gap:4px">
-          <button class="awheel-item active" data-pmode="particles">Particles</button>
-          <button class="awheel-item" data-pmode="outline">Outline</button>
+          <button class="awheel-item active" data-pmode="particles" style="display:flex;align-items:center;gap:5px"><canvas id="particlesModeIcon" width="22" height="18" style="display:block;flex-shrink:0;image-rendering:pixelated"></canvas>Particles</button>
+          <button class="awheel-item" data-pmode="outline" style="display:flex;align-items:center;gap:5px"><canvas id="outlineModeIcon" width="22" height="18" style="display:block;flex-shrink:0;image-rendering:pixelated"></canvas>Outline</button>
         </div>
         <div id="forceModeRow" style="display:flex;flex-direction:column;gap:4px">
           <button class="awheel-item active" data-fmode="0">Forces off</button>
@@ -1081,6 +1081,35 @@ function drawNeutron(x, y) {
   }
 }
 
+// ─── Chain-site particle offsets (normalized to radius 1.0) ──────────────────
+// Derived lazily from animParent so every chain site uses the full nucleus template.
+let chainParticleOffsets = null;
+function getChainParticleOffsets() {
+  if (chainParticleOffsets) return chainParticleOffsets;
+  if (!animParent) return [];
+  const sphR = animParent.sphereR;
+  const cx0 = animParent.cx, cy0 = animParent.cy;
+  chainParticleOffsets = animParent.particles.map(p => ({
+    ox: (p.x - cx0) / sphR,
+    oy: (p.y - cy0) / sphR,
+    oz: (p.z || 0) / sphR,
+    type: p.type,
+  })).sort((a, b) => a.oz - b.oz);
+  return chainParticleOffsets;
+}
+
+function drawChainSiteParticles(cx, cy, r, rotAngle = 0) {
+  const offsets = getChainParticleOffsets();
+  const cosA = Math.cos(rotAngle), sinA = Math.sin(rotAngle);
+  const pts = offsets.map(p => ({
+    x: cx + (p.ox * cosA - p.oy * sinA) * r,
+    y: cy + (p.ox * sinA + p.oy * cosA) * r,
+    z: p.oz * r,
+    type: p.type,
+  }));
+  drawParticles(pts, 0);   // no jitter in chain mode
+}
+
 // ─── v11-style particle renderer — stochastic jitter + fuzzy glow ────────────
 const particleJitter = [];
 // slow=false (default): step=1.8, decay=0.72 — σ≈1.83px, autocorr ~3.6 frames (used during fission/daughters)
@@ -1232,6 +1261,8 @@ function applyTab(tab) {
   mainNeutronsEmitted = false; mainEnergyTransferred = false;
   chainNeutrons       = []; lastChainTime = null;
   enrichSites         = [];
+  chainParticleOffsets = null;
+  chainPaused         = false;
   document.getElementById('goBtn').textContent = '▶ GO';
   document.getElementById('goBtn').classList.remove('running');
   document.getElementById('replayBtn').disabled = true;
@@ -1714,8 +1745,8 @@ function updateChain(now) {
         const spd = 0.28 + Math.random() * 0.14;
         const a = site.angle;
         site.daughters = [
-          { x: site.cx, y: site.cy, vx:  Math.cos(a) * spd, vy:  Math.sin(a) * spd, r: sphereR * 0.7 },
-          { x: site.cx, y: site.cy, vx: -Math.cos(a) * spd, vy: -Math.sin(a) * spd, r: sphereR * 0.6 },
+          { x: site.cx, y: site.cy, vx:  Math.cos(a) * spd, vy:  Math.sin(a) * spd, r: sphereR * 0.7, viewAngle: Math.random() * Math.PI * 2 },
+          { x: site.cx, y: site.cy, vx: -Math.cos(a) * spd, vy: -Math.sin(a) * spd, r: sphereR * 0.6, viewAngle: Math.random() * Math.PI * 2 },
         ];
       }
       if (site.fissT >= ANIM_T_END) site.state = 'done';
@@ -1760,11 +1791,31 @@ function drawChainOverlay() {
     const wobble     = deformAmp * wobbleSignal(ph2, site.wobbleMode || 'dip1');
     const scaleAlong = 1 + wobble;
     const scalePerp  = 1 / (1 + wobble * 0.7);
-    ctx.save();
-    ctx.translate(cx, cy); ctx.rotate(site.angle);
-    ctx.scale(scaleAlong, scalePerp); ctx.rotate(-site.angle); ctx.translate(-cx, -cy);
-    drawCloudOutline(cx, cy, sphereR);
-    ctx.restore();
+    if (showParticles) {
+      const offsets = getChainParticleOffsets();
+      const cosV = Math.cos(site.viewAngle || 0), sinV = Math.sin(site.viewAngle || 0);
+      const cosA = Math.cos(site.angle), sinA = Math.sin(site.angle);
+      const pts = offsets.map(p => {
+        // Apply viewAngle rotation first, then fission-axis deformation
+        const rx = (p.ox * cosV - p.oy * sinV) * sphereR;
+        const ry = (p.ox * sinV + p.oy * cosV) * sphereR;
+        const along = rx * cosA + ry * sinA;
+        const perp  = -rx * sinA + ry * cosA;
+        return {
+          x: cx + along * scaleAlong * cosA - perp * scalePerp * sinA,
+          y: cy + along * scaleAlong * sinA + perp * scalePerp * cosA,
+          z: p.oz * sphereR,
+          type: p.type,
+        };
+      });
+      drawParticles(pts, 0);
+    } else {
+      ctx.save();
+      ctx.translate(cx, cy); ctx.rotate(site.angle);
+      ctx.scale(scaleAlong, scalePerp); ctx.rotate(-site.angle); ctx.translate(-cx, -cy);
+      drawCloudOutline(cx, cy, sphereR);
+      ctx.restore();
+    }
     // Excited glow ring
     ctx.save();
     ctx.translate(cx, cy); ctx.rotate(site.angle);
@@ -1776,20 +1827,34 @@ function drawChainOverlay() {
     ctx.restore();
   }
 
+  // Helper: draw one nucleus (fuel or daughter) — outline or particles
+  function drawChainNucleus(cx, cy, r, rot = 0) {
+    if (showParticles) drawChainSiteParticles(cx, cy, r, rot);
+    else drawCloudOutline(cx, cy, r);
+  }
+  // Helper: draw split daughters — outline uses union shape; particles draw separately
+  function drawChainDaughters(d0, d1) {
+    if (showParticles) {
+      drawChainSiteParticles(d0.x, d0.y, d0.r, d0.viewAngle || 0);
+      drawChainSiteParticles(d1.x, d1.y, d1.r, d1.viewAngle || 0);
+    } else {
+      drawFissionOutline(d0.x, d0.y, d0.r, d1.x, d1.y, d1.r);
+    }
+  }
+
   // ── BACKGROUND LAYER: stable (failed) sites, bounced daughters, bounced neutrons ──
   ctx.save();
   ctx.globalAlpha = 0.3;
   for (const site of enrichSites) {
     // Stable failed fission: stays visible but in background
     if (site.state === 'done' && site.wobbleMode === 'stable') {
-      drawCloudOutline(site.cx, site.cy, sphereR);
+      drawChainNucleus(site.cx, site.cy, sphereR, site.viewAngle);
     }
     // Daughters of fissioned sites: in background once any has bounced (or site is done)
     if (site.daughters) {
       const inBg = site.state === 'done' || site.daughters.some(d => d.bounced);
       if (inBg) {
-        const d0 = site.daughters[0], d1 = site.daughters[1];
-        drawFissionOutline(d0.x, d0.y, d0.r, d1.x, d1.y, d1.r);
+        drawChainDaughters(site.daughters[0], site.daughters[1]);
       }
     }
   }
@@ -1799,18 +1864,17 @@ function drawChainOverlay() {
   // ── FOREGROUND LAYER: idle fuel, actively fissioning sites, fresh neutrons ──
   for (const site of enrichSites) {
     if (site.state === 'idle') {
-      drawCloudOutline(site.cx, site.cy, sphereR);
+      drawChainNucleus(site.cx, site.cy, sphereR, site.viewAngle);
     } else if (site.state === 'fission') {
       const t = site.fissT;
       if (t <= PH2_END) {
         drawFissionWobble(site);
       } else if (site.wobbleMode === 'stable') {
         // Still in fission state but settling — stays in foreground until done
-        drawCloudOutline(site.cx, site.cy, sphereR);
+        drawChainNucleus(site.cx, site.cy, sphereR, site.viewAngle);
       } else if (site.daughters && !site.daughters.some(d => d.bounced)) {
         // Daughters just launched, haven't bounced yet — draw in foreground
-        const d0 = site.daughters[0], d1 = site.daughters[1];
-        drawFissionOutline(d0.x, d0.y, d0.r, d1.x, d1.y, d1.r);
+        drawChainDaughters(site.daughters[0], site.daughters[1]);
       }
     }
   }
@@ -1873,14 +1937,14 @@ function neutronTick(now) {
     return;
   }
 
-  updateParticleJitter(animParent.particles.length, 1, true);  // slow before neutron hits
+  if (currentTab !== 'chain') updateParticleJitter(animParent.particles.length, 1, true);
   renderAtFrac(currentScrubFrac);
   neutronRAF = requestAnimationFrame(neutronTick);
 }
 
 function fissionTick(now) {
   if (neutronState !== 'fission') return;
-  updateParticleJitter(animParent.particles.length);
+  if (currentTab !== 'chain') updateParticleJitter(animParent.particles.length);
   const playbackSpeed = parseFloat(document.getElementById('playbackSpeed').value);
   const elapsed = (now - staticFissStart) * playbackSpeed;
   if (elapsed < SHAKE_DURATION) {
@@ -2093,6 +2157,99 @@ function drawNucleusIcon(canvas) {
   }
 }
 
+// ─── Mini nucleus icon (Particles mode button) ────────────────────────────────
+const miniNucleusIconParticles = (() => {
+  const ICON_R = 2;
+  const nP = 7, nN = 14, nTotal = nP + nN;
+  const packFrac = 0.62;
+  const vol   = nTotal * (4/3 * Math.PI * ICON_R**3) / packFrac;
+  const sphR  = Math.cbrt(vol * 3 / (4 * Math.PI)) * 1.05;
+  const minD2 = (ICON_R * 2.05)**2;
+  let s = 0xabcd1234;
+  const rand = () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; };
+  const pts = [];
+  let tries = 0;
+  while (pts.length < nTotal && tries < nTotal * 300) {
+    tries++;
+    const r3 = rand(), th = Math.acos(2 * rand() - 1), ph = rand() * 2 * Math.PI;
+    const r  = sphR * Math.cbrt(r3);
+    const ox = r * Math.sin(th) * Math.cos(ph);
+    const oy = r * Math.sin(th) * Math.sin(ph);
+    const oz = r * Math.cos(th);
+    let ok = true;
+    for (const q of pts) {
+      if ((ox-q.ox)**2 + (oy-q.oy)**2 + (oz-q.oz)**2 < minD2) { ok = false; break; }
+    }
+    if (ok) pts.push({ ox, oy, oz, type: pts.length < nP ? 'proton' : 'neutron', jx: 0, jy: 0 });
+  }
+  return pts.sort((a, b) => a.oz - b.oz);
+})();
+
+function drawMiniNucleusIcon(canvas) {
+  if (!canvas) return;
+  const c = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  const cx = w / 2, cy = h / 2;
+  const R = 2;
+  c.clearRect(0, 0, w, h);
+  for (const p of miniNucleusIconParticles) {
+    const px = cx + p.ox + p.jx;
+    const py = cy + p.oy + p.jy;
+    const isProton = p.type === 'proton';
+    const mid  = isProton ? '#ff1a65' : '#70707f';
+    const core = isProton ? '#ff80b0' : '#b0b0c4';
+    const baseGrad = c.createRadialGradient(px, py, 0, px, py, R * 1.1);
+    baseGrad.addColorStop(0, mid); baseGrad.addColorStop(0.82, mid); baseGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = baseGrad; c.beginPath(); c.arc(px, py, R * 1.1, 0, Math.PI * 2); c.fill();
+    const innerGlow = c.createRadialGradient(px, py, 0, px, py, R);
+    innerGlow.addColorStop(0, core); innerGlow.addColorStop(0.5, core); innerGlow.addColorStop(1, 'rgba(0,0,0,0)');
+    c.save(); c.shadowColor = core; c.shadowBlur = 3; c.globalAlpha = 0.82;
+    c.fillStyle = innerGlow; c.beginPath(); c.arc(px, py, R, 0, Math.PI * 2); c.fill();
+    c.restore(); c.globalAlpha = 1;
+  }
+}
+
+function drawOutlineIcon() {
+  const ic = document.getElementById('outlineModeIcon');
+  if (!ic) return;
+  const c = ic.getContext('2d');
+  const w = ic.width, h = ic.height;
+  const cx = w / 2, cy = h / 2;
+  const sR = Math.min(w, h) * 0.36;
+  const R  = 2.5;
+  const N  = Math.max(5, Math.round(2 * Math.PI * sR / (R * 1.5)));
+  const centers = Array.from({ length: N }, (_, k) => {
+    const a = k * 2 * Math.PI / N;
+    return { x: cx + sR * Math.cos(a), y: cy + sR * Math.sin(a) };
+  });
+  // outerIntersection equivalent for the icon ctx
+  function iconOuterIntersect(c1, c2) {
+    const dx = c2.x - c1.x, dy = c2.y - c1.y;
+    const d  = Math.sqrt(dx * dx + dy * dy);
+    const h2 = Math.sqrt(Math.max(0, R * R - (d / 2) ** 2));
+    const mx = (c1.x + c2.x) / 2, my = (c1.y + c2.y) / 2;
+    const px = -dy / d * h2, py = dx / d * h2;
+    const p1 = { x: mx + px, y: my + py }, p2 = { x: mx - px, y: my - py };
+    const d1 = (p1.x - cx)**2 + (p1.y - cy)**2;
+    const d2 = (p2.x - cx)**2 + (p2.y - cy)**2;
+    return d1 > d2 ? p1 : p2;
+  }
+  const arcs = centers.map((pt, k) => {
+    const prev = centers[(k - 1 + N) % N], next = centers[(k + 1) % N];
+    const sp = iconOuterIntersect(pt, prev);
+    const ep = iconOuterIntersect(pt, next);
+    return { cx: pt.x, cy: pt.y, startAngle: Math.atan2(sp.y - pt.y, sp.x - pt.x), endAngle: Math.atan2(ep.y - pt.y, ep.x - pt.x) };
+  });
+  c.clearRect(0, 0, w, h);
+  c.save();
+  c.shadowColor = 'rgba(80,160,255,0.9)'; c.shadowBlur = 4;
+  c.strokeStyle = 'rgba(160,215,255,1)'; c.lineWidth = 1;
+  c.beginPath();
+  c.moveTo(arcs[0].cx + R * Math.cos(arcs[0].startAngle), arcs[0].cy + R * Math.sin(arcs[0].startAngle));
+  for (const arc of arcs) c.arc(arc.cx, arc.cy, R, arc.startAngle, arc.endAngle, false);
+  c.closePath(); c.stroke(); c.restore();
+}
+
 function nucleusIconLoop() {
   for (const p of nucleusIconParticles) {
     p.jx += (Math.random() - 0.5) * 0.7;
@@ -2100,10 +2257,18 @@ function nucleusIconLoop() {
     p.jx *= 0.78;
     p.jy *= 0.78;
   }
+  for (const p of miniNucleusIconParticles) {
+    p.jx += (Math.random() - 0.5) * 0.4;
+    p.jy += (Math.random() - 0.5) * 0.4;
+    p.jx *= 0.78;
+    p.jy *= 0.78;
+  }
   drawNucleusIcon(document.getElementById('newBtnNucleus'));
+  drawMiniNucleusIcon(document.getElementById('particlesModeIcon'));
   requestAnimationFrame(nucleusIconLoop);
 }
 nucleusIconLoop();
+drawOutlineIcon();
 
 // ─── Controls ─────────────────────────────────────────────────────────────────
 // ─── Pre-render + smooth playback ─────────────────────────────────────────────
@@ -2120,6 +2285,7 @@ let playbackStartT   = 0;
 let playbackStartRealT     = 0;
 let pausedInPrerender      = false;   // paused during prerender playback
 let pausedPlaybackElapsed  = 0;       // raw ms elapsed when paused
+let chainPaused            = false;   // chain reaction was running when paused
 
 function captureFrame() {
   if (!prerenderActive) return;
@@ -2191,9 +2357,10 @@ function resetPrerender() {
 document.getElementById('goBtn').addEventListener('click', () => {
   const btn = document.getElementById('goBtn');
 
-  // ── STOP = PAUSE: freeze in place; Go resumes from here ──────────────────
+  // ── PAUSE: freeze everything in place ────────────────────────────────────
   if (btn.textContent === '⏸') {
-    if (neutronRAF)  { cancelAnimationFrame(neutronRAF);  neutronRAF  = null; }
+    if (neutronRAF) { cancelAnimationFrame(neutronRAF); neutronRAF = null; }
+    if (chainRAF)   { cancelAnimationFrame(chainRAF);   chainRAF   = null; chainPaused = true; }
     if (playbackRAF) {
       pausedPlaybackElapsed = performance.now() - playbackStartRealT;
       pausedInPrerender = true;
@@ -2207,9 +2374,9 @@ document.getElementById('goBtn').addEventListener('click', () => {
     return;
   }
 
-  // ── GO: resume if paused, or start fresh ─────────────────────────────────
+  // ── GO: resume from exact pause point, or start fresh ────────────────────
 
-  // Resume prerender playback from exact pause point
+  // Resume prerender playback
   if (pausedInPrerender) {
     pausedInPrerender  = false;
     playbackStartRealT = performance.now() - pausedPlaybackElapsed;
@@ -2219,7 +2386,17 @@ document.getElementById('goBtn').addEventListener('click', () => {
     return;
   }
 
-  // Resume live animation from current scrub position
+  // Resume chain reaction (chain tab only)
+  if (chainPaused) {
+    chainPaused = false;
+    lastChainTime = null;   // prevents dt spike from pause duration
+    btn.textContent = '⏸';
+    btn.classList.add('running');
+    ensureChainLoop();
+    return;
+  }
+
+  // Resume main fission animation (paused mid-flight)
   if (neutronState === 'flying' || neutronState === 'fission') {
     const frac = currentScrubFrac;
     const now  = performance.now();
@@ -2392,7 +2569,8 @@ document.getElementById('enrichBtn').addEventListener('click', () => {
     ));
     if (attempts < 60) {
       enrichSites.push({ cx, cy, state: 'idle', fissStart: 0, fissT: PH1_END,
-                         angle: 0, shakeDur: 600, neutronsEmitted: false });
+                         angle: 0, shakeDur: 600, neutronsEmitted: false,
+                         viewAngle: Math.random() * Math.PI * 2 });
       totalFuelAdded++;
       energyInFields++;
     }
@@ -2411,13 +2589,12 @@ document.getElementById('energyGraphToggle').addEventListener('change', function
 
 let idleParticleRAF = null;
 function idleParticleLoop() {
-  // Only runs when particles are on and no main animation loop is active
   if (!showParticles) { idleParticleRAF = null; return; }
   if (neutronState === 'idle' || neutronState === 'done') {
-    if (animParent) updateParticleJitter(animParent.particles.length, 1, true);
+    if (currentTab !== 'chain' && animParent) updateParticleJitter(animParent.particles.length, 1, true);
     drawStaticFrame();
   }
-  idleParticleRAF = requestAnimationFrame(idleParticleLoop);
+  idleParticleRAF = currentTab !== 'chain' ? requestAnimationFrame(idleParticleLoop) : null;
 }
 
 function setParticleWheelActive(targetBtn) {
