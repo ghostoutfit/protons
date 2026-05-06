@@ -28,6 +28,33 @@
     --neutron-edge: #383848;
   }
 
+  /* ── Accessibility Mode ─────────────────────────────────────── */
+  body.a11y {
+    --text-dim:    rgba(220,215,255,0.95);
+    --text-bright: rgba(255,255,255,1);
+    --ui-border:   rgba(255,255,255,0.22);
+  }
+  body.a11y .btn {
+    color: rgba(255,255,255,0.75);
+    border-color: rgba(255,255,255,0.25);
+  }
+  body.a11y .btn:hover {
+    color: rgba(255,255,255,0.95);
+    border-color: rgba(255,255,255,0.5);
+  }
+  body.a11y .tab-btn {
+    color: rgba(255,255,255,0.75);
+    border-color: rgba(255,255,255,0.25);
+    font-size: 13px;
+  }
+  body.a11y .particle-frame-title { font-size: 14px; }
+  body.a11y .toggle-label         { font-size: 13px; }
+  body.a11y #stats                { font-size: 15px; }
+  body.a11y .scrub-label,
+  body.a11y .scrub-time           { font-size: 14px; }
+  body.a11y #forcePanelKey        { font-size: 13px; }
+  body.a11y #toolbar h1           { font-size: 20px; }
+
   /* ========================================
      RESET & BASE
      ======================================== */
@@ -790,6 +817,9 @@
 
     </div>
     <div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
+      <label class="toggle-label" id="a11yLabel" title="Larger text, higher contrast, particle outlines">
+        <input type="checkbox" id="a11yToggle"> Accessibility
+      </label>
       <button class="theme-btn active" id="themeA" title="Synthwave"></button>
       <button class="theme-btn" id="themeB" title="Industrial"></button>
       <button class="theme-btn" id="themeC" title="Neon Blue"></button>
@@ -937,6 +967,7 @@ let replaying = false;  // true while auto-playing back recorded history
 // ---- Visualization toggles ----
 let showElectricField = true;   // Toggle for Coulomb heatmap
 let showStrongField = true;     // Toggle for strong nuclear heatmap
+let accessibilityMode = false;  // Accessibility: outlines, thicker arrows, boosted heatmap
 
 const antispin = true;            // Always on; suppresses runaway cluster spin
 
@@ -1623,6 +1654,14 @@ document.getElementById('strongFieldToggle').addEventListener('change', function
   if (!running) draw();
 });
 
+// Accessibility mode: larger text, higher contrast, particle outlines, thicker arrows.
+document.getElementById('a11yToggle').addEventListener('change', function() {
+  accessibilityMode = this.checked;
+  document.body.classList.toggle('a11y', accessibilityMode);
+  hmComposite.width = 0; // invalidate heatmap cache (intensity changes)
+  if (!running) draw();
+});
+
 
 // ============================================================
 //  TAB SWITCHING
@@ -2271,7 +2310,7 @@ function drawCombinedHeatmap() {
           if (total >= 1/3) break;
         }
         if (total > 0.002) {
-          const ci = (Math.min(255, (total * 3.0 * 255) | 0));
+          const ci = (Math.min(255, (total * (accessibilityMode ? 5.0 : 3.0) * 255) | 0));
           const ci4 = ci * 4;
           hmDataElec[di]     = COLORMAP[ci4];
           hmDataElec[di + 1] = COLORMAP[ci4 + 1];
@@ -2303,7 +2342,7 @@ function drawCombinedHeatmap() {
           if (total >= 1/3) break;
         }
         if (total > 0.002) {
-          const ci = (Math.min(255, (total * 3.0 * 255) | 0));
+          const ci = (Math.min(255, (total * (accessibilityMode ? 5.0 : 3.0) * 255) | 0));
           const ci4 = ci * 4;
           hmDataStrong[di]     = STRONG_COLORMAP[ci4];
           hmDataStrong[di + 1] = STRONG_COLORMAP[ci4 + 1];
@@ -2342,6 +2381,7 @@ const STRONG_ARROW_COLOR = 'rgba(255,185,70,0.88)';    // strong field orange
 
 function drawArrowOnCtx(c, fromX, fromY, nx, ny, len, color, lw = 2) {
   if (len < 1) return;
+  if (accessibilityMode) lw = Math.ceil(lw * 1.8);
   const midX = fromX + nx * len * 0.5, midY = fromY + ny * len * 0.5;
   const tipX = fromX + nx * len,       tipY = fromY + ny * len;
   const HEAD = Math.max(5, len * 0.18);
@@ -2349,8 +2389,8 @@ function drawArrowOnCtx(c, fromX, fromY, nx, ny, len, color, lw = 2) {
   const baseX = tipX - nx * HEAD, baseY = tipY - ny * HEAD;
   c.strokeStyle = color; c.fillStyle = color;
   c.save();
-  c.shadowColor = color; c.shadowBlur = 8;
-  c.lineWidth = lw; c.globalAlpha = 0.88; c.lineCap = 'round';
+  c.shadowColor = color; c.shadowBlur = accessibilityMode ? 16 : 8;
+  c.lineWidth = lw; c.globalAlpha = accessibilityMode ? 1 : 0.88; c.lineCap = 'round';
   c.beginPath(); c.moveTo(fromX, fromY);
   c.quadraticCurveTo(midX, midY, baseX, baseY);
   c.stroke();
@@ -2715,10 +2755,11 @@ function draw() {
     // Selection ring — single particle (normal mode) or group member
     const inGroup = groupSelectMode && selectedGroup.includes(i);
     if (inGroup || (!groupSelectMode && i === selectedParticle && arrowMode > 0)) {
+      const ringGap = accessibilityMode ? 9 : 6;
       ctx.beginPath();
-      ctx.arc(px, py, PARTICLE_RADIUS + 6, 0, Math.PI * 2);
-      ctx.strokeStyle = inGroup ? 'rgba(100,220,255,0.7)' : 'rgba(250,204,21,0.6)';
-      ctx.lineWidth = 1.5;
+      ctx.arc(px, py, PARTICLE_RADIUS + ringGap, 0, Math.PI * 2);
+      ctx.strokeStyle = inGroup ? 'rgba(100,220,255,0.9)' : 'rgba(250,204,21,0.9)';
+      ctx.lineWidth = accessibilityMode ? 3 : 1.5;
       ctx.stroke();
     }
 
@@ -2742,9 +2783,10 @@ function draw() {
     }
 
     const t = currentTheme;
+    const vR = accessibilityMode ? PARTICLE_RADIUS * 1.4 : PARTICLE_RADIUS; // visual-only radius
 
     // Flat base circle — solid mid color, soft edge fade
-    const baseR = PARTICLE_RADIUS * 1.1;
+    const baseR = vR * 1.1;
     const baseGrad = ctx.createRadialGradient(px, py, 0, px, py, baseR);
     if (isProton) {
       baseGrad.addColorStop(0,    t.protonMid);
@@ -2761,7 +2803,7 @@ function draw() {
     ctx.fill();
 
     // Inner glow — bright centered bloom, fades outward
-    const innerGlow = ctx.createRadialGradient(px, py, 0, px, py, PARTICLE_RADIUS);
+    const innerGlow = ctx.createRadialGradient(px, py, 0, px, py, vR);
     const coreColor = isProton ? t.protonCore : t.neutronCore;
     innerGlow.addColorStop(0,   coreColor);
     innerGlow.addColorStop(0.5, coreColor);
@@ -2769,13 +2811,33 @@ function draw() {
     ctx.globalAlpha = 0.82;
     ctx.fillStyle = innerGlow;
     ctx.beginPath();
-    ctx.arc(px, py, PARTICLE_RADIUS, 0, Math.PI * 2);
+    ctx.arc(px, py, vR, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
 
+    // Accessibility: bright outline to distinguish particles by shape, not just color
+    if (accessibilityMode) {
+      ctx.beginPath();
+      ctx.arc(px, py, vR * 0.92, 0, Math.PI * 2);
+      ctx.strokeStyle = isProton ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.45)';
+      ctx.lineWidth = 2 / zoom;
+      ctx.stroke();
+      // Neutrons also get a dashed ring so protons (solid) vs neutrons (dashed) are shape-distinct
+      if (!isProton) {
+        ctx.beginPath();
+        ctx.arc(px, py, vR * 0.92, 0, Math.PI * 2);
+        ctx.setLineDash([4 / zoom, 3 / zoom]);
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+        ctx.lineWidth = 2 / zoom;
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
     // Label
     ctx.fillStyle = 'rgba(255,255,255,0.88)';
-    ctx.font = 'bold 11px "JetBrains Mono", monospace';
+    const labelSize = accessibilityMode ? Math.round(vR * 1.2) : 11;
+    ctx.font = `bold ${labelSize}px "JetBrains Mono", monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     if (isProton) ctx.fillText('+', px, py + 1);
