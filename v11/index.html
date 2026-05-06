@@ -201,10 +201,9 @@
     border-color: rgba(255,255,255,0.12);
   }
 
-  /* accent1 neon (pink) — particle add, center, btn-neon1 */
+  /* accent1 neon (pink) — particle add, btn-neon1 */
   .btn-neon1,
   .particle-add-btn,
-  #centerBtn,
   #neutronDecBtn,
   #neutronIncBtn {
     border-color: var(--accent1);
@@ -225,7 +224,6 @@
   }
   .btn-neon1:hover,
   .particle-add-btn:hover,
-  #centerBtn:hover,
   #neutronDecBtn:hover,
   #neutronIncBtn:hover {
     background: var(--accent1-glow);
@@ -269,25 +267,25 @@
       0 0 100px var(--accent2-dim);
   }
 
-  /* Go idle (▶) — neon green */
+  /* Go idle (▶) — accent2 themed */
   #goBtn {
-    border-color: #00d060;
+    border-color: var(--accent2);
     color: rgba(255,255,255,0.5);
-    background: rgba(0,208,96,0.12);
+    background: var(--accent2-dim);
     box-shadow:
-      inset 0 0 6px rgba(0,208,96,0.18),
-      0 0 2px #00d060,
-      0 0 8px #00d060,
-      0 0 18px rgba(0,208,96,0.5),
-      0 0 40px rgba(0,208,96,0.2),
-      0 0 70px rgba(0,208,96,0.1);
+      inset 0 0 6px var(--accent2-dim),
+      0 0 2px var(--accent2),
+      0 0 8px var(--accent2),
+      0 0 18px var(--accent2-glow),
+      0 0 40px var(--accent2-dim),
+      0 0 70px var(--accent2-dim);
     text-shadow:
       0 0 4px rgba(255,255,255,0.5),
-      0 0 10px #00d060,
-      0 0 22px rgba(0,208,96,0.6),
-      0 0 44px rgba(0,208,96,0.2);
+      0 0 10px var(--accent2),
+      0 0 22px var(--accent2-glow),
+      0 0 44px var(--accent2-dim);
   }
-  #goBtn:hover { background: rgba(0,208,96,0.28); }
+  #goBtn:hover { background: var(--accent2-glow); }
   /* Go running (⏸) — red */
   #goBtn.running {
     border-color: #ff4040;
@@ -303,23 +301,23 @@
   }
   #goBtn.running:hover { background: rgba(255,40,40,0.3); }
 
-  /* Clear — neon green */
+  /* Clear — accent2 themed */
   #clearBtn {
-    border-color: #00d060;
+    border-color: var(--accent2);
     color: rgba(255,255,255,0.5);
-    background: rgba(0,208,96,0.12);
+    background: var(--accent2-dim);
     box-shadow:
-      inset 0 0 6px rgba(0,208,96,0.18),
-      0 0 2px #00d060,
-      0 0 8px #00d060,
-      0 0 18px rgba(0,208,96,0.5),
-      0 0 40px rgba(0,208,96,0.2);
+      inset 0 0 6px var(--accent2-dim),
+      0 0 2px var(--accent2),
+      0 0 8px var(--accent2),
+      0 0 18px var(--accent2-glow),
+      0 0 40px var(--accent2-dim);
     text-shadow:
       0 0 4px rgba(255,255,255,0.5),
-      0 0 10px #00d060,
-      0 0 22px rgba(0,208,96,0.6);
+      0 0 10px var(--accent2),
+      0 0 22px var(--accent2-glow);
   }
-  #clearBtn:hover { background: rgba(0,208,96,0.28); }
+  #clearBtn:hover { background: var(--accent2-glow); }
 
   /* Replay — same red as Stop */
   #replayBtn {
@@ -369,7 +367,7 @@
 
 
   /* Go / Replay — squished symbol buttons */
-  #goBtn, #replayBtn { font-size: 28px; letter-spacing: 0; padding: 2px 18px; }
+  #goBtn, #replayBtn { font-size: 24px; letter-spacing: 0; padding: 2px 0; width: 90px; }
 
   /* Neutron slider — grey to distinguish from sim speed/zoom */
   #neutronSlider {
@@ -393,13 +391,36 @@
     background: rgba(255,45,120,0.07);
     border: 1px solid rgba(255,45,120,0.22);
     border-radius: 12px;
+    position: relative;
   }
   .ctrl-box-blue {
     display: flex; align-items: center; align-self: stretch;
     gap: 18px; padding: 10px 16px;
-    background: rgba(26,110,255,0.07);
-    border: 1px solid rgba(26,110,255,0.22);
+    background: var(--accent2-dim);
+    border: 1px solid var(--accent2);
     border-radius: 12px;
+    position: relative;
+  }
+  .ctrl-box-label {
+    position: absolute;
+    bottom: 100%;
+    margin-bottom: 3px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    line-height: 1;
+    pointer-events: none;
+  }
+  .ctrl-box-label-pink {
+    right: 14px;
+    color: rgba(255,45,120,0.8);
+    text-shadow: 0 0 6px rgba(255,45,120,0.6), 0 0 16px rgba(255,45,120,0.3);
+  }
+  .ctrl-box-label-blue {
+    left: 14px;
+    color: var(--accent2);
+    opacity: 0.8;
+    text-shadow: 0 0 6px var(--accent2-glow), 0 0 16px var(--accent2-dim);
   }
   .ctrl-box-blue input[type="range"] { width: 150px; }
   .ctrl-box-blue .slider-icon { font-size: 28px; }
@@ -465,10 +486,33 @@
     line-height: 1;
   }
 
+  #particleBtns .particle-add-btn {
+    width: 38px;
+    height: 47px;
+    padding: 0;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255,255,255,0.85);
+    text-shadow:
+      0 0 4px rgba(255,255,255,0.5),
+      0 0 10px var(--accent1),
+      0 0 22px var(--accent1-glow);
+  }
+
   .neutron-slider-wrap {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex: 1;
+  }
+  .neutron-slider-wrap #neutronSlider {
+    flex: 1;
+    min-width: 0;
   }
 
   .neutron-slider-label {
@@ -585,11 +629,11 @@
      FIELD TOGGLE LABELS — neon text treatment
      ======================================== */
   .field-label-electric {
-    color: var(--accent2);
+    color: #46a5ff;
     text-shadow:
-      0 0 4px var(--accent2),
-      0 0 10px var(--accent2-glow),
-      0 0 22px var(--accent2-dim);
+      0 0 4px #46a5ff,
+      0 0 10px rgba(70,165,255,0.5),
+      0 0 22px rgba(70,165,255,0.2);
   }
   .field-label-strong {
     color: #ffb946;
@@ -640,13 +684,13 @@
     border-radius: 12px 0 0 12px;
     width: 220px;
     background: rgba(8,6,24,0.90);
-    border: 1px solid rgba(26,110,255,0.45);
+    border: 1px solid var(--accent2);
     border-radius: 12px;
     z-index: 15;
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     padding: 10px 10px 8px;
-    box-shadow: 0 0 24px rgba(26,110,255,0.12);
+    box-shadow: 0 0 24px var(--accent2-dim);
     cursor: grab;
     user-select: none;
     min-width: 140px;
@@ -659,7 +703,7 @@
     position: absolute;
     z-index: 2;
   }
-  .fp-rh:hover { background: rgba(26,110,255,0.35); border-radius: 3px; }
+  .fp-rh:hover { background: var(--accent2-dim); border-radius: 3px; }
   .fp-rh.n  { top:0; left:10px; right:10px; height:6px; cursor:n-resize; }
   .fp-rh.s  { bottom:0; left:10px; right:10px; height:6px; cursor:s-resize; }
   .fp-rh.e  { right:0; top:10px; bottom:10px; width:6px; cursor:e-resize; }
@@ -671,9 +715,10 @@
   #forcePanelLabel { display: none; }
   #forcePanelKey {
     display: flex;
-    flex-direction: column;
-    gap: 3px;
-    font-size: 11px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    font-size: 17px;
     letter-spacing: 1px;
     margin-bottom: 8px;
     text-transform: uppercase;
@@ -798,29 +843,31 @@
   <div class="toolbar-row" style="align-items:stretch;gap:12px">
     <!-- GO + REPLAY + CLEAR — far left, bottom-aligned -->
     <div style="display:flex;flex-direction:column;justify-content:flex-end;align-self:stretch;gap:6px;padding-bottom:10px">
-      <button class="btn" id="goBtn">&#9654;</button>
+      <button class="btn" id="goBtn">&#9654; GO</button>
       <button class="btn" id="replayBtn" disabled>&#8634;</button>
       <button id="clearBtn" class="btn">Clear</button>
     </div>
 
     <!-- PINK BOX: stats/center | proton add buttons + neutron slider -->
     <div class="ctrl-box-pink">
+      <span class="ctrl-box-label ctrl-box-label-pink">PARTICLES</span>
       <!-- Left col: particle counts stacked + center button -->
       <div style="display:flex;flex-direction:column;align-items:flex-start;gap:6px;align-self:center;min-width:120px">
         <div style="display:flex;flex-direction:column;gap:3px">
-          <span id="statProtons">Protons: 0</span>
-          <span id="statNeutrons" style="visibility:hidden">Neutrons: 0</span>
+          <span id="statProtons" style="color:var(--accent1);text-shadow:0 0 8px var(--accent1-glow)">Protons: 0</span>
+          <span id="statNeutrons" style="visibility:hidden;color:var(--neutron-core);text-shadow:0 0 8px var(--neutron-mid)">Neutrons: 0</span>
         </div>
-        <label id="centerLabel" style="visibility:hidden;font-size:11px;margin-top:4px;display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--text-dim)"><input type="checkbox" id="centerChk"> Center</label>
+        <button id="centerBtn" class="force-mode-btn" style="visibility:hidden;margin-top:4px;">Center</button>
       </div>
       <!-- Right col: proton buttons + neutron row -->
       <div style="display:flex;flex-direction:column;gap:8px;justify-content:center;align-self:stretch">
         <div style="display:flex;align-items:center;gap:6px">
-          <canvas id="protonIconCanvas" class="particle-icon-canvas" width="32" height="32"></canvas>
+          <canvas id="protonIconCanvas" class="particle-icon-canvas" width="40" height="40"></canvas>
           <div id="particleBtns" style="display:flex;gap:6px">
             <button class="btn particle-add-btn" data-count="1">1</button>
             <button class="btn particle-add-btn" data-count="2">2</button>
             <button class="btn particle-add-btn" data-count="6">6</button>
+            <button class="btn particle-add-btn" data-count="10">10</button>
             <button class="btn particle-add-btn" data-count="20">20</button>
             <button class="btn particle-add-btn" data-count="36">36</button>
           </div>
@@ -828,15 +875,16 @@
             <button class="element-btn particle-add-btn" data-count="1"><span class="el-num">1</span><span class="el-sym">H</span></button>
             <button class="element-btn particle-add-btn" data-count="2"><span class="el-num">2</span><span class="el-sym">He</span></button>
             <button class="element-btn particle-add-btn" data-count="6"><span class="el-num">6</span><span class="el-sym">C</span></button>
+            <button class="element-btn particle-add-btn" data-count="10"><span class="el-num">10</span><span class="el-sym">Ne</span></button>
             <button class="element-btn particle-add-btn" data-count="20"><span class="el-num">20</span><span class="el-sym">Ca</span></button>
             <button class="element-btn particle-add-btn" data-count="36"><span class="el-num">36</span><span class="el-sym">Kr</span></button>
           </div>
         </div>
         <div id="neutronFrame" style="display:flex;align-items:center;gap:6px;visibility:hidden;margin-top:5px">
-          <canvas id="neutronIconCanvas" class="particle-icon-canvas" width="32" height="32"></canvas>
+          <canvas id="neutronIconCanvas" class="particle-icon-canvas" width="40" height="40"></canvas>
           <div class="neutron-slider-wrap">
             <button id="neutronDecBtn" style="width:24px;height:24px;padding:0;font-size:12px;line-height:1;flex-shrink:0;">&#9664;</button>
-            <input type="range" id="neutronSlider" min="0" max="60" step="1" value="2" style="width:110px">
+            <input type="range" id="neutronSlider" min="0" max="60" step="1" value="2">
             <button id="neutronIncBtn" style="width:24px;height:24px;padding:0;font-size:12px;line-height:1;flex-shrink:0;">&#9654;</button>
             <span class="neutron-slider-label"><span id="neutronSliderVal" style="display:inline-block;min-width:18px;text-align:left">2</span></span>
           </div>
@@ -846,6 +894,7 @@
 
     <!-- BLUE BOX: sliders + checkboxes | force mode buttons -->
     <div class="ctrl-box-blue">
+      <span class="ctrl-box-label ctrl-box-label-blue">VISUALS</span>
       <div style="display:flex;flex-direction:column;gap:10px;justify-content:space-evenly;align-self:stretch;flex:1;min-width:0">
         <div class="slider-group">
           <span class="slider-icon" title="Slow">🐢</span>
@@ -859,7 +908,7 @@
         </div>
         <div style="display:flex;flex-direction:column;gap:3px">
           <label class="toggle-label"><input type="checkbox" id="electricFieldToggle" checked> <span class="field-label-electric">Show electric field</span></label>
-          <label class="toggle-label" id="strongFieldLabel"><input type="checkbox" id="strongFieldToggle" checked> <span style="color:#ff8040">Show strong field</span></label>
+          <label class="toggle-label" id="strongFieldLabel"><input type="checkbox" id="strongFieldToggle" checked> <span class="field-label-strong">Show strong field</span></label>
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:5px;justify-content:center">
@@ -880,8 +929,8 @@
   <div class="fp-rh e"  data-dir="e"></div><div class="fp-rh w" data-dir="w"></div>
   <div id="forcePanelLabel"></div>
   <div id="forcePanelKey">
-    <span><span style="color:#46a5ff">■</span><span style="color:rgba(255,255,255,0.7)">Electric force</span></span>
-    <span><span style="color:#ffb946">■</span><span style="color:rgba(255,255,255,0.7)">Strong force</span></span>
+    <span><span style="color:#46a5ff">■</span><span style="color:#46a5ff;text-shadow:0 0 4px #46a5ff,0 0 10px rgba(70,165,255,0.5)">Electric force</span></span>
+    <span><span style="color:#ffb946">■</span><span style="color:#ffb946;text-shadow:0 0 4px #ffb946,0 0 10px rgba(255,185,70,0.5)">Strong force</span></span>
   </div>
   <canvas id="forcePanelCanvas" width="200" height="200"></canvas>
 </div>
@@ -1468,7 +1517,7 @@ function resetSim() {
   running = false;
   replaying = false;
   cancelAnimationFrame(animId);
-  goBtn.textContent = '▶';
+  goBtn.textContent = '▶ GO';
   goBtn.classList.remove('running');
   particles = [];
   snapshot = null;
@@ -1539,7 +1588,7 @@ function restoreSnapshot() {
 goBtn.addEventListener('click', () => {
   replaying = false;
   running = !running;
-  goBtn.textContent = running ? '⏸' : '▶';
+  goBtn.textContent = running ? '⏸' : '▶ GO';
   goBtn.classList.toggle('running', running);
   if (running) {
     particleHistory = [];
@@ -1639,7 +1688,7 @@ function applyTab(tab) {
   document.getElementById('particleBtnsNucleus').style.display = isNucleus ? 'flex' : 'none';
   document.getElementById('tabA').classList.toggle('active', isProtonOnly);
   document.getElementById('tabB').classList.toggle('active', isNucleus);
-  document.getElementById('centerLabel').style.visibility = isNucleus ? 'visible' : 'hidden';
+  document.getElementById('centerBtn').style.visibility = isNucleus ? 'visible' : 'hidden';
   document.getElementById('strongFieldLabel').style.visibility = 'visible';
   // Reset strong force to tab default
   if (isProtonOnly) {
@@ -1648,7 +1697,7 @@ function applyTab(tab) {
   // Clear simulation state on tab switch
   running = false;
   cancelAnimationFrame(animId);
-  goBtn.textContent = '▶';
+  goBtn.textContent = '▶ GO';
   goBtn.classList.remove('running');
   particles = [];
   snapshot = null;
@@ -1670,17 +1719,6 @@ document.getElementById('tabB').addEventListener('click', () => {
   placeNucleus(2, 2);
 });
 
-// URL routing: #protons → protons tab only (hide tabB, keep tabA as label); no hash → both tabs
-(function() {
-  if (window.location.hash === '#protons') {
-    document.getElementById('tabB').style.display = 'none';
-    const tabA = document.getElementById('tabA');
-    tabA.textContent = 'PROTONS';
-    tabA.style.pointerEvents = 'none';
-    applyTab(true);
-  }
-  // Default (no hash): both tabs visible — already the default state
-})();
 
 function findAllClusters() {
   const active = particles.filter(p => !p.ejected);
@@ -1715,7 +1753,10 @@ function findBiggestCluster() {
   return findAllClusters().reduce((best, c) => c.length > best.length ? c : best, []);
 }
 
-document.getElementById('centerChk').addEventListener('change', () => {
+let centerTracking = false;
+document.getElementById('centerBtn').addEventListener('click', () => {
+  centerTracking = !centerTracking;
+  document.getElementById('centerBtn').classList.toggle('active', centerTracking);
   if (!running) draw();
 });
 
@@ -2447,11 +2488,11 @@ function drawForcePanel() {
         const dist = Math.sqrt(dx2 * dx2 + dy2 * dy2);
         if (dist === 0) continue;
         if (p.type === 'proton' && pj.type === 'proton') {
-          const len = MAX_LEN * (refDist / Math.max(dist, refDist)) * 2.4;
+          const len = MAX_LEN * (refDist / Math.max(dist, refDist)) * 2.4 * zoom;
           maxExtentG = Math.max(maxExtentG, pDist + len);
         }
         if (dist < cutoff) {
-          const slen = MAX_LEN * (1 - dist / cutoff) * 0.85 * 5;
+          const slen = MAX_LEN * (1 - dist / cutoff) * 0.85 * 5 * zoom;
           maxExtentG = Math.max(maxExtentG, pDist + slen);
         }
       }
@@ -2507,11 +2548,11 @@ function drawForcePanel() {
           if (dist === 0) continue;
           const nx = dx / dist, ny = dy / dist;
           if (pi.type === 'proton' && pj.type === 'proton') {
-            const len = MAX_LEN * (refDist / Math.max(dist, refDist)) * 2.4 * vizScaleG;
+            const len = MAX_LEN * (refDist / Math.max(dist, refDist)) * 2.4 * zoom * vizScaleG;
             drawArrowOnCtx(forcePanelCtx, px + nx * drawnRadius, py + ny * drawnRadius, nx, ny, len, ELEC_ARROW_COLOR, 2);
           }
           if (dist < cutoff) {
-            const slen = MAX_LEN * (1 - dist / cutoff) * 0.85 * 5 * vizScaleG;
+            const slen = MAX_LEN * (1 - dist / cutoff) * 0.85 * 5 * zoom * vizScaleG;
             drawArrowOnCtx(forcePanelCtx, px - nx * drawnRadius, py - ny * drawnRadius, -nx, -ny, slen, STRONG_ARROW_COLOR, 2);
           }
         }
@@ -2544,13 +2585,13 @@ function drawForcePanel() {
       if (cMag > 0.5) {
         const cnx = cFx / cMag, cny = cFy / cMag;
         const ox = -cny * SIDE_OFF, oy = cnx * SIDE_OFF;
-        const cLen = Math.sqrt(cMag) * 6 * vizScaleG;
+        const cLen = Math.sqrt(cMag) * 6 * zoom * vizScaleG;
         drawArrowOnCtx(forcePanelCtx, cx + cnx * drawnRadius + ox, cy + cny * drawnRadius + oy, cnx, cny, cLen, ELEC_ARROW_COLOR, 3);
       }
       if (sMag > 0.5) {
         const snx = sFx / sMag, sny = sFy / sMag;
         const ox = sny * SIDE_OFF, oy = -snx * SIDE_OFF;
-        drawArrowOnCtx(forcePanelCtx, cx + snx * drawnRadius + ox, cy + sny * drawnRadius + oy, snx, sny, sMag * vizScaleG, STRONG_ARROW_COLOR, 3);
+        drawArrowOnCtx(forcePanelCtx, cx + snx * drawnRadius + ox, cy + sny * drawnRadius + oy, snx, sny, sMag * zoom * vizScaleG, STRONG_ARROW_COLOR, 3);
       }
     }
 
@@ -2575,7 +2616,7 @@ function drawForcePanel() {
   const pi = particles[selectedParticle];
   const isProton = pi.type === 'proton';
   const t = currentTheme;
-  const PR = PARTICLE_RADIUS * 2;
+  const PR = PARTICLE_RADIUS * zoom;
   const MAX_LEN = 36;
   const refDist = PARTICLE_RADIUS * 2;
 
@@ -2609,15 +2650,15 @@ function drawForcePanel() {
   const availRS = Math.min(W, H) / 2 - SPAD;
   let maxExtentS = PR * 1.1;
   if (arrowMode === 1) {
-    coulombVecs.forEach(v => { maxExtentS = Math.max(maxExtentS, PR + v.len); });
-    strongVecs.forEach(v  => { maxExtentS = Math.max(maxExtentS, PR + v.len); });
+    coulombVecs.forEach(v => { maxExtentS = Math.max(maxExtentS, PR + v.len * zoom); });
+    strongVecs.forEach(v  => { maxExtentS = Math.max(maxExtentS, PR + v.len * zoom); });
   } else {
     const cSum = coulombVecs.reduce((a, v) => ({ x: a.x + v.nx * v.len, y: a.y + v.ny * v.len }), { x: 0, y: 0 });
     const sSum = strongVecs.reduce((a, v)  => ({ x: a.x + v.nx * v.len, y: a.y + v.ny * v.len }), { x: 0, y: 0 });
     const cMag = Math.sqrt(cSum.x * cSum.x + cSum.y * cSum.y);
     const sMag = Math.sqrt(sSum.x * sSum.x + sSum.y * sSum.y);
-    if (cMag > 0.5) maxExtentS = Math.max(maxExtentS, PR + Math.sqrt(cMag) * 6);
-    if (sMag > 0.5) maxExtentS = Math.max(maxExtentS, PR + sMag);
+    if (cMag > 0.5) maxExtentS = Math.max(maxExtentS, PR + Math.sqrt(cMag) * 6 * zoom);
+    if (sMag > 0.5) maxExtentS = Math.max(maxExtentS, PR + sMag * zoom);
   }
   const vizScaleS = maxExtentS > availRS ? availRS / maxExtentS : 1;
   const sPR = PR * vizScaleS;
@@ -2647,13 +2688,13 @@ function drawForcePanel() {
   if (isProton) forcePanelCtx.fillText('+', sppx, sppy + 1);
 
   if (arrowMode === 1) {
-    coulombVecs.forEach(v => drawArrowOnCtx(forcePanelCtx, sppx + v.nx * sPR, sppy + v.ny * sPR, v.nx, v.ny, v.len * vizScaleS, ELEC_ARROW_COLOR, 3));
-    strongVecs.forEach(v  => drawArrowOnCtx(forcePanelCtx, sppx + v.nx * sPR, sppy + v.ny * sPR, v.nx, v.ny, v.len * vizScaleS, STRONG_ARROW_COLOR, 3));
+    coulombVecs.forEach(v => drawArrowOnCtx(forcePanelCtx, sppx + v.nx * sPR, sppy + v.ny * sPR, v.nx, v.ny, v.len * zoom * vizScaleS, ELEC_ARROW_COLOR, 3));
+    strongVecs.forEach(v  => drawArrowOnCtx(forcePanelCtx, sppx + v.nx * sPR, sppy + v.ny * sPR, v.nx, v.ny, v.len * zoom * vizScaleS, STRONG_ARROW_COLOR, 3));
   } else {
     const sum = (vecs) => vecs.reduce((a, v) => ({ x: a.x + v.nx * v.len, y: a.y + v.ny * v.len }), { x: 0, y: 0 });
     const drawNet = (vec, color, scale = x => x) => {
       const mag = Math.sqrt(vec.x * vec.x + vec.y * vec.y);
-      const len = scale(mag) * vizScaleS;
+      const len = scale(mag) * zoom * vizScaleS;
       if (len < 1) return;
       drawArrowOnCtx(forcePanelCtx, sppx + (vec.x/mag) * sPR, sppy + (vec.y/mag) * sPR, vec.x/mag, vec.y/mag, len, color, 3);
     };
@@ -2840,7 +2881,7 @@ timeSlider.addEventListener('input', () => {
     running = false;
     replaying = false;
     cancelAnimationFrame(animId);
-    goBtn.textContent = '▶';
+    goBtn.textContent = '▶ GO';
     goBtn.classList.remove('running');
   }
   const val = parseInt(timeSlider.value);
@@ -2867,7 +2908,7 @@ function loop() {
       scrubFrame = particleHistory.length - 1;
       running = false;
       replaying = false;
-      goBtn.textContent = '▶';
+      goBtn.textContent = '▶ GO';
       goBtn.classList.remove('running');
       timeSlider.value = scrubFrame;
       timeLabelEl.textContent = `${scrubFrame + 1} / ${particleHistory.length}`;
@@ -2885,7 +2926,7 @@ function loop() {
   loopFrame++;
   applyBiggestClusterStability();
   updateQuantumStability();
-  if (document.getElementById('centerChk').checked) updateCam();
+  if (centerTracking) updateCam();
   step(speed);
   computeEnergy();
   updateStats();
@@ -2937,7 +2978,7 @@ function loop() {
   // Auto-stop when all particles have escaped off-screen
   if (particles.length === 0) {
     running = false;
-    goBtn.textContent = '▶';
+    goBtn.textContent = '▶ GO';
     goBtn.classList.remove('running');
     return;
   }
@@ -2975,7 +3016,7 @@ const THEMES = {
     textdim:'rgba(230,200,255,0.52)', textbright:'rgba(248,232,255,0.92)',
     speck:'rgba(180,60,240,0.28)',
     protonCore:'#ff80b0', protonMid:'#ff1a65', protonEdge:'#7a0030',
-    neutronCore:'#d0a0ff', neutronMid:'#9040c8', neutronEdge:'#500070',
+    neutronCore:'#b0b0c4', neutronMid:'#70707f', neutronEdge:'#383848',
     bg:'#05030f',
   },
   // C: Teal labels + blue neutrons
@@ -2986,7 +3027,7 @@ const THEMES = {
     textdim:'rgba(220,210,255,0.52)', textbright:'rgba(245,235,255,0.92)',
     speck:'rgba(200,100,200,0.28)',
     protonCore:'#ff80b0', protonMid:'#ff1a65', protonEdge:'#7a0030',
-    neutronCore:'#90b8ff', neutronMid:'#3060d0', neutronEdge:'#102060',
+    neutronCore:'#b0b0c4', neutronMid:'#70707f', neutronEdge:'#383848',
     bg:'#04030e',
   },
 };
@@ -3005,7 +3046,7 @@ const iconJitter = {
 function drawParticleIcon(canvas, type) {
   const c = canvas.getContext('2d');
   const w = canvas.width, h = canvas.height;
-  const R  = PARTICLE_RADIUS * 1.8; // 10% smaller than default zoom
+  const R  = PARTICLE_RADIUS * 1.5; // sized to fit 40×40 icon canvas without clipping
   const cx = w / 2, cy = h / 2;
   const t  = currentTheme;
   const isProton = type === 'proton';
@@ -3080,6 +3121,7 @@ function applyTheme(key) {
   r.setProperty('--neutron-core',  t.neutronCore);
   r.setProperty('--neutron-mid',   t.neutronMid);
   r.setProperty('--neutron-edge',  t.neutronEdge);
+  r.setProperty('--page-bg', t.bg);
   document.body.style.background = t.bg;
   document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('theme'+key).classList.add('active');
@@ -3283,6 +3325,16 @@ setForceModeActive(arrowMode);
 // If linked from v13 with #nucleus hash, auto-switch to Protons + Neutrons tab
 if (location.hash === '#nucleus') {
   document.getElementById('tabB').click();
+}
+
+// URL routing: #protons → protons tab only (hide tabB, rename tabA)
+// Runs last so no initialization step can undo it
+if (location.hash === '#protons') {
+  document.getElementById('tabB').style.display = 'none';
+  const tabA = document.getElementById('tabA');
+  tabA.textContent = 'PROTONS';
+  tabA.style.pointerEvents = 'none';
+  applyTab(true);
 }
 
 // Initial draw to populate the canvas before Go is pressed
