@@ -136,25 +136,25 @@
     border-color: rgba(255,255,255,0.12);
   }
 
-  /* Go idle (▶) — neon green */
+  /* Go idle (▶) — accent2 themed */
   #goBtn {
-    border-color: #00d060;
+    border-color: var(--accent2);
     color: rgba(255,255,255,0.5);
-    background: rgba(0,208,96,0.12);
+    background: var(--accent2-dim);
     box-shadow:
-      inset 0 0 6px rgba(0,208,96,0.18),
-      0 0 2px #00d060,
-      0 0 8px #00d060,
-      0 0 18px rgba(0,208,96,0.5),
-      0 0 40px rgba(0,208,96,0.2),
-      0 0 70px rgba(0,208,96,0.1);
+      inset 0 0 6px var(--accent2-dim),
+      0 0 2px var(--accent2),
+      0 0 8px var(--accent2),
+      0 0 18px var(--accent2-glow),
+      0 0 40px var(--accent2-dim),
+      0 0 70px var(--accent2-dim);
     text-shadow:
       0 0 4px rgba(255,255,255,0.5),
-      0 0 10px #00d060,
-      0 0 22px rgba(0,208,96,0.6),
-      0 0 44px rgba(0,208,96,0.2);
+      0 0 10px var(--accent2),
+      0 0 22px var(--accent2-glow),
+      0 0 44px var(--accent2-dim);
   }
-  #goBtn:hover { background: rgba(0,208,96,0.28); }
+  #goBtn:hover { background: var(--accent2-glow); }
   /* Go running (⏸) — red */
   #goBtn.running {
     border-color: #ff4040;
@@ -170,27 +170,27 @@
   }
   #goBtn.running:hover { background: rgba(255,40,40,0.3); }
 
-  /* Clear — neon green */
+  /* Clear — accent2 themed */
   #clearBtn {
-    border-color: #00d060;
+    border-color: var(--accent2);
     color: rgba(255,255,255,0.5);
-    background: rgba(0,208,96,0.12);
+    background: var(--accent2-dim);
     box-shadow:
-      inset 0 0 6px rgba(0,208,96,0.18),
-      0 0 2px #00d060,
-      0 0 8px #00d060,
-      0 0 18px rgba(0,208,96,0.5),
-      0 0 40px rgba(0,208,96,0.2);
+      inset 0 0 6px var(--accent2-dim),
+      0 0 2px var(--accent2),
+      0 0 8px var(--accent2),
+      0 0 18px var(--accent2-glow),
+      0 0 40px var(--accent2-dim);
     text-shadow:
       0 0 4px rgba(255,255,255,0.5),
-      0 0 10px #00d060,
-      0 0 22px rgba(0,208,96,0.6);
+      0 0 10px var(--accent2),
+      0 0 22px var(--accent2-glow);
   }
-  #clearBtn:hover { background: rgba(0,208,96,0.28); }
+  #clearBtn:hover { background: var(--accent2-glow); }
 
   /* Go / Replay / New — squished symbol buttons */
   #goBtn, #replayBtn, #newBtn { padding: 8px 28px; font-size: 22px; letter-spacing: 2px; }
-  #goBtn, #replayBtn { font-size: 28px; letter-spacing: 0; padding: 2px 18px; }
+  #goBtn, #replayBtn { font-size: 24px; letter-spacing: 0; padding: 2px 0; width: 90px; }
 
   /* Replay — same red as Stop */
   #replayBtn {
@@ -240,13 +240,8 @@
   }
 
   /* ========================================
-     PARTICLE WHEEL — vertical drum picker (mirrors arrow-wheel in v11)
-     Active item is always in normal flow (defines height).
-     Above/below items are position:absolute overlays.
+     BUTTON GROUPS — stacked option pickers
      ======================================== */
-  .arrow-wheel {
-    position: relative;
-  }
   .awheel-item {
     display: block;
     padding: 2px 12px;
@@ -264,20 +259,6 @@
     transition: color 0.15s, border-color 0.15s, background 0.15s,
                 box-shadow 0.15s, text-shadow 0.15s,
                 opacity 0.18s ease, transform 0.22s ease;
-  }
-  .awheel-item[data-position] {
-    position: absolute;
-    left: 0; right: 0;
-    opacity: 0;
-    pointer-events: none;
-    color: rgba(255,255,255,0.55);
-    border-color: rgba(255,255,255,0.18);
-    transform: translateY(var(--slide-dir, 0px));
-  }
-  .arrow-wheel.open .awheel-item[data-position] {
-    opacity: 1;
-    transform: translateY(0);
-    pointer-events: auto;
   }
   .awheel-item:hover:not(.active) {
     color: var(--accent2);
@@ -440,7 +421,8 @@
   .ctrl-box-blue input[type="range"] { width: 160px; }
   .ctrl-box-blue .slider-icon { font-size: 32px; }
   .ctrl-box-blue .toggle-label { font-size: 16px; gap: 7px; }
-  .ctrl-box-blue .awheel-item { font-size: 16px; padding: 6px 18px; }
+  .ctrl-box-blue .field-label-electric { font-size: 11px; }
+  .ctrl-box-blue .awheel-item { font-size: 14px; padding: 6px 18px; }
   .slider-group label {
     font-size: 10px;
     color: var(--text-dim);
@@ -535,6 +517,24 @@
     text-align: right;
   }
 
+  .theme-btn {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.12);
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    flex-shrink: 0;
+    box-shadow: none;
+  }
+  .theme-btn:hover { transform: scale(1.2); box-shadow: 0 0 8px rgba(255,255,255,0.3); }
+  .theme-btn.active {
+    border-color: rgba(255,255,255,0.55);
+    box-shadow: 0 0 6px rgba(255,255,255,0.4), 0 0 14px rgba(255,255,255,0.15);
+  }
+  #themeA { background: linear-gradient(135deg, #ff2d78 50%, #1a6eff 50%); }
+  #themeB { background: linear-gradient(135deg, #ff2d78 50%, #bd00ff 50%); }
+  #themeC { background: linear-gradient(135deg, #ff2d78 50%, #00f5e0 50%); }
+
 </style>
 </head>
 <body>
@@ -544,16 +544,21 @@
 <div id="toolbar">
   <div class="toolbar-row">
     <div id="tabBar">
-      <a href="../v11/index.html" class="tab-btn">Protons</a>
-      <a href="../v11/index.html#nucleus" class="tab-btn">Protons + Neutrons</a>
+      <a href="../v11/index.html#fission" class="tab-btn">Protons</a>
+      <a href="../v11/index.html#fission" class="tab-btn">Protons + Neutrons</a>
       <button class="tab-btn active" data-tab="fission">Fission</button>
       <button class="tab-btn" data-tab="chain">Chain Reaction</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
+      <button class="theme-btn active" id="themeA" title="Synthwave"></button>
+      <button class="theme-btn" id="themeB" title="Industrial"></button>
+      <button class="theme-btn" id="themeC" title="Neon Blue"></button>
     </div>
   </div>
   <div class="toolbar-row">
     <!-- Far left: GO + REPLAY + CLEAR column -->
     <div style="display:flex;flex-direction:column;justify-content:flex-end;align-self:stretch;gap:6px;padding-bottom:10px">
-      <button id="goBtn" class="btn">&#9654;</button>
+      <button id="goBtn" class="btn">&#9654; GO</button>
       <button id="replayBtn" class="btn" disabled>&#8634;</button>
       <button id="clearBtn" class="btn">Clear</button>
     </div>
@@ -572,9 +577,9 @@
       </div>
     </div>
 
-    <!-- Blue box: stacked sliders + electric field + particles -->
+    <!-- Blue box: stacked sliders + electric field + particles + forces -->
     <div class="ctrl-box-blue">
-      <div style="display:flex;flex-direction:column;gap:14px;justify-content:space-evenly;align-self:stretch">
+      <div style="display:flex;flex-direction:column;gap:10px;justify-content:space-evenly;align-self:stretch">
         <div class="slider-group">
           <span class="slider-icon">🐢</span>
           <input type="range" id="playbackSpeed" min="0.1" max="4.0" step="0.1" value="1.0">
@@ -585,15 +590,19 @@
           <input type="range" id="zoomSlider" min="-1" max="1" step="0.02" value="0">
           <span class="slider-icon">🔍</span>
         </div>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:10px;justify-content:space-evenly;align-self:stretch">
         <label class="toggle-label">
           <input type="checkbox" id="showElectric">
-          <span class="field-label-electric">Electric field</span>
+          <span class="field-label-electric">Show electric field</span>
         </label>
-        <div id="particleWheel" class="arrow-wheel">
+      </div>
+      <div style="display:flex;gap:10px;align-self:stretch;align-items:center">
+        <div style="display:flex;flex-direction:column;gap:4px">
           <button class="awheel-item active" data-pmode="particles">Particles</button>
-          <button class="awheel-item" data-pmode="outline" data-position="below">Outline</button>
+          <button class="awheel-item" data-pmode="outline">Outline</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <button class="awheel-item active" data-fmode="0">Forces off</button>
+          <button class="awheel-item" data-fmode="2">Total force</button>
         </div>
       </div>
     </div>
@@ -652,7 +661,7 @@ window.addEventListener('resize', () => {
   chainNeutrons       = [];
   enrichSites         = [];
   mainNeutronsEmitted = false;
-  document.getElementById('goBtn').textContent = '▶';
+  document.getElementById('goBtn').textContent = '▶ GO';
   document.getElementById('goBtn').classList.remove('running');
   document.getElementById('scrubBar').classList.remove('visible');
   initNuclei();
@@ -1218,7 +1227,7 @@ function applyTab(tab) {
   mainNeutronsEmitted = false;
   chainNeutrons       = [];
   enrichSites         = [];
-  document.getElementById('goBtn').textContent = '▶';
+  document.getElementById('goBtn').textContent = '▶ GO';
   document.getElementById('goBtn').classList.remove('running');
   document.getElementById('replayBtn').disabled = true;
   document.getElementById('scrubReplayBtn').disabled = true;
@@ -1827,7 +1836,7 @@ function fissionTick(now) {
     neutronRAF = requestAnimationFrame(fissionTick);
   } else {
     neutronState = 'done';
-    document.getElementById('goBtn').textContent = '▶';
+    document.getElementById('goBtn').textContent = '▶ GO';
     document.getElementById('goBtn').classList.remove('running');
     document.getElementById('replayBtn').disabled = false;
     document.getElementById('scrubReplayBtn').disabled = false;
@@ -2070,7 +2079,7 @@ function playbackLoop(now) {
   } else {
     // Hold last frame, mark done
     playbackRAF = null;
-    document.getElementById('goBtn').textContent = '▶';
+    document.getElementById('goBtn').textContent = '▶ GO';
     document.getElementById('goBtn').classList.remove('running');
     document.getElementById('replayBtn').disabled = false;
     document.getElementById('scrubReplayBtn').disabled = false;
@@ -2099,7 +2108,7 @@ document.getElementById('goBtn').addEventListener('click', () => {
     } else {
       pausedInPrerender = false;
     }
-    btn.textContent = '▶';
+    btn.textContent = '▶ GO';
     btn.classList.remove('running');
     return;
   }
@@ -2202,7 +2211,7 @@ document.getElementById('scrubSlider').addEventListener('input', function () {
   if (playbackRAF) { cancelAnimationFrame(playbackRAF); playbackRAF = null; }
   if (neutronState === 'flying' || neutronState === 'fission') neutronState = 'done';
   const gbtn = document.getElementById('goBtn');
-  if (gbtn.textContent === '⏸') { gbtn.textContent = '▶'; gbtn.classList.remove('running'); }
+  if (gbtn.textContent === '⏸') { gbtn.textContent = '▶ GO'; gbtn.classList.remove('running'); }
   currentScrubFrac = parseInt(this.value) / 1000;
   document.getElementById('scrubPct').textContent = scrubPct(currentScrubFrac);
   heatmapDirty = true;
@@ -2225,7 +2234,7 @@ document.getElementById('newBtn').addEventListener('click', () => {
   currentSeed = Math.floor(Math.random() * 1e9);
   initNuclei();
   const btn = document.getElementById('goBtn');
-  btn.textContent = '▶';
+  btn.textContent = '▶ GO';
   btn.classList.remove('running');
   document.getElementById('replayBtn').disabled = true;
   document.getElementById('scrubReplayBtn').disabled = true;
@@ -2253,7 +2262,7 @@ document.getElementById('clearBtn').addEventListener('click', () => {
   chainNeutrons       = [];
   enrichSites         = [];
   heatmapDirty        = true;
-  document.getElementById('goBtn').textContent = '▶';
+  document.getElementById('goBtn').textContent = '▶ GO';
   document.getElementById('goBtn').classList.remove('running');
   document.getElementById('replayBtn').disabled = true;
   document.getElementById('scrubReplayBtn').disabled = true;
@@ -2308,42 +2317,30 @@ function idleParticleLoop() {
 }
 
 function setParticleWheelActive(targetBtn) {
-  const items = [...document.querySelectorAll('.awheel-item[data-pmode]')];
-  const activeIdx = items.indexOf(targetBtn);
-  const SLOT = 22;
-
-  items.forEach(item => {
-    item.classList.remove('active');
-    delete item.dataset.position;
-    item.style.top = item.style.bottom = item.style.paddingTop = item.style.paddingBottom = '';
-    item.style.removeProperty('--slide-dir');
-  });
-
+  document.querySelectorAll('.awheel-item[data-pmode]').forEach(b => b.classList.remove('active'));
   targetBtn.classList.add('active');
-
-  items.forEach((item) => {
-    if (item === targetBtn) return;
-    // Always show inactive option below with a clear gap
-    item.dataset.position = 'below';
-    item.style.top = 'calc(100% + 8px)';
-    item.style.setProperty('--slide-dir', '-6px');
-  });
 }
 
-function bindWheelHover(wheelEl) {
-  let tid = null;
-  wheelEl.addEventListener('mouseenter', () => { clearTimeout(tid); wheelEl.classList.add('open'); });
-  wheelEl.addEventListener('mouseleave', () => { tid = setTimeout(() => wheelEl.classList.remove('open'), 80); });
+function setForceWheelActive(targetBtn) {
+  document.querySelectorAll('.awheel-item[data-fmode]').forEach(b => b.classList.remove('active'));
+  targetBtn.classList.add('active');
 }
-bindWheelHover(document.getElementById('particleWheel'));
+
+let arrowMode = 0;
 
 document.querySelectorAll('.awheel-item[data-pmode]').forEach(btn => {
   btn.addEventListener('click', () => {
     showParticles = btn.dataset.pmode === 'particles';
     setParticleWheelActive(btn);
-    document.getElementById('particleWheel').classList.remove('open');
     if (showParticles && !idleParticleRAF) idleParticleLoop();
     else drawStaticFrame();
+  });
+});
+
+document.querySelectorAll('.awheel-item[data-fmode]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    arrowMode = parseInt(btn.dataset.fmode);
+    setForceWheelActive(btn);
   });
 });
 
@@ -2548,10 +2545,57 @@ document.querySelectorAll('.tab-btn[data-tab]').forEach(btn => {
   btn.addEventListener('click', () => applyTab(btn.dataset.tab));
 });
 
+// ─── Themes ───────────────────────────────────────────────────────────────────
+const THEMES = {
+  A: {
+    accent1:'#ff2d78', accent1dim:'rgba(255,45,120,0.25)', accent1glow:'rgba(255,45,120,0.55)',
+    accent2:'#1a6eff', accent2dim:'rgba(26,110,255,0.18)',  accent2glow:'rgba(26,110,255,0.45)',
+    uibg:'rgba(8,6,24,0.38)', uiborder:'rgba(255,255,255,0.07)',
+    textdim:'rgba(220,215,255,0.55)', textbright:'rgba(240,235,255,0.92)',
+    bg:'#05040f',
+  },
+  B: {
+    accent1:'#ff2d78', accent1dim:'rgba(255,45,120,0.22)', accent1glow:'rgba(255,45,120,0.5)',
+    accent2:'#bd00ff', accent2dim:'rgba(189,0,255,0.18)',  accent2glow:'rgba(189,0,255,0.42)',
+    uibg:'rgba(8,4,22,0.42)', uiborder:'rgba(189,0,255,0.14)',
+    textdim:'rgba(230,200,255,0.52)', textbright:'rgba(248,232,255,0.92)',
+    bg:'#05030f',
+  },
+  C: {
+    accent1:'#ff2d78', accent1dim:'rgba(255,45,120,0.22)', accent1glow:'rgba(255,45,120,0.5)',
+    accent2:'#00f5e0', accent2dim:'rgba(0,245,224,0.15)',  accent2glow:'rgba(0,245,224,0.4)',
+    uibg:'rgba(6,4,20,0.40)', uiborder:'rgba(255,45,120,0.12)',
+    textdim:'rgba(220,210,255,0.52)', textbright:'rgba(245,235,255,0.92)',
+    bg:'#04030e',
+  },
+};
+
+function applyTheme(key) {
+  const t = THEMES[key];
+  const r = document.documentElement.style;
+  r.setProperty('--accent1',      t.accent1);
+  r.setProperty('--accent1-dim',  t.accent1dim);
+  r.setProperty('--accent1-glow', t.accent1glow);
+  r.setProperty('--accent2',      t.accent2);
+  r.setProperty('--accent2-dim',  t.accent2dim);
+  r.setProperty('--accent2-glow', t.accent2glow);
+  r.setProperty('--ui-bg',        t.uibg);
+  r.setProperty('--ui-border',    t.uiborder);
+  r.setProperty('--text-dim',     t.textdim);
+  r.setProperty('--text-bright',  t.textbright);
+  document.body.style.background = t.bg;
+  document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('theme'+key).classList.add('active');
+}
+document.getElementById('themeA').addEventListener('click', () => applyTheme('A'));
+document.getElementById('themeB').addEventListener('click', () => applyTheme('B'));
+document.getElementById('themeC').addEventListener('click', () => applyTheme('C'));
+applyTheme('A');
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 setParticleWheelActive(document.querySelector('.awheel-item[data-pmode="particles"]'));
 drawSpeedLines();
-applyTab('fission');
+applyTab(location.hash === '#chain' ? 'chain' : 'fission');
 initNuclei();
 drawStaticFrame();
 if (showParticles && !idleParticleRAF) idleParticleLoop();

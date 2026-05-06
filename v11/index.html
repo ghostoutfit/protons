@@ -653,7 +653,7 @@
     border-radius: 5px;
     background: transparent;
     color: rgba(255,255,255,0.25);
-    font-size: 10px;
+    font-size: 14px;
     font-weight: 600;
     font-family: inherit;
     cursor: pointer;
@@ -832,7 +832,8 @@
     <div id="tabBar">
       <button class="tab-btn active" id="tabA">Protons</button>
       <button class="tab-btn" id="tabB">Investigate Stability</button>
-
+      <a href="../v13/index.html" class="tab-btn fission-tab" style="display:none">Fission</a>
+      <a href="../v13/index.html#chain" class="tab-btn fission-tab" style="display:none">Chain Reaction</a>
     </div>
     <div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
       <button class="theme-btn active" id="themeA" title="Synthwave"></button>
@@ -911,11 +912,18 @@
           <label class="toggle-label" id="strongFieldLabel"><input type="checkbox" id="strongFieldToggle" checked> <span class="field-label-strong">Show strong field</span></label>
         </div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:5px;justify-content:center">
-        <button class="force-mode-btn active" data-mode="0">Off</button>
-        <button class="force-mode-btn" data-mode="1">All forces</button>
-        <button class="force-mode-btn" data-mode="2">Total force</button>
-        <label style="font-size:10px;margin-top:3px;display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--text-dim)"><input type="checkbox" id="groupSelChk"> Group select</label>
+      <div style="display:flex;flex-direction:column;gap:5px;justify-content:flex-start;align-self:stretch">
+        <button id="showHideForces" class="force-mode-btn" style="min-width:142px">Show forces</button>
+        <div id="forceModeOptions" style="display:none;gap:6px;margin-top:2px">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <button class="force-mode-btn active" data-selmode="single">One</button>
+            <button class="force-mode-btn" data-selmode="group">Group</button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <button class="force-mode-btn" data-mode="1">All</button>
+            <button class="force-mode-btn" data-mode="2">Total</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -1760,12 +1768,6 @@ document.getElementById('centerBtn').addEventListener('click', () => {
   if (!running) draw();
 });
 
-document.getElementById('groupSelChk').addEventListener('change', function() {
-  groupSelectMode = this.checked;
-  if (!groupSelectMode) { selectedGroup = []; selBox = null; }
-  canvas.style.cursor = groupSelectMode ? 'crosshair' : 'default';
-  if (!running) draw();
-});
 
 
 document.querySelectorAll('.particle-add-btn').forEach(btn => {
@@ -1800,20 +1802,57 @@ document.getElementById('neutronIncBtn').addEventListener('click', () => stepNeu
 
 
 // Force mode buttons — always visible, gray/blue
+let lastArrowMode = 1; // remembered mode for Show/Hide toggle
+
 function setForceModeActive(mode) {
   const wasVisible = arrowMode > 0;
   arrowMode = mode;
+  if (mode > 0) lastArrowMode = mode;
+  // Show/Hide toggle label
+  const shBtn = document.getElementById('showHideForces');
+  if (shBtn) {
+    shBtn.textContent = arrowMode > 0 ? 'Hide forces' : 'Show forces';
+    shBtn.classList.toggle('active', arrowMode > 0);
+  }
+  // Arrow mode buttons (1/2)
   document.querySelectorAll('.force-mode-btn[data-mode]').forEach(btn => {
     btn.classList.toggle('active', parseInt(btn.dataset.mode) === mode);
   });
+  // Show/hide the One/Group + All/Total sub-buttons
+  const opts = document.getElementById('forceModeOptions');
+  if (opts) {
+    opts.style.display = arrowMode > 0 ? 'flex' : 'none';
+    const wrap = opts.parentElement;
+    if (wrap) wrap.style.justifyContent = 'flex-start';
+  }
   if ((arrowMode > 0) !== wasVisible) {
-    draw();       // let drawForcePanel() show/hide the panel so offsetWidth is correct
-    updateCam();  // now recentre with accurate panel width
+    draw();
+    updateCam();
   }
   if (!running) draw();
 }
+
+// Show/Hide forces toggle
+document.getElementById('showHideForces').addEventListener('click', () => {
+  setForceModeActive(arrowMode > 0 ? 0 : lastArrowMode);
+});
+
+// All forces / Total force buttons — selecting one also turns forces on
 document.querySelectorAll('.force-mode-btn[data-mode]').forEach(btn => {
   btn.addEventListener('click', () => setForceModeActive(parseInt(btn.dataset.mode)));
+});
+
+// One particle / Group select buttons
+document.querySelectorAll('.force-mode-btn[data-selmode]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    groupSelectMode = btn.dataset.selmode === 'group';
+    if (!groupSelectMode) { selectedGroup = []; selBox = null; }
+    canvas.style.cursor = groupSelectMode ? 'crosshair' : 'default';
+    document.querySelectorAll('.force-mode-btn[data-selmode]').forEach(b => {
+      b.classList.toggle('active', b === btn);
+    });
+    if (!running) draw();
+  });
 });
 
 // ============================================================
@@ -3325,6 +3364,12 @@ setForceModeActive(arrowMode);
 // If linked from v13 with #nucleus hash, auto-switch to Protons + Neutrons tab
 if (location.hash === '#nucleus') {
   document.getElementById('tabB').click();
+}
+
+// #fission — arrived from fission sim; hide the PARTICLES/VISUALS box labels, show fission tabs
+if (location.hash === '#fission') {
+  document.querySelectorAll('.ctrl-box-label').forEach(el => el.style.display = 'none');
+  document.querySelectorAll('.fission-tab').forEach(el => el.style.display = '');
 }
 
 // URL routing: #protons → protons tab only (hide tabB, rename tabA)
