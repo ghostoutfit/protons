@@ -858,8 +858,8 @@
           <span class="slider-icon" title="Zoom">🔍</span>
         </div>
         <div style="display:flex;flex-direction:column;gap:3px">
-          <label class="toggle-label"><input type="checkbox" id="electricFieldToggle" checked> <span class="field-label-electric">Electric field</span></label>
-          <label class="toggle-label" id="strongFieldLabel"><input type="checkbox" id="strongFieldToggle" checked> <span style="color:#ff8040">Strong field</span></label>
+          <label class="toggle-label"><input type="checkbox" id="electricFieldToggle" checked> <span class="field-label-electric">Show electric field</span></label>
+          <label class="toggle-label" id="strongFieldLabel"><input type="checkbox" id="strongFieldToggle" checked> <span style="color:#ff8040">Show strong field</span></label>
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:5px;justify-content:center">
@@ -1487,7 +1487,8 @@ function resetSim() {
 function placeCluster(numProtons, numNeutrons, spacing) {
   resetSim();
 
-  const cx = canvas.width / 2, cy = canvas.height / 2 + 20;
+  const toolbarH = document.getElementById('toolbar').offsetHeight;
+  const cx = canvas.width / 2, cy = toolbarH + (canvas.height - toolbarH) / 2;
   const cluster = buildPackedCluster(numProtons, numNeutrons, spacing);
   for (const p of cluster) particles.push(createParticle(cx + p.x, cy + p.y, p.type));
   updateStats();
@@ -1498,7 +1499,8 @@ function placeCluster(numProtons, numNeutrons, spacing) {
 
 function placeProtons(n) {
   resetSim();
-  const cx = canvas.width / 2, cy = canvas.height / 2 + 20;
+  const toolbarH = document.getElementById('toolbar').offsetHeight;
+  const cx = canvas.width / 2, cy = toolbarH + (canvas.height - toolbarH) / 2;
   const pts = buildRandomProtons(n);
   for (const p of pts) particles.push(createParticle(cx + p.x, cy + p.y, 'proton'));
   updateStats();
@@ -1667,6 +1669,18 @@ document.getElementById('tabB').addEventListener('click', () => {
   neutronSliderVal.textContent = '2';
   placeNucleus(2, 2);
 });
+
+// URL routing: #protons → protons tab only (hide tabB, keep tabA as label); no hash → both tabs
+(function() {
+  if (window.location.hash === '#protons') {
+    document.getElementById('tabB').style.display = 'none';
+    const tabA = document.getElementById('tabA');
+    tabA.textContent = 'PROTONS';
+    tabA.style.pointerEvents = 'none';
+    applyTab(true);
+  }
+  // Default (no hash): both tabs visible — already the default state
+})();
 
 function findAllClusters() {
   const active = particles.filter(p => !p.ejected);
@@ -2372,9 +2386,9 @@ window.addEventListener('mousemove', e => {
   const dx = e.clientX - sx, dy = e.clientY - sy;
   let w = ow, h = oh;
   // Panel is pinned right:0 so only left-edge and vertical handles resize width/height
-  if (dir.includes('w') || dir.includes('e')) w = Math.max(140, ow - dx);
-  if (dir.includes('s')) h = Math.max(140, oh + dy);
-  if (dir.includes('n')) h = Math.max(140, oh - dy);
+  if (dir.includes('w') || dir.includes('e')) w = Math.max(140, Math.min(canvas.width,  ow - dx));
+  if (dir.includes('s')) h = Math.max(140, Math.min(canvas.height, oh + dy));
+  if (dir.includes('n')) h = Math.max(140, Math.min(canvas.height, oh - dy));
   forcePanelEl.style.width  = w + 'px';
   forcePanelEl.style.height = h + 'px';
   // Resize canvas to fill panel minus header
@@ -2419,15 +2433,41 @@ function drawForcePanel() {
     for (const i of group) { gcx += particles[i].x; gcy += particles[i].y; }
     gcx /= group.length; gcy /= group.length;
 
-    // Use the same zoom as the main canvas so size + spacing match what the user sees
-    const drawnRadius = PARTICLE_RADIUS * zoom;
+    // Compute max extent of particles + arrows from panel center, derive vizScale to fit
+    const baseRadius = PARTICLE_RADIUS * zoom;
+    let maxExtentG = baseRadius;
+    for (const i of group) {
+      const p = particles[i];
+      const pdx = (p.x - gcx) * zoom, pdy = (p.y - gcy) * zoom;
+      const pDist = Math.sqrt(pdx * pdx + pdy * pdy) + baseRadius;
+      for (let j = 0; j < particles.length; j++) {
+        if (new Set(group).has(j)) continue;
+        const pj = particles[j];
+        const dx2 = p.x - pj.x, dy2 = p.y - pj.y;
+        const dist = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+        if (dist === 0) continue;
+        if (p.type === 'proton' && pj.type === 'proton') {
+          const len = MAX_LEN * (refDist / Math.max(dist, refDist)) * 2.4;
+          maxExtentG = Math.max(maxExtentG, pDist + len);
+        }
+        if (dist < cutoff) {
+          const slen = MAX_LEN * (1 - dist / cutoff) * 0.85 * 5;
+          maxExtentG = Math.max(maxExtentG, pDist + slen);
+        }
+      }
+      maxExtentG = Math.max(maxExtentG, pDist);
+    }
+    const GPAD = 10;
+    const availRG = Math.min(W, H) / 2 - GPAD;
+    const vizScaleG = maxExtentG > availRG ? availRG / maxExtentG : 1;
+    const drawnRadius = baseRadius * vizScaleG;
 
     // Draw each particle at its zoom-scaled position relative to the centroid
     const groupSet = new Set(group);
     for (const i of group) {
       const p = particles[i];
-      const px = cx + (p.x - gcx) * zoom;
-      const py = cy + (p.y - gcy) * zoom;
+      const px = cx + (p.x - gcx) * zoom * vizScaleG;
+      const py = cy + (p.y - gcy) * zoom * vizScaleG;
       const isP = p.type === 'proton';
       const PR = drawnRadius;
       const baseGrad = forcePanelCtx.createRadialGradient(px, py, 0, px, py, PR * 1.1);
@@ -2457,8 +2497,8 @@ function drawForcePanel() {
       // Per-source arrows anchored at each individual group particle
       for (const i of group) {
         const pi = particles[i];
-        const px = cx + (pi.x - gcx) * zoom;
-        const py = cy + (pi.y - gcy) * zoom;
+        const px = cx + (pi.x - gcx) * zoom * vizScaleG;
+        const py = cy + (pi.y - gcy) * zoom * vizScaleG;
         for (let j = 0; j < particles.length; j++) {
           if (groupSet.has(j)) continue;
           const pj = particles[j];
@@ -2467,12 +2507,12 @@ function drawForcePanel() {
           if (dist === 0) continue;
           const nx = dx / dist, ny = dy / dist;
           if (pi.type === 'proton' && pj.type === 'proton') {
-            const len = MAX_LEN * (refDist / Math.max(dist, refDist)) * 2.4;
-            drawArrowOnCtx(forcePanelCtx, px + nx * PR, py + ny * PR, nx, ny, len, ELEC_ARROW_COLOR, 2);
+            const len = MAX_LEN * (refDist / Math.max(dist, refDist)) * 2.4 * vizScaleG;
+            drawArrowOnCtx(forcePanelCtx, px + nx * drawnRadius, py + ny * drawnRadius, nx, ny, len, ELEC_ARROW_COLOR, 2);
           }
           if (dist < cutoff) {
-            const slen = MAX_LEN * (1 - dist / cutoff) * 0.85 * 5;
-            drawArrowOnCtx(forcePanelCtx, px - nx * PR, py - ny * PR, -nx, -ny, slen, STRONG_ARROW_COLOR, 2);
+            const slen = MAX_LEN * (1 - dist / cutoff) * 0.85 * 5 * vizScaleG;
+            drawArrowOnCtx(forcePanelCtx, px - nx * drawnRadius, py - ny * drawnRadius, -nx, -ny, slen, STRONG_ARROW_COLOR, 2);
           }
         }
       }
@@ -2504,13 +2544,13 @@ function drawForcePanel() {
       if (cMag > 0.5) {
         const cnx = cFx / cMag, cny = cFy / cMag;
         const ox = -cny * SIDE_OFF, oy = cnx * SIDE_OFF;
-        const cLen = Math.sqrt(cMag) * 6;
-        drawArrowOnCtx(forcePanelCtx, cx + cnx * PR + ox, cy + cny * PR + oy, cnx, cny, cLen, ELEC_ARROW_COLOR, 3);
+        const cLen = Math.sqrt(cMag) * 6 * vizScaleG;
+        drawArrowOnCtx(forcePanelCtx, cx + cnx * drawnRadius + ox, cy + cny * drawnRadius + oy, cnx, cny, cLen, ELEC_ARROW_COLOR, 3);
       }
       if (sMag > 0.5) {
         const snx = sFx / sMag, sny = sFy / sMag;
         const ox = sny * SIDE_OFF, oy = -snx * SIDE_OFF;
-        drawArrowOnCtx(forcePanelCtx, cx + snx * PR + ox, cy + sny * PR + oy, snx, sny, sMag, STRONG_ARROW_COLOR, 3);
+        drawArrowOnCtx(forcePanelCtx, cx + snx * drawnRadius + ox, cy + sny * drawnRadius + oy, snx, sny, sMag * vizScaleG, STRONG_ARROW_COLOR, 3);
       }
     }
 
@@ -2539,40 +2579,11 @@ function drawForcePanel() {
   const MAX_LEN = 36;
   const refDist = PARTICLE_RADIUS * 2;
 
-  // Draw particle — exactly matches main canvas rendering + same jitter
+  // Collect jitter offset (tiny, but keep for consistency)
   const jx = jitter[selectedParticle] ? jitter[selectedParticle].x : 0;
   const jy = jitter[selectedParticle] ? jitter[selectedParticle].y : 0;
-  const ppx = cx + jx, ppy = cy + jy;
 
-  const baseR = PR * 1.1;
-  const baseGrad = forcePanelCtx.createRadialGradient(ppx, ppy, 0, ppx, ppy, baseR);
-  if (isProton) {
-    baseGrad.addColorStop(0,    t.protonMid);
-    baseGrad.addColorStop(0.82, t.protonMid);
-    baseGrad.addColorStop(1,    'rgba(0,0,0,0)');
-  } else {
-    baseGrad.addColorStop(0,    t.neutronMid);
-    baseGrad.addColorStop(0.82, t.neutronMid);
-    baseGrad.addColorStop(1,    'rgba(0,0,0,0)');
-  }
-  forcePanelCtx.fillStyle = baseGrad;
-  forcePanelCtx.beginPath(); forcePanelCtx.arc(ppx, ppy, baseR, 0, Math.PI * 2); forcePanelCtx.fill();
-
-  const innerGlow = forcePanelCtx.createRadialGradient(ppx, ppy, 0, ppx, ppy, PR);
-  const coreCol = isProton ? t.protonCore : t.neutronCore;
-  innerGlow.addColorStop(0,   coreCol);
-  innerGlow.addColorStop(0.5, coreCol);
-  innerGlow.addColorStop(1,   'rgba(0,0,0,0)');
-  forcePanelCtx.globalAlpha = 0.82;
-  forcePanelCtx.fillStyle = innerGlow;
-  forcePanelCtx.beginPath(); forcePanelCtx.arc(ppx, ppy, PR, 0, Math.PI * 2); forcePanelCtx.fill();
-  forcePanelCtx.globalAlpha = 1;
-
-  forcePanelCtx.fillStyle = 'rgba(255,255,255,0.88)';
-  forcePanelCtx.font = 'bold 22px "JetBrains Mono", monospace';
-  forcePanelCtx.textAlign = 'center'; forcePanelCtx.textBaseline = 'middle';
-  if (isProton) forcePanelCtx.fillText('+', ppx, ppy + 1);
-
+  // Build force vectors first so we can compute vizScale before drawing anything
   const coulombVecs = [], strongVecs = [];
   const cutoff = strongCutoff();
 
@@ -2593,16 +2604,58 @@ function drawForcePanel() {
     }
   }
 
+  // Compute vizScale so all arrows fit within the panel canvas
+  const SPAD = 10;
+  const availRS = Math.min(W, H) / 2 - SPAD;
+  let maxExtentS = PR * 1.1;
   if (arrowMode === 1) {
-    coulombVecs.forEach(v => drawArrowOnCtx(forcePanelCtx, ppx + v.nx * PR, ppy + v.ny * PR, v.nx, v.ny, v.len, ELEC_ARROW_COLOR, 3));
-    strongVecs.forEach(v  => drawArrowOnCtx(forcePanelCtx, ppx + v.nx * PR, ppy + v.ny * PR, v.nx, v.ny, v.len, STRONG_ARROW_COLOR, 3));
+    coulombVecs.forEach(v => { maxExtentS = Math.max(maxExtentS, PR + v.len); });
+    strongVecs.forEach(v  => { maxExtentS = Math.max(maxExtentS, PR + v.len); });
+  } else {
+    const cSum = coulombVecs.reduce((a, v) => ({ x: a.x + v.nx * v.len, y: a.y + v.ny * v.len }), { x: 0, y: 0 });
+    const sSum = strongVecs.reduce((a, v)  => ({ x: a.x + v.nx * v.len, y: a.y + v.ny * v.len }), { x: 0, y: 0 });
+    const cMag = Math.sqrt(cSum.x * cSum.x + cSum.y * cSum.y);
+    const sMag = Math.sqrt(sSum.x * sSum.x + sSum.y * sSum.y);
+    if (cMag > 0.5) maxExtentS = Math.max(maxExtentS, PR + Math.sqrt(cMag) * 6);
+    if (sMag > 0.5) maxExtentS = Math.max(maxExtentS, PR + sMag);
+  }
+  const vizScaleS = maxExtentS > availRS ? availRS / maxExtentS : 1;
+  const sPR = PR * vizScaleS;
+  const sppx = cx + jx * vizScaleS, sppy = cy + jy * vizScaleS;
+
+  // Redraw particle at scaled size (overwrite earlier drawing)
+  forcePanelCtx.clearRect(0, 0, W, H);
+  const baseR2 = sPR * 1.1;
+  const baseGrad2 = forcePanelCtx.createRadialGradient(sppx, sppy, 0, sppx, sppy, baseR2);
+  if (isProton) {
+    baseGrad2.addColorStop(0, t.protonMid); baseGrad2.addColorStop(0.82, t.protonMid); baseGrad2.addColorStop(1, 'rgba(0,0,0,0)');
+  } else {
+    baseGrad2.addColorStop(0, t.neutronMid); baseGrad2.addColorStop(0.82, t.neutronMid); baseGrad2.addColorStop(1, 'rgba(0,0,0,0)');
+  }
+  forcePanelCtx.fillStyle = baseGrad2;
+  forcePanelCtx.beginPath(); forcePanelCtx.arc(sppx, sppy, baseR2, 0, Math.PI * 2); forcePanelCtx.fill();
+  const innerGlow2 = forcePanelCtx.createRadialGradient(sppx, sppy, 0, sppx, sppy, sPR);
+  const coreCol2 = isProton ? t.protonCore : t.neutronCore;
+  innerGlow2.addColorStop(0, coreCol2); innerGlow2.addColorStop(0.5, coreCol2); innerGlow2.addColorStop(1, 'rgba(0,0,0,0)');
+  forcePanelCtx.globalAlpha = 0.82;
+  forcePanelCtx.fillStyle = innerGlow2;
+  forcePanelCtx.beginPath(); forcePanelCtx.arc(sppx, sppy, sPR, 0, Math.PI * 2); forcePanelCtx.fill();
+  forcePanelCtx.globalAlpha = 1;
+  forcePanelCtx.fillStyle = 'rgba(255,255,255,0.88)';
+  forcePanelCtx.font = `bold ${Math.max(10, sPR * 1.1)}px "JetBrains Mono", monospace`;
+  forcePanelCtx.textAlign = 'center'; forcePanelCtx.textBaseline = 'middle';
+  if (isProton) forcePanelCtx.fillText('+', sppx, sppy + 1);
+
+  if (arrowMode === 1) {
+    coulombVecs.forEach(v => drawArrowOnCtx(forcePanelCtx, sppx + v.nx * sPR, sppy + v.ny * sPR, v.nx, v.ny, v.len * vizScaleS, ELEC_ARROW_COLOR, 3));
+    strongVecs.forEach(v  => drawArrowOnCtx(forcePanelCtx, sppx + v.nx * sPR, sppy + v.ny * sPR, v.nx, v.ny, v.len * vizScaleS, STRONG_ARROW_COLOR, 3));
   } else {
     const sum = (vecs) => vecs.reduce((a, v) => ({ x: a.x + v.nx * v.len, y: a.y + v.ny * v.len }), { x: 0, y: 0 });
     const drawNet = (vec, color, scale = x => x) => {
       const mag = Math.sqrt(vec.x * vec.x + vec.y * vec.y);
-      const len = scale(mag);
+      const len = scale(mag) * vizScaleS;
       if (len < 1) return;
-      drawArrowOnCtx(forcePanelCtx, ppx + (vec.x/mag) * PR, ppy + (vec.y/mag) * PR, vec.x/mag, vec.y/mag, len, color, 3);
+      drawArrowOnCtx(forcePanelCtx, sppx + (vec.x/mag) * sPR, sppy + (vec.y/mag) * sPR, vec.x/mag, vec.y/mag, len, color, 3);
     };
     const cSum = sum(coulombVecs), sSum = sum(strongVecs);
     drawNet(cSum, ELEC_ARROW_COLOR, x => Math.sqrt(x) * 6);
