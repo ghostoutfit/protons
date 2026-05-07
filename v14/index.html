@@ -3498,18 +3498,18 @@ function drawTempForceArrows() {
     }
     const fMag = Math.sqrt(fxNet * fxNet + fyNet * fyNet);
     if (fMag < 1e-6) continue;
-    const scale = Math.min(600, Math.log1p(fMag) * 700);
+    const scale = Math.min(300, Math.log1p(fMag) * 350);
     const ux = fxNet / fMag, uy = fyNet / fMag;
     const x0 = tempProtons[i].x, y0 = tempProtons[i].y;
     const x1 = x0 + ux * scale, y1 = y0 + uy * scale;
     ctx.save();
     ctx.strokeStyle = 'rgba(100,200,255,0.85)';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 4;
     ctx.shadowColor = 'rgba(100,200,255,0.5)';
     ctx.shadowBlur = 6;
     ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
     // Arrowhead
-    const hlen = 7, hwid = 4;
+    const hlen = 10, hwid = 6;
     const bx = x1 - ux * hlen, by = y1 - uy * hlen;
     ctx.beginPath();
     ctx.moveTo(x1, y1);
