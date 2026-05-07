@@ -503,6 +503,10 @@
         <span>Cool</span><span>Hot</span>
       </div>
     </div>
+    <div class="ctrl-box-blue" style="justify-content:center;align-items:flex-start;">
+      <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">Forces</div>
+      <button id="showForceBtn" class="btn" style="font-size:11px;padding:5px 14px;">Show Total Force</button>
+    </div>
   </div>
 
   </div><!-- close flex row -->
@@ -3239,13 +3243,11 @@ function tempSliderToSpeed(val) {
   return 0.25 + (val / 100) * 4.5; // 0.25 … 4.75 px/frame
 }
 
-function getTempBox() {
+function getTempEllipse() {
   const W = canvas.width, H = canvas.height;
-  const bW = Math.min(W * 0.72, H * 1.6);
-  const bH = H * 0.84;
-  const bX = (W - bW) / 2;
-  const bY = (H - bH) / 2;
-  return { x: bX, y: bY, w: bW, h: bH };
+  const rx = Math.min(W * 0.38, H * 0.82);
+  const ry = H * 0.44;
+  return { cx: W / 2, cy: H / 2, rx, ry };
 }
 
 function rescaleTempVelocities() {
@@ -3266,36 +3268,36 @@ function rescaleTempVelocities() {
 }
 
 function initTempProtons() {
-  const box = getTempBox();
+  const { cx, cy, rx, ry } = getTempEllipse();
   const R = TEMP_R, pad = R + 6;
-  const cols = Math.ceil(Math.sqrt(TEMP_N * box.w / box.h));
-  const rows = Math.ceil(TEMP_N / cols);
-  const dx   = (box.w - 2 * pad) / Math.max(cols - 1, 1);
-  const dy   = (box.h - 2 * pad) / Math.max(rows - 1, 1);
+  const irx = rx - pad, iry = ry - pad;
+  const cols = Math.ceil(Math.sqrt(TEMP_N * irx / iry)) + 1;
+  const rows = Math.ceil(TEMP_N / cols) + 1;
+  const dx   = (irx * 2) / Math.max(cols - 1, 1);
+  const dy   = (iry * 2) / Math.max(rows - 1, 1);
   tempProtons = [];
-  let placed = 0;
   outer: for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      if (placed >= TEMP_N) break outer;
       const jx = (Math.random() - 0.5) * dx * 0.25;
       const jy = (Math.random() - 0.5) * dy * 0.25;
-      const a  = Math.random() * Math.PI * 2;
-      tempProtons.push({
-        x: box.x + pad + c * dx + jx,
-        y: box.y + pad + r * dy + jy,
-        vx: Math.cos(a) * tempSpeed, vy: Math.sin(a) * tempSpeed,
-      });
-      placed++;
+      const px = cx - irx + c * dx + jx;
+      const py = cy - iry + r * dy + jy;
+      // Reject positions outside the inner ellipse
+      if ((px - cx) ** 2 / irx ** 2 + (py - cy) ** 2 / iry ** 2 > 1) continue;
+      const a = Math.random() * Math.PI * 2;
+      tempProtons.push({ x: px, y: py, vx: Math.cos(a) * tempSpeed, vy: Math.sin(a) * tempSpeed });
+      if (tempProtons.length >= TEMP_N) break outer;
     }
   }
   rescaleTempVelocities();
 }
 
 function stepTempPhysics() {
-  const box = getTempBox();
+  const { cx: ecx, cy: ecy, rx: erx, ry: ery } = getTempEllipse();
   const N   = tempProtons.length;
   const R   = TEMP_R;
   const sub = TEMP_SUBSTEPS;
+  const rimRx = erx - R, rimRy = ery - R;
 
   for (let s = 0; s < sub; s++) {
     // Compute Coulomb accelerations
@@ -3313,17 +3315,25 @@ function stepTempPhysics() {
         ax[j] += fx; ay[j] += fy;
       }
     }
-    // Integrate and bounce
+    // Integrate and bounce off ellipse wall
     for (let i = 0; i < N; i++) {
       const p = tempProtons[i];
       p.vx += ax[i] / sub;
       p.vy += ay[i] / sub;
       p.x  += p.vx  / sub;
       p.y  += p.vy  / sub;
-      if (p.x - R < box.x)          { p.x = box.x + R;          p.vx =  Math.abs(p.vx); }
-      if (p.x + R > box.x + box.w)  { p.x = box.x + box.w - R;  p.vx = -Math.abs(p.vx); }
-      if (p.y - R < box.y)          { p.y = box.y + R;           p.vy =  Math.abs(p.vy); }
-      if (p.y + R > box.y + box.h)  { p.y = box.y + box.h - R;  p.vy = -Math.abs(p.vy); }
+      const ex = p.x - ecx, ey = p.y - ecy;
+      if ((ex / rimRx) ** 2 + (ey / rimRy) ** 2 > 1) {
+        const angle = Math.atan2(ey / rimRy, ex / rimRx);
+        const cosA = Math.cos(angle), sinA = Math.sin(angle);
+        p.x = ecx + rimRx * cosA;
+        p.y = ecy + rimRy * sinA;
+        const nxRaw = cosA / rimRx, nyRaw = sinA / rimRy;
+        const nLen  = Math.sqrt(nxRaw * nxRaw + nyRaw * nyRaw);
+        const nnx = nxRaw / nLen, nny = nyRaw / nLen;
+        const dot = p.vx * nnx + p.vy * nny;
+        if (dot > 0) { p.vx -= 2 * dot * nnx; p.vy -= 2 * dot * nny; }
+      }
     }
   }
   // Soft thermostat: nudge mean speed toward target each frame
@@ -3332,47 +3342,140 @@ function stepTempPhysics() {
 
 function drawTempProtonAt(x, y) {
   const R = TEMP_R;
-  const g1 = ctx.createRadialGradient(x, y, 0, x, y, R * 1.15);
-  g1.addColorStop(0,    '#ff80b0');
-  g1.addColorStop(0.55, '#ff1a65');
-  g1.addColorStop(1,    'rgba(0,0,0,0)');
-  ctx.fillStyle = g1;
-  ctx.beginPath(); ctx.arc(x, y, R * 1.15, 0, Math.PI * 2); ctx.fill();
-  ctx.save();
-  ctx.shadowColor = '#ff2d78'; ctx.shadowBlur = 14;
-  const g2 = ctx.createRadialGradient(x, y, 0, x, y, R * 0.55);
-  g2.addColorStop(0, '#fff'); g2.addColorStop(1, 'rgba(255,120,180,0)');
-  ctx.globalAlpha = 0.55;
-  ctx.fillStyle = g2;
-  ctx.beginPath(); ctx.arc(x, y, R * 0.55, 0, Math.PI * 2); ctx.fill();
-  ctx.restore();
+  // Flat base circle — solid mid color, soft edge fade (v11 style)
+  const baseR = R * 1.1;
+  const baseGrad = ctx.createRadialGradient(x, y, 0, x, y, baseR);
+  baseGrad.addColorStop(0,    '#ff1a65');
+  baseGrad.addColorStop(0.82, '#ff1a65');
+  baseGrad.addColorStop(1,    'rgba(0,0,0,0)');
+  ctx.fillStyle = baseGrad;
+  ctx.beginPath(); ctx.arc(x, y, baseR, 0, Math.PI * 2); ctx.fill();
+  // Inner glow — bright centered bloom
+  const innerGlow = ctx.createRadialGradient(x, y, 0, x, y, R);
+  innerGlow.addColorStop(0,   '#ff80b0');
+  innerGlow.addColorStop(0.5, '#ff80b0');
+  innerGlow.addColorStop(1,   'rgba(0,0,0,0)');
+  ctx.globalAlpha = 0.82;
+  ctx.fillStyle = innerGlow;
+  ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
+  // + drawn geometrically — centered, no font metric issues
+  const arm   = R * 0.36;
+  const thick = R * 0.225;
+  ctx.fillStyle = 'rgba(255,255,255,0.88)';
+  ctx.fillRect(x - arm,       y - thick / 2, arm * 2, thick);
+  ctx.fillRect(x - thick / 2, y - arm,       thick,   arm * 2);
 }
 
 function drawTemp() {
   ctx.fillStyle = '#05040f';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  const box = getTempBox();
-  // Yellow container
+  const { cx, cy, rx, ry } = getTempEllipse();
+  // Yellow ellipse container
   ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
   ctx.fillStyle   = 'rgba(255,215,0,0.04)';
-  ctx.fillRect(box.x, box.y, box.w, box.h);
+  ctx.fill();
   ctx.strokeStyle = 'rgba(255,215,0,0.8)';
   ctx.lineWidth   = 2;
   ctx.shadowColor = 'rgba(255,215,0,0.9)';
   ctx.shadowBlur  = 20;
-  ctx.strokeRect(box.x, box.y, box.w, box.h);
+  ctx.stroke();
   ctx.restore();
+
+  // Flash effects — drawn before protons so protons render on top
+  const now = performance.now();
+  tempFlashes = tempFlashes.filter(f => {
+    const age = now - f.t;
+    if (age > 300) return false;
+    const t = age / 300;
+    const r = TEMP_R * (0.5 + t * 2.2);
+    ctx.beginPath();
+    ctx.arc(f.x, f.y, r, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(255,${Math.round(200 - t * 100)},0,${(1 - t).toFixed(2)})`;
+    ctx.lineWidth = (4 * (1 - t) + 1);
+    ctx.stroke();
+    return true;
+  });
 
   // Protons
   ctx.save();
   ctx.shadowColor = '#ff2d78'; ctx.shadowBlur = 12;
   for (const p of tempProtons) drawTempProtonAt(p.x, p.y);
   ctx.restore();
+
+  // Total force arrows (drawn on top)
+  if (showTotalForce) drawTempForceArrows();
+}
+
+let tempFlashes   = [];
+let showTotalForce = false;
+
+function detectTempFlashes() {
+  const N = tempProtons.length;
+  const flashDist = TEMP_R * 2 + 2;  // edge-to-edge within ~2px
+  const now = performance.now();
+  for (let i = 0; i < N; i++) {
+    for (let j = i + 1; j < N; j++) {
+      const dx = tempProtons[j].x - tempProtons[i].x;
+      const dy = tempProtons[j].y - tempProtons[i].y;
+      if (dx * dx + dy * dy < flashDist * flashDist) {
+        tempFlashes.push({
+          x: (tempProtons[i].x + tempProtons[j].x) * 0.5,
+          y: (tempProtons[i].y + tempProtons[j].y) * 0.5,
+          t: now,
+        });
+      }
+    }
+  }
+  if (tempFlashes.length > 80) tempFlashes = tempFlashes.slice(-80);
+}
+
+function drawTempForceArrows() {
+  const N = tempProtons.length;
+  const R = TEMP_R;
+  for (let i = 0; i < N; i++) {
+    let fxNet = 0, fyNet = 0;
+    for (let j = 0; j < N; j++) {
+      if (i === j) continue;
+      const dx = tempProtons[i].x - tempProtons[j].x;
+      const dy = tempProtons[i].y - tempProtons[j].y;
+      const r2 = Math.max(dx * dx + dy * dy, (R * 2.1) ** 2);
+      const r  = Math.sqrt(r2);
+      fxNet += (TEMP_COULOMB / (r2 * r2)) * dx / r;
+      fyNet += (TEMP_COULOMB / (r2 * r2)) * dy / r;
+    }
+    const fMag = Math.sqrt(fxNet * fxNet + fyNet * fyNet);
+    if (fMag < 1e-6) continue;
+    const scale = Math.min(55, Math.log1p(fMag) * 7);
+    const ux = fxNet / fMag, uy = fyNet / fMag;
+    const x0 = tempProtons[i].x, y0 = tempProtons[i].y;
+    const x1 = x0 + ux * scale, y1 = y0 + uy * scale;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(100,200,255,0.85)';
+    ctx.lineWidth = 2;
+    ctx.shadowColor = 'rgba(100,200,255,0.5)';
+    ctx.shadowBlur = 6;
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+    // Arrowhead
+    const hlen = 7, hwid = 4;
+    const bx = x1 - ux * hlen, by = y1 - uy * hlen;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(bx - uy * hwid, by + ux * hwid);
+    ctx.lineTo(bx + uy * hwid, by - ux * hwid);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(100,200,255,0.85)';
+    ctx.fill();
+    ctx.restore();
+  }
 }
 
 function tempLoop() {
   stepTempPhysics();
+  detectTempFlashes();
   drawTemp();
   tempRAF = requestAnimationFrame(tempLoop);
 }
@@ -3446,6 +3549,15 @@ document.getElementById('clearBtn').addEventListener('click', (e) => {
   initTempProtons();
   drawTemp();
 }, true);
+
+// ─── Show Total Force toggle ─────────────────────────────────────────────────
+document.getElementById('showForceBtn').addEventListener('click', () => {
+  showTotalForce = !showTotalForce;
+  const btn = document.getElementById('showForceBtn');
+  btn.textContent = showTotalForce ? 'Hide Total Force' : 'Show Total Force';
+  btn.classList.toggle('running', showTotalForce);
+  if (!tempRunning) drawTemp();
+});
 
 // ─── Temperature slider ──────────────────────────────────────────────────────
 document.getElementById('tempSlider').addEventListener('input', function () {
