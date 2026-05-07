@@ -425,8 +425,8 @@
 
 <div id="toolbar">
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
-    <button class="tab-btn active" id="fusionTabBtn" style="cursor:pointer" onclick="switchTab('fusion')">FUSION</button>
-    <button class="tab-btn" id="tempTabBtn" style="cursor:pointer" onclick="switchTab('temp')">TEMPERATURE</button>
+    <button class="tab-btn" id="fusionTabBtn" style="cursor:pointer" onclick="switchTab('fusion')">FUSION</button>
+    <button class="tab-btn active" id="tempTabBtn" style="cursor:pointer" onclick="switchTab('temp')">TEMPERATURE</button>
   </div>
   <div style="display:flex;align-items:stretch;gap:12px;">
   <div style="display:flex;flex-direction:column;justify-content:flex-end;align-self:stretch;gap:6px;padding-bottom:10px;margin-right:4px;">
@@ -435,7 +435,7 @@
     <button class="btn" id="clearBtn">Clear</button>
   </div>
 
-  <div id="fusionControls" style="display:flex;align-items:stretch;gap:12px;">
+  <div id="fusionControls" style="display:none;align-items:stretch;gap:12px;">
   <div class="ctrl-box-pink">
     <div style="display:flex;gap:40px;justify-content:center;">
       <!-- Left particle wheel -->
@@ -491,7 +491,7 @@
   </div><!-- /fusionControls -->
 
   <!-- Temperature tab controls -->
-  <div id="tempControls" style="display:none;align-items:stretch;gap:12px;">
+  <div id="tempControls" style="display:flex;align-items:stretch;gap:12px;">
     <div class="ctrl-box-pink">
       <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">Temperature</div>
       <div style="display:flex;align-items:center;gap:6px;">
@@ -513,7 +513,7 @@
   <canvas id="canvas"></canvas>
 </div>
 
-<div id="scrubBar">
+<div id="scrubBar" style="display:none">
   <div id="scrubLeft">
     <canvas id="energyGraph" height="150"></canvas>
     <div id="phaseTimeline" style="display:flex;">
@@ -3225,8 +3225,8 @@ function switchTab(name) {
 //  TEMPERATURE TAB — constants & state
 // ============================================================
 const TEMP_N          = 20;
-const TEMP_R          = 8;          // proton radius in temp sim (px)
-const TEMP_COULOMB    = 180;        // repulsion strength
+const TEMP_R          = 24;         // proton radius in temp sim (px)
+const TEMP_COULOMB    = 3e6;        // repulsion strength (1/r^4 law)
 const TEMP_SUBSTEPS   = 4;
 
 let tempProtons  = [];
@@ -3305,10 +3305,10 @@ function stepTempPhysics() {
       for (let j = i + 1; j < N; j++) {
         const dx = tempProtons[j].x - tempProtons[i].x;
         const dy = tempProtons[j].y - tempProtons[i].y;
-        const r2 = Math.max(dx * dx + dy * dy, (R * 2.1) ** 2);
-        const r  = Math.sqrt(r2);
-        const F  = TEMP_COULOMB / r2;
-        const fx = F * dx / r, fy = F * dy / r;
+        const r2  = Math.max(dx * dx + dy * dy, (R * 2.1) ** 2);
+        const r   = Math.sqrt(r2);
+        const F   = TEMP_COULOMB / (r2 * r2);   // 1/r^4: very short-range
+        const fx  = F * dx / r, fy = F * dy / r;
         ax[i] -= fx; ay[i] -= fy;
         ax[j] += fx; ay[j] += fy;
       }
@@ -3455,6 +3455,8 @@ document.getElementById('tempSlider').addEventListener('input', function () {
 });
 // Seed initial tempSpeed from slider default value
 tempSpeed = tempSliderToSpeed(parseFloat(document.getElementById('tempSlider').value));
+// Start on Temperature tab
+switchTab('temp');
 </script>
 </body>
 </html>
