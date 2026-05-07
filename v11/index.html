@@ -1732,7 +1732,6 @@ function applyTab(tab) {
   if (isProtonOnly) {
     showStrongField = false;
     document.getElementById('strongFieldToggle').checked = false;
-    strongForceStrength = 0.25;
     // Force box: hide One/Group, make All/Total full-width, make Show Forces 3x tall
     document.getElementById('forceModeSelCols').style.display = 'none';
     const modeCols = document.getElementById('forceModeModeCols');
@@ -1962,10 +1961,13 @@ function pairForce(dist, distSq, aType, bType, strongScale) {
     const softDistSq = Math.max(distSq, PARTICLE_RADIUS * PARTICLE_RADIUS);
     force += coulombStrength / softDistSq;
   }
-  // Strong nuclear force: constant attraction within cutoff, no repulsive core
-  const cutoff = strongCutoff();
-  if (dist < cutoff) {
-    force -= strongForceStrength * (strongScale ?? 1.0);
+  // Strong nuclear force: constant attraction within cutoff, no repulsive core.
+  // Nucleus-tab only — the proton tab is a Coulomb-only world.
+  if (!currentTabIsProton) {
+    const cutoff = strongCutoff();
+    if (dist < cutoff) {
+      force -= strongForceStrength * (strongScale ?? 1.0);
+    }
   }
   return force;
 }
@@ -1995,6 +1997,7 @@ function computeEnergy() {
   }
 
   const cutoff = strongCutoff();
+  const includeStrong = !currentTabIsProton;  // proton tab has no strong force
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
       const dx = particles[j].x - particles[i].x;
@@ -2007,7 +2010,7 @@ function computeEnergy() {
           eiePotential += coulombStrength / softDist;
         }
         // Strong force potential: V = -S * (cutoff - r), zero at cutoff, deepens linearly inward
-        if (dist < cutoff) {
+        if (includeStrong && dist < cutoff) {
           siePotential -= strongForceStrength * (cutoff - dist);
         }
       }
