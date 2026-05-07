@@ -3260,7 +3260,8 @@ function switchTab(name) {
 const TEMP_N          = 20;
 const TEMP_R          = 24;         // proton radius in temp sim (px)
 let   tempCoulomb     = 2e7;        // repulsion strength (1/r^4 law) — tunable via dev slider
-let   tempTimeScale   = 1.0;        // slow-motion factor (0.1–1.0)
+let   tempTimeScale   = 1.0;        // slow-motion factor: physics steps per render frame (0.1–1.0)
+let   tempFrameAccum  = 0;          // fractional step accumulator for slow-motion
 const TEMP_SUBSTEPS   = 4;
 
 let tempProtons  = [];
@@ -3284,7 +3285,7 @@ function getTempContainer() {
 function rescaleTempVelocities() {
   const N = tempProtons.length;
   if (!N) return;
-  const target = tempSpeed * tempTimeScale;
+  const target = tempSpeed;  // thermostat always targets physical speed; slow-mo is handled by frame accumulator
   let sumV2 = 0;
   for (const p of tempProtons) sumV2 += p.vx * p.vx + p.vy * p.vy;
   const meanV = Math.sqrt(sumV2 / N);
@@ -3497,7 +3498,7 @@ function drawTempForceArrows() {
     }
     const fMag = Math.sqrt(fxNet * fxNet + fyNet * fyNet);
     if (fMag < 1e-6) continue;
-    const scale = Math.min(550, Math.log1p(fMag) * 70);
+    const scale = Math.min(600, Math.log1p(fMag) * 700);
     const ux = fxNet / fMag, uy = fyNet / fMag;
     const x0 = tempProtons[i].x, y0 = tempProtons[i].y;
     const x1 = x0 + ux * scale, y1 = y0 + uy * scale;
@@ -3522,8 +3523,16 @@ function drawTempForceArrows() {
 }
 
 function tempLoop() {
-  stepTempPhysics();
-  detectTempFlashes();
+  // Advance physics by tempTimeScale steps per render frame.
+  // At 1.0: one step per frame (normal). At 0.1: one step every 10 frames (10× slow-mo).
+  // The accumulator carries the fractional remainder across frames.
+  tempFrameAccum += tempTimeScale;
+  const steps = Math.floor(tempFrameAccum);
+  tempFrameAccum -= steps;
+  for (let i = 0; i < steps; i++) {
+    stepTempPhysics();
+    detectTempFlashes();
+  }
   drawTemp();
   tempRAF = requestAnimationFrame(tempLoop);
 }
@@ -3618,9 +3627,8 @@ tempSpeed = tempSliderToSpeed(parseFloat(document.getElementById('tempSlider').v
 
 // ─── Slow-motion slider ──────────────────────────────────────────────────────
 document.getElementById('tempSpeedSlider').addEventListener('input', function () {
-  tempTimeScale = parseInt(this.value) / 10;  // 0.1 … 1.0
-  rescaleTempVelocities();
-  if (!tempRunning) drawTemp();
+  tempTimeScale = parseInt(this.value) / 10;  // 0.1 … 1.0 steps/frame
+  tempFrameAccum = 0;  // reset accumulator so no burst of steps on slider release
 });
 
 // ─── Repulsion dev slider ─────────────────────────────────────────────────────
