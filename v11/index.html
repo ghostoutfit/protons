@@ -570,7 +570,7 @@
     cursor: grab;
   }
 
-  #neutronSlider { width: 140px; }
+  #neutronSlider { width: auto; }
 
   /* ========================================
      SLIDER GROUPS & TOGGLES
@@ -669,6 +669,23 @@
     color: var(--accent2);
     border-color: var(--accent2);
     background: var(--accent2-dim);
+    box-shadow: 0 0 6px var(--accent2-glow);
+    text-shadow: 0 0 8px var(--accent2-glow);
+  }
+  .force-mode-btn.show-forces-large {
+    /* Default (blue/purple themes): solid filled */
+    background: var(--accent2);
+    color: rgba(255,255,255,0.95);
+    border-color: var(--accent2);
+    box-shadow: 0 0 10px var(--accent2-glow);
+    text-shadow: none;
+    padding: 28px 11px;
+    width: 100%;
+  }
+  /* Teal theme: use highlighted active look instead of solid fill */
+  body.theme-teal .force-mode-btn.show-forces-large {
+    background: var(--accent2-dim);
+    color: var(--accent2);
     box-shadow: 0 0 6px var(--accent2-glow);
     text-shadow: 0 0 8px var(--accent2-glow);
   }
@@ -887,7 +904,6 @@
             <button id="neutronDecBtn" style="width:24px;height:24px;padding:0;font-size:12px;line-height:1;flex-shrink:0;">&#9664;</button>
             <input type="range" id="neutronSlider" min="0" max="60" step="1" value="2">
             <button id="neutronIncBtn" style="width:24px;height:24px;padding:0;font-size:12px;line-height:1;flex-shrink:0;">&#9654;</button>
-            <span class="neutron-slider-label"><span id="neutronSliderVal" style="display:inline-block;min-width:18px;text-align:left">2</span></span>
           </div>
         </div>
       </div>
@@ -915,13 +931,13 @@
       <div style="display:flex;flex-direction:column;gap:5px;justify-content:flex-start;align-self:stretch">
         <button id="showHideForces" class="force-mode-btn" style="min-width:142px">Show forces</button>
         <div id="forceModeOptions" style="display:none;gap:6px;margin-top:2px">
-          <div style="display:flex;flex-direction:column;gap:4px">
+          <div id="forceModeSelCols" style="display:flex;flex-direction:column;gap:4px">
             <button class="force-mode-btn active" data-selmode="single">One</button>
             <button class="force-mode-btn" data-selmode="group">Group</button>
           </div>
-          <div style="display:flex;flex-direction:column;gap:4px">
-            <button class="force-mode-btn" data-mode="1">All</button>
-            <button class="force-mode-btn" data-mode="2">Total</button>
+          <div id="forceModeModeCols" style="display:flex;flex-direction:column;gap:4px">
+            <button class="force-mode-btn" data-mode="1">All Forces</button>
+            <button class="force-mode-btn" data-mode="2">Total Force</button>
           </div>
         </div>
       </div>
@@ -938,7 +954,7 @@
   <div id="forcePanelLabel"></div>
   <div id="forcePanelKey">
     <span><span style="color:#46a5ff">■</span><span style="color:#46a5ff;text-shadow:0 0 4px #46a5ff,0 0 10px rgba(70,165,255,0.5)">Electric force</span></span>
-    <span><span style="color:#ffb946">■</span><span style="color:#ffb946;text-shadow:0 0 4px #ffb946,0 0 10px rgba(255,185,70,0.5)">Strong force</span></span>
+    <span id="forcePanelKeyStrong"><span style="color:#ffb946">■</span><span style="color:#ffb946;text-shadow:0 0 4px #ffb946,0 0 10px rgba(255,185,70,0.5)">Strong force</span></span>
   </div>
   <canvas id="forcePanelCanvas" width="200" height="200"></canvas>
 </div>
@@ -990,6 +1006,7 @@ const MAX_HISTORY = 4000;
 let particleHistory = [];
 let scrubFrame = -1;
 let replaying = false;  // true while auto-playing back recorded history
+let replayAccum = 0;    // fractional frame accumulator for speed-slider-controlled playback
 
 // ---- Visualization toggles ----
 let showElectricField = true;   // Toggle for Coulomb heatmap
@@ -1554,6 +1571,15 @@ function placeCluster(numProtons, numNeutrons, spacing) {
   hideInstructions();
 }
 
+function selectRightmostProton() {
+  if (!currentTabIsProton || particles.length === 0) return;
+  let best = -1, bestX = -Infinity;
+  for (let i = 0; i < particles.length; i++) {
+    if (particles[i].x > bestX) { bestX = particles[i].x; best = i; }
+  }
+  selectedParticle = best;
+}
+
 function placeProtons(n) {
   resetSim();
   const toolbarH = document.getElementById('toolbar').offsetHeight;
@@ -1562,6 +1588,7 @@ function placeProtons(n) {
   for (const p of pts) particles.push(createParticle(cx + p.x, cy + p.y, 'proton'));
   updateStats();
   computeEnergy();
+  selectRightmostProton();
   draw();
   hideInstructions();
 }
@@ -1626,6 +1653,7 @@ function doReplay() {
   timeLabelEl.textContent = `1 / ${particleHistory.length}`;
   renderFrame(0);
   // Auto-play through recorded history
+  replayAccum = 0;
   replaying = true;
   running = true;
   goBtn.textContent = '⏸';
@@ -1697,10 +1725,43 @@ function applyTab(tab) {
   document.getElementById('tabA').classList.toggle('active', isProtonOnly);
   document.getElementById('tabB').classList.toggle('active', isNucleus);
   document.getElementById('centerBtn').style.visibility = isNucleus ? 'visible' : 'hidden';
-  document.getElementById('strongFieldLabel').style.visibility = 'visible';
-  // Reset strong force to tab default
+  // Strong field: hide checkbox + key entry on Tab A; restore on Tab B
+  document.getElementById('strongFieldLabel').style.visibility = isProtonOnly ? 'hidden' : '';
+  document.getElementById('forcePanelKeyStrong').style.display = isProtonOnly ? 'none' : '';
   if (isProtonOnly) {
+    showStrongField = false;
+    document.getElementById('strongFieldToggle').checked = false;
     strongForceStrength = 0.25;
+    // Force box: hide One/Group, make All/Total full-width, make Show Forces 3x tall
+    document.getElementById('forceModeSelCols').style.display = 'none';
+    const modeCols = document.getElementById('forceModeModeCols');
+    modeCols.style.flexDirection = 'column';
+    modeCols.style.width = '100%';
+    modeCols.querySelectorAll('button').forEach(b => { b.style.width = '100%'; b.style.display = 'block'; });
+    const opts = document.getElementById('forceModeOptions');
+    opts.style.flexDirection = 'column';
+    opts.style.width = '100%';
+    document.getElementById('showHideForces').classList.toggle('show-forces-large', arrowMode === 0);
+    document.querySelector('.force-mode-btn[data-mode="1"]').textContent = 'All Forces';
+    document.querySelector('.force-mode-btn[data-mode="2"]').textContent = 'Total Force';
+    // Default to single-particle mode, no group
+    groupSelectMode = false;
+    selectedGroup = [];
+    canvas.style.cursor = 'default';
+  } else {
+    // Tab B: restore all Tab-A-only overrides; strong field on by default
+    showStrongField = true;
+    document.getElementById('strongFieldToggle').checked = true;
+    document.getElementById('forceModeSelCols').style.display = 'flex';
+    const modeCols = document.getElementById('forceModeModeCols');
+    modeCols.style.width = '';
+    modeCols.querySelectorAll('button').forEach(b => { b.style.width = ''; b.style.display = ''; });
+    const opts = document.getElementById('forceModeOptions');
+    opts.style.flexDirection = '';
+    opts.style.width = '';
+    document.getElementById('showHideForces').classList.toggle('show-forces-large', arrowMode === 0);
+    document.querySelector('.force-mode-btn[data-mode="1"]').textContent = 'All';
+    document.querySelector('.force-mode-btn[data-mode="2"]').textContent = 'Total';
   }
   // Clear simulation state on tab switch
   running = false;
@@ -1783,7 +1844,7 @@ document.querySelectorAll('.particle-add-btn').forEach(btn => {
 });
 
 const neutronSlider    = document.getElementById('neutronSlider');
-const neutronSliderVal = document.getElementById('neutronSliderVal');
+const neutronSliderVal = { textContent: '' }; // label removed; stub to avoid errors
 neutronSlider.addEventListener('input', function() {
   neutronSliderVal.textContent = this.value;
   if (lastNucleusProtonCount > 0) {
@@ -1808,11 +1869,14 @@ function setForceModeActive(mode) {
   const wasVisible = arrowMode > 0;
   arrowMode = mode;
   if (mode > 0) lastArrowMode = mode;
+  // On Tab A, auto-select rightmost proton when turning forces on
+  if (currentTabIsProton && mode > 0) selectRightmostProton();
   // Show/Hide toggle label
   const shBtn = document.getElementById('showHideForces');
   if (shBtn) {
     shBtn.textContent = arrowMode > 0 ? 'Hide forces' : 'Show forces';
     shBtn.classList.toggle('active', arrowMode > 0);
+    shBtn.classList.toggle('show-forces-large', arrowMode === 0);
   }
   // Arrow mode buttons (1/2)
   document.querySelectorAll('.force-mode-btn[data-mode]').forEach(btn => {
@@ -2590,7 +2654,7 @@ function drawForcePanel() {
             const len = MAX_LEN * (refDist / Math.max(dist, refDist)) * 2.4 * zoom * vizScaleG;
             drawArrowOnCtx(forcePanelCtx, px + nx * drawnRadius, py + ny * drawnRadius, nx, ny, len, ELEC_ARROW_COLOR, 2);
           }
-          if (dist < cutoff) {
+          if (!currentTabIsProton && dist < cutoff) {
             const slen = MAX_LEN * (1 - dist / cutoff) * 0.85 * 5 * zoom * vizScaleG;
             drawArrowOnCtx(forcePanelCtx, px - nx * drawnRadius, py - ny * drawnRadius, -nx, -ny, slen, STRONG_ARROW_COLOR, 2);
           }
@@ -2612,7 +2676,7 @@ function drawForcePanel() {
             const len = MAX_LEN * (refDist / Math.max(dist, refDist)) * 2.4;
             cFx += nx * len; cFy += ny * len;
           }
-          if (dist < cutoff) {
+          if (!currentTabIsProton && dist < cutoff) {
             const slen = MAX_LEN * (1 - dist / cutoff) * 0.85 * 5;
             sFx += -nx * slen; sFy += -ny * slen;
           }
@@ -2678,30 +2742,70 @@ function drawForcePanel() {
       const len = MAX_LEN * (refDist / Math.max(dist, refDist)) * 2.4;
       coulombVecs.push({ nx, ny, len });
     }
-    if (dist < cutoff) {
+    if (!currentTabIsProton && dist < cutoff) {
       const slen = MAX_LEN * (1 - dist / cutoff) * 0.85 * 5;
       strongVecs.push({ nx: -nx, ny: -ny, len: slen });
     }
   }
 
-  // Compute vizScale so all arrows fit within the panel canvas
-  const SPAD = 10;
-  const availRS = Math.min(W, H) / 2 - SPAD;
-  let maxExtentS = PR * 1.1;
-  if (arrowMode === 1) {
-    coulombVecs.forEach(v => { maxExtentS = Math.max(maxExtentS, PR + v.len * zoom); });
-    strongVecs.forEach(v  => { maxExtentS = Math.max(maxExtentS, PR + v.len * zoom); });
+  // On Tab A: no autoscale — proton always full size, arrows clip freely.
+  // On Tab B: autoscale so everything fits within the panel.
+  let vizScaleS;
+  if (currentTabIsProton) {
+    vizScaleS = 1;
   } else {
-    const cSum = coulombVecs.reduce((a, v) => ({ x: a.x + v.nx * v.len, y: a.y + v.ny * v.len }), { x: 0, y: 0 });
-    const sSum = strongVecs.reduce((a, v)  => ({ x: a.x + v.nx * v.len, y: a.y + v.ny * v.len }), { x: 0, y: 0 });
-    const cMag = Math.sqrt(cSum.x * cSum.x + cSum.y * cSum.y);
-    const sMag = Math.sqrt(sSum.x * sSum.x + sSum.y * sSum.y);
-    if (cMag > 0.5) maxExtentS = Math.max(maxExtentS, PR + Math.sqrt(cMag) * 6 * zoom);
-    if (sMag > 0.5) maxExtentS = Math.max(maxExtentS, PR + sMag * zoom);
+    const SPAD = 10;
+    const availRS = Math.min(W, H) / 2 - SPAD;
+    let maxExtentS = PR * 1.1;
+    if (arrowMode === 1) {
+      coulombVecs.forEach(v => { maxExtentS = Math.max(maxExtentS, PR + v.len * zoom); });
+      strongVecs.forEach(v  => { maxExtentS = Math.max(maxExtentS, PR + v.len * zoom); });
+    } else {
+      const cSum = coulombVecs.reduce((a, v) => ({ x: a.x + v.nx * v.len, y: a.y + v.ny * v.len }), { x: 0, y: 0 });
+      const sSum = strongVecs.reduce((a, v)  => ({ x: a.x + v.nx * v.len, y: a.y + v.ny * v.len }), { x: 0, y: 0 });
+      const cMag = Math.sqrt(cSum.x * cSum.x + cSum.y * cSum.y);
+      const sMag = Math.sqrt(sSum.x * sSum.x + sSum.y * sSum.y);
+      if (cMag > 0.5) maxExtentS = Math.max(maxExtentS, PR + Math.sqrt(cMag) * 6 * zoom);
+      if (sMag > 0.5) maxExtentS = Math.max(maxExtentS, PR + sMag * zoom);
+    }
+    vizScaleS = maxExtentS > availRS ? availRS / maxExtentS : 1;
   }
-  const vizScaleS = maxExtentS > availRS ? availRS / maxExtentS : 1;
   const sPR = PR * vizScaleS;
-  const sppx = cx + jx * vizScaleS, sppy = cy + jy * vizScaleS;
+
+  // Compute centering offset so the whole viz (particle + arrows) is centered.
+  // Walk the same arrow geometry as the draw pass to find the bounding box,
+  // then shift the particle origin so the bbox lands at (cx, cy).
+  let bbMinX = -sPR, bbMaxX = sPR, bbMinY = -sPR, bbMaxY = sPR;
+  if (arrowMode === 1) {
+    coulombVecs.forEach(v => {
+      const tx = v.nx * (sPR + v.len * zoom * vizScaleS);
+      const ty = v.ny * (sPR + v.len * zoom * vizScaleS);
+      bbMinX = Math.min(bbMinX, tx); bbMaxX = Math.max(bbMaxX, tx);
+      bbMinY = Math.min(bbMinY, ty); bbMaxY = Math.max(bbMaxY, ty);
+    });
+    if (!currentTabIsProton) strongVecs.forEach(v => {
+      const tx = v.nx * (sPR + v.len * zoom * vizScaleS);
+      const ty = v.ny * (sPR + v.len * zoom * vizScaleS);
+      bbMinX = Math.min(bbMinX, tx); bbMaxX = Math.max(bbMaxX, tx);
+      bbMinY = Math.min(bbMinY, ty); bbMaxY = Math.max(bbMaxY, ty);
+    });
+  } else {
+    const sumVecs = (vecs) => vecs.reduce((a, v) => ({ x: a.x + v.nx * v.len, y: a.y + v.ny * v.len }), { x: 0, y: 0 });
+    const addNetTip = (vec, scale = x => x) => {
+      const mag = Math.sqrt(vec.x * vec.x + vec.y * vec.y);
+      if (mag < 0.5) return;
+      const len = scale(mag) * zoom * vizScaleS;
+      const tx = (vec.x / mag) * (sPR + len), ty = (vec.y / mag) * (sPR + len);
+      bbMinX = Math.min(bbMinX, tx); bbMaxX = Math.max(bbMaxX, tx);
+      bbMinY = Math.min(bbMinY, ty); bbMaxY = Math.max(bbMaxY, ty);
+    };
+    addNetTip(sumVecs(coulombVecs), x => Math.sqrt(x) * 6);
+    if (!currentTabIsProton) addNetTip(sumVecs(strongVecs));
+  }
+  const offX = -((bbMinX + bbMaxX) / 2);
+  const offY = -((bbMinY + bbMaxY) / 2);
+
+  const sppx = cx + offX + jx * vizScaleS, sppy = cy + offY + jy * vizScaleS;
 
   // Redraw particle at scaled size (overwrite earlier drawing)
   forcePanelCtx.clearRect(0, 0, W, H);
@@ -2728,7 +2832,7 @@ function drawForcePanel() {
 
   if (arrowMode === 1) {
     coulombVecs.forEach(v => drawArrowOnCtx(forcePanelCtx, sppx + v.nx * sPR, sppy + v.ny * sPR, v.nx, v.ny, v.len * zoom * vizScaleS, ELEC_ARROW_COLOR, 3));
-    strongVecs.forEach(v  => drawArrowOnCtx(forcePanelCtx, sppx + v.nx * sPR, sppy + v.ny * sPR, v.nx, v.ny, v.len * zoom * vizScaleS, STRONG_ARROW_COLOR, 3));
+    if (!currentTabIsProton) strongVecs.forEach(v => drawArrowOnCtx(forcePanelCtx, sppx + v.nx * sPR, sppy + v.ny * sPR, v.nx, v.ny, v.len * zoom * vizScaleS, STRONG_ARROW_COLOR, 3));
   } else {
     const sum = (vecs) => vecs.reduce((a, v) => ({ x: a.x + v.nx * v.len, y: a.y + v.ny * v.len }), { x: 0, y: 0 });
     const drawNet = (vec, color, scale = x => x) => {
@@ -2739,7 +2843,7 @@ function drawForcePanel() {
     };
     const cSum = sum(coulombVecs), sSum = sum(strongVecs);
     drawNet(cSum, ELEC_ARROW_COLOR, x => Math.sqrt(x) * 6);
-    drawNet(sSum, STRONG_ARROW_COLOR);
+    if (!currentTabIsProton) drawNet(sSum, STRONG_ARROW_COLOR);
   }
 }
 
@@ -2941,12 +3045,17 @@ function loop() {
 
   // ── Replay mode: play back recorded history automatically ──
   if (replaying) {
-    scrubFrame++;
-    if (scrubFrame >= particleHistory.length) {
+    // Speed slider controls playback rate via fractional accumulator.
+    // speed is in sim units; normalise to ~1 frame/tick at default (speed≈1.5).
+    replayAccum += Math.max(0.05, speed / 1.5);
+    const steps = Math.floor(replayAccum);
+    replayAccum -= steps;
+    scrubFrame = Math.min(scrubFrame + steps, particleHistory.length - 1);
+    if (scrubFrame >= particleHistory.length - 1) {
       // Reached end of recording — stop
-      scrubFrame = particleHistory.length - 1;
       running = false;
       replaying = false;
+      replayAccum = 0;
       goBtn.textContent = '▶ GO';
       goBtn.classList.remove('running');
       timeSlider.value = scrubFrame;
@@ -3164,6 +3273,7 @@ function applyTheme(key) {
   document.body.style.background = t.bg;
   document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('theme'+key).classList.add('active');
+  document.body.classList.toggle('theme-teal', key === 'C');
   if (!running) draw();
 }
 document.getElementById('themeA').addEventListener('click', () => applyTheme('A'));
@@ -3358,29 +3468,28 @@ function ambientLoop() {
 }
 ambientLoop();
 iconAnimLoop();
-setForceModeActive(arrowMode);
 
-
-// If linked from v13 with #nucleus hash, auto-switch to Protons + Neutrons tab
+// ── Single authoritative init ─────────────────────────────────────────
+// applyTab() is the ONLY source of truth for tab state.
+// HTML defaults are ignored — JS always drives the initial state.
 if (location.hash === '#nucleus') {
-  document.getElementById('tabB').click();
-}
-
-// #fission — arrived from fission sim; hide the PARTICLES/VISUALS box labels, show fission tabs
-if (location.hash === '#fission') {
-  document.querySelectorAll('.ctrl-box-label').forEach(el => el.style.display = 'none');
-  document.querySelectorAll('.fission-tab').forEach(el => el.style.display = '');
-}
-
-// URL routing: #protons → protons tab only (hide tabB, rename tabA)
-// Runs last so no initialization step can undo it
-if (location.hash === '#protons') {
+  applyTab(false);
+} else if (location.hash === '#protons') {
   document.getElementById('tabB').style.display = 'none';
   const tabA = document.getElementById('tabA');
   tabA.textContent = 'PROTONS';
   tabA.style.pointerEvents = 'none';
   applyTab(true);
+} else if (location.hash === '#fission') {
+  document.querySelectorAll('.ctrl-box-label').forEach(el => el.style.display = 'none');
+  document.querySelectorAll('.fission-tab').forEach(el => el.style.display = '');
+  applyTab(true);
+} else {
+  applyTab(true);
 }
+
+// Apply force mode AFTER tab is set so currentTabIsProton is correct.
+setForceModeActive(arrowMode);
 
 // Initial draw to populate the canvas before Go is pressed
 draw();
