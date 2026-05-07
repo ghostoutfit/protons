@@ -1056,14 +1056,18 @@ function updateCamera() {
 
   // After photon capture fires, use photon (while alive) as the second camera anchor
   // so the camera tracks the midpoint between nucleus and photon.
+  // VIEW_OFFSET_X biases the camera to the right of the actual midpoint so the
+  // simulation is rendered to the left of canvas center (clear of the bar-chart
+  // panel on the right). 100 world units × zoomScale 1.5 = 150 screen px.
+  const VIEW_OFFSET_X = 100;
   if (photonCaptureFired) {
     const px = photon ? photon.x : rcx;
     const py = photon ? photon.y : rcy;
     // Camera midpoint between nucleus CM (lcx/lcy) and photon position
-    cameraSiteX = (lcx + px) / 2;
+    cameraSiteX = (lcx + px) / 2 + VIEW_OFFSET_X;
     cameraSiteY = (lcy + py) / 2;
   } else {
-    cameraSiteX = (lcx + rcx) / 2;
+    cameraSiteX = (lcx + rcx) / 2 + VIEW_OFFSET_X;
     cameraSiteY = (lcy + rcy) / 2;
   }
   return { lcx, lcy, rcx, rcy };
@@ -2559,6 +2563,7 @@ function inBarChartPanel(e) {
 }
 
 canvas.addEventListener('mousedown', e => {
+  if (currentTab !== 'fusion') return;
   if (!inBarChartPanel(e)) return;
   const comboEntry = getComboEntry();
   const autoMax = comboEntry?.keOutScaled ?? speedToKeV(approachSpeed);
@@ -2843,9 +2848,11 @@ function updateJitter() {
 
 // Always-on jitter loop — redraws when sim is idle so particles never freeze.
 // Skips redraw when scrubbing (scrubFrame >= 0) so the historical frame isn't overwritten.
+// Only redraws on the fusion tab — the temp tab manages its own canvas, and calling
+// fusion's draw() while on the temp tab would clobber the temp UI (including while paused).
 (function idleJitter() {
   updateJitter();
-  if (!running) {
+  if (currentTab === 'fusion' && !running) {
     if (scrubFrame >= 0) {
       renderFrame(scrubFrame); // keep showing the scrubbed frame with fresh jitter
     } else {
@@ -3227,6 +3234,9 @@ function switchTab(name) {
     initTempProtons();
     drawTemp();
   } else {
+    // Populate default particles on first fusion-tab load so the user sees
+    // the starting configuration without having to press Go first.
+    if (!particles.length) setupScenario();
     if (!running) draw();
   }
 }
