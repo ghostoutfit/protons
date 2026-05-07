@@ -2313,13 +2313,12 @@ function resize() {
   canvas.height       = window.innerHeight - toolbarH - scrubH;
   energyGraph.width   = Math.max(1, window.innerWidth - 320);
   if (typeof currentTab !== 'undefined' && currentTab === 'temp') {
-    if (!tempRunning) drawTemp();
-  } else if (!running) {
-    draw();
+    if (!tempRunning) { initTempProtons(); drawTemp(); }
+  } else if (typeof currentTab === 'undefined' || currentTab === 'fusion') {
+    if (!running) draw();
   }
 }
 window.addEventListener('resize', resize);
-setTimeout(resize, 0);
 
 // ============================================================
 //  RESET & SETUP
@@ -3209,8 +3208,9 @@ function loop() {
 //  INITIAL RENDER
 // ============================================================
 applyComboSieOffset();  // seed SIE offset box from table for initial combo
-setupScenario();
-draw();
+// Note: no draw() here — switchTab() below handles the first render with a
+// correctly-sized canvas. Drawing on the default 300×150 canvas causes the
+// fusion screen to flash on temp-tab load.
 
 // ============================================================
 //  TAB SWITCHING
@@ -3239,8 +3239,16 @@ function switchTab(name) {
   energyGraph.width   = Math.max(1, window.innerWidth - 320);
   if (name === 'temp') {
     tempFlashes = [];
-    initTempProtons();
-    drawTemp();
+    // Defer to next frame so the browser finishes toolbar layout before we
+    // read offsetHeight for canvas sizing and proton placement.
+    requestAnimationFrame(() => {
+      const tH = document.getElementById('toolbar').offsetHeight;
+      const sH = document.getElementById('scrubBar').offsetHeight;
+      canvas.width  = window.innerWidth;
+      canvas.height = window.innerHeight - tH - sH;
+      initTempProtons();
+      drawTemp();
+    });
   } else {
     if (!running) draw();
   }
