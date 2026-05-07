@@ -3241,7 +3241,7 @@ function switchTab(name) {
   canvas.height       = window.innerHeight - toolbarH - scrubH;
   energyGraph.width   = Math.max(1, window.innerWidth - 320);
   if (name === 'temp') {
-    tempFlashes = [];
+    tempFlashes = []; tempFusions = [];
     initTempProtons();
     drawTemp();
   } else {
@@ -3324,6 +3324,8 @@ function initTempProtons() {
   rescaleTempVelocities();
 }
 
+let tempFusions = [];  // active fusion events: {i, j, frames}
+
 function stepTempPhysics() {
   const { cx, cy, rx, ry, cr } = getTempContainer();
   const N   = tempProtons.length;
@@ -3331,12 +3333,36 @@ function stepTempPhysics() {
   const sub = TEMP_SUBSTEPS;
   const irx = rx - R, iry = ry - R, icr = Math.max(0, cr - R);
 
+  // ── Process active fusions (lock pairs, count down, release) ──
+  // Build a fast lookup: fused[i*100+j] = true
+  const fused = {};
+  tempFusions = tempFusions.filter(f => {
+    f.frames--;
+    const pi = tempProtons[f.i], pj = tempProtons[f.j];
+    if (f.frames <= 0) {
+      // Release: push apart along their separation axis
+      const ang = Math.atan2(pj.y - pi.y, pj.x - pi.x) || (Math.random() * Math.PI * 2);
+      const sep = R * 1.1;
+      pi.x -= Math.cos(ang) * sep;  pi.y -= Math.sin(ang) * sep;
+      pj.x += Math.cos(ang) * sep;  pj.y += Math.sin(ang) * sep;
+      return false;
+    }
+    // Lock both to midpoint with shared centre-of-mass velocity
+    const mx  = (pi.x  + pj.x)  / 2, my  = (pi.y  + pj.y)  / 2;
+    const mvx = (pi.vx + pj.vx) / 2, mvy = (pi.vy + pj.vy) / 2;
+    pi.x = pj.x = mx;  pi.y = pj.y = my;
+    pi.vx = pj.vx = mvx;  pi.vy = pj.vy = mvy;
+    fused[f.i * 100 + f.j] = true;
+    return true;
+  });
+
   for (let s = 0; s < sub; s++) {
-    // Compute Coulomb accelerations
+    // Compute Coulomb accelerations (skip fused pairs)
     const ax = new Float32Array(N);
     const ay = new Float32Array(N);
     for (let i = 0; i < N; i++) {
       for (let j = i + 1; j < N; j++) {
+        if (fused[i * 100 + j]) continue;
         const dx = tempProtons[j].x - tempProtons[i].x;
         const dy = tempProtons[j].y - tempProtons[i].y;
         const r2  = Math.max(dx * dx + dy * dy, (R * 2.1) ** 2);
@@ -3357,7 +3383,6 @@ function stepTempPhysics() {
       const ex = Math.abs(p.x - cx), ey = Math.abs(p.y - cy);
       const sx = Math.sign(p.x - cx) || 1, sy = Math.sign(p.y - cy) || 1;
       if (ex > irx - icr && ey > iry - icr) {
-        // Corner arc region
         const ccx = cx + sx * (irx - icr), ccy = cy + sy * (iry - icr);
         const ddx = p.x - ccx, ddy = p.y - ccy;
         const dist = Math.sqrt(ddx * ddx + ddy * ddy);
@@ -3369,14 +3394,39 @@ function stepTempPhysics() {
           if (dot > 0) { p.vx -= 2 * dot * nnx; p.vy -= 2 * dot * nny; }
         }
       } else {
-        // Flat edge regions
         if (p.x < cx - irx) { p.x = cx - irx; if (p.vx < 0) p.vx = -p.vx; }
         if (p.x > cx + irx) { p.x = cx + irx; if (p.vx > 0) p.vx = -p.vx; }
         if (p.y < cy - iry) { p.y = cy - iry; if (p.vy < 0) p.vy = -p.vy; }
         if (p.y > cy + iry) { p.y = cy + iry; if (p.vy > 0) p.vy = -p.vy; }
       }
     }
+    // Re-lock fused pairs after each substep so they can't drift apart
+    for (const f of tempFusions) {
+      const pi = tempProtons[f.i], pj = tempProtons[f.j];
+      const mx  = (pi.x  + pj.x)  / 2, my  = (pi.y  + pj.y)  / 2;
+      const mvx = (pi.vx + pj.vx) / 2, mvy = (pi.vy + pj.vy) / 2;
+      pi.x = pj.x = mx;  pi.y = pj.y = my;
+      pi.vx = pj.vx = mvx;  pi.vy = pj.vy = mvy;
+    }
   }
+
+  // Detect new collisions → create fusions (skip already-fused pairs)
+  const now = performance.now();
+  for (let i = 0; i < N; i++) {
+    for (let j = i + 1; j < N; j++) {
+      if (fused[i * 100 + j]) continue;
+      const dx = tempProtons[j].x - tempProtons[i].x;
+      const dy = tempProtons[j].y - tempProtons[i].y;
+      if (dx * dx + dy * dy < (R * 2) * (R * 2)) {
+        tempFusions.push({ i, j, frames: 2 });
+        fused[i * 100 + j] = true;
+        // Trigger glow flash at the contact point
+        tempFlashes.push({ x: (tempProtons[i].x + tempProtons[j].x) / 2,
+                           y: (tempProtons[i].y + tempProtons[j].y) / 2, t: now });
+      }
+    }
+  }
+
   // Soft thermostat: nudge mean speed toward target each frame
   rescaleTempVelocities();
 }
@@ -3460,18 +3510,19 @@ let showTotalForce = false;
 
 function detectTempFlashes() {
   const N = tempProtons.length;
-  const flashDist = TEMP_R * 2 + 2;  // edge-to-edge within ~2px
+  const flashDist = TEMP_R * 2 + 2;
   const now = performance.now();
+  // Build fused lookup so we don't double-flash pairs that just fused
+  const fusedNow = {};
+  for (const f of tempFusions) fusedNow[f.i * 100 + f.j] = true;
   for (let i = 0; i < N; i++) {
     for (let j = i + 1; j < N; j++) {
+      if (fusedNow[i * 100 + j]) continue;  // fusion already triggered its own flash
       const dx = tempProtons[j].x - tempProtons[i].x;
       const dy = tempProtons[j].y - tempProtons[i].y;
       if (dx * dx + dy * dy < flashDist * flashDist) {
-        tempFlashes.push({
-          x: (tempProtons[i].x + tempProtons[j].x) * 0.5,
-          y: (tempProtons[i].y + tempProtons[j].y) * 0.5,
-          t: now,
-        });
+        tempFlashes.push({ x: (tempProtons[i].x + tempProtons[j].x) * 0.5,
+                           y: (tempProtons[i].y + tempProtons[j].y) * 0.5, t: now });
       }
     }
   }
@@ -3598,6 +3649,7 @@ document.getElementById('clearBtn').addEventListener('click', (e) => {
   e.stopImmediatePropagation();
   cancelAnimationFrame(tempRAF); tempRAF = null;
   tempRunning = false; tempPaused = false;
+  tempFlashes = []; tempFusions = [];
   goBtn.textContent = '▶'; goBtn.classList.remove('running');
   initTempProtons();
   drawTemp();
