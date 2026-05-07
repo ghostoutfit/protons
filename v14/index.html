@@ -3648,8 +3648,8 @@ document.getElementById('tempCoulombSlider').addEventListener('input', function 
 });
 updateCoulombLabel();
 
-// Start on Fusion tab
-switchTab('fusion');
+// Start on tab specified by URL hash (#temp), defaulting to fusion
+switchTab(location.hash === '#temp' ? 'temp' : 'fusion');
 </script>
 </body>
 </html>
