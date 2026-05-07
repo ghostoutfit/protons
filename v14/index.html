@@ -2094,7 +2094,7 @@ function drawEnergyGraph() {
     for (let i = zStart; i <= zEnd; i++) {
       const x = ((i - zStart) / zLen) * W;
       const v = getValue(particleHistory[i]);
-      const y = H - (v / maxY) * H;
+      const y = H - (v / maxY) * H - 5;
       if (i === zStart) path.moveTo(x, y); else path.lineTo(x, y);
     }
     return path;
