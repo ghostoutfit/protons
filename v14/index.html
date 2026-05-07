@@ -2197,6 +2197,7 @@ function drawEnergyGraph() {
 //  DRAW
 // ============================================================
 function draw() {
+  if (currentTab !== 'fusion') return;   // hard guard — never render fusion content on temp tab
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   const midX      = cameraSiteX || canvas.width  / 2;
@@ -2314,8 +2315,8 @@ function resize() {
   energyGraph.width   = Math.max(1, window.innerWidth - 320);
   if (typeof currentTab !== 'undefined' && currentTab === 'temp') {
     if (!tempRunning) { initTempProtons(); drawTemp(); }
-  } else if (typeof currentTab === 'undefined' || currentTab === 'fusion') {
-    if (!running) draw();
+  } else {
+    if (!running) draw();  // draw() guards itself with currentTab === 'fusion' check
   }
 }
 window.addEventListener('resize', resize);
@@ -3239,16 +3240,8 @@ function switchTab(name) {
   energyGraph.width   = Math.max(1, window.innerWidth - 320);
   if (name === 'temp') {
     tempFlashes = [];
-    // Defer to next frame so the browser finishes toolbar layout before we
-    // read offsetHeight for canvas sizing and proton placement.
-    requestAnimationFrame(() => {
-      const tH = document.getElementById('toolbar').offsetHeight;
-      const sH = document.getElementById('scrubBar').offsetHeight;
-      canvas.width  = window.innerWidth;
-      canvas.height = window.innerHeight - tH - sH;
-      initTempProtons();
-      drawTemp();
-    });
+    initTempProtons();
+    drawTemp();
   } else {
     if (!running) draw();
   }
