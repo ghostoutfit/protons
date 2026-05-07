@@ -425,7 +425,8 @@
 
 <div id="toolbar">
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
-    <span class="tab-btn active">FUSION</span>
+    <button class="tab-btn active" id="fusionTabBtn" style="cursor:pointer" onclick="switchTab('fusion')">FUSION</button>
+    <button class="tab-btn" id="tempTabBtn" style="cursor:pointer" onclick="switchTab('temp')">TEMPERATURE</button>
   </div>
   <div style="display:flex;align-items:stretch;gap:12px;">
   <div style="display:flex;flex-direction:column;justify-content:flex-end;align-self:stretch;gap:6px;padding-bottom:10px;margin-right:4px;">
@@ -434,6 +435,7 @@
     <button class="btn" id="clearBtn">Clear</button>
   </div>
 
+  <div id="fusionControls" style="display:flex;align-items:stretch;gap:12px;">
   <div class="ctrl-box-pink">
     <div style="display:flex;gap:40px;justify-content:center;">
       <!-- Left particle wheel -->
@@ -486,6 +488,22 @@
   <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-bottom:5px;">Development Values</div>
   <label style="font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:6px;">SIE offset: <input type="number" id="sieOffsetInput" value="0" step="1" style="width:56px;background:rgba(10,8,30,0.8);color:var(--accent2);border:1px solid rgba(26,110,255,0.35);border-radius:6px;padding:2px 4px;font-size:11px;font-family:inherit;outline:none;"></label>
 </div>
+  </div><!-- /fusionControls -->
+
+  <!-- Temperature tab controls -->
+  <div id="tempControls" style="display:none;align-items:stretch;gap:12px;">
+    <div class="ctrl-box-pink">
+      <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">Temperature</div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <canvas id="tempProtonL" width="52" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;"></canvas>
+        <input type="range" id="tempSlider" min="0" max="100" value="40" style="flex:1;min-width:80px;">
+        <canvas id="tempProtonR" width="52" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;"></canvas>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim);padding:0 2px;">
+        <span>Cool</span><span>Hot</span>
+      </div>
+    </div>
+  </div>
 
   </div><!-- close flex row -->
 </div>
@@ -2280,7 +2298,11 @@ function resize() {
   canvas.width        = window.innerWidth;
   canvas.height       = window.innerHeight - toolbarH - scrubH;
   energyGraph.width   = Math.max(1, window.innerWidth - 320);
-  if (!running) draw();
+  if (typeof currentTab !== 'undefined' && currentTab === 'temp') {
+    if (!tempRunning) drawTemp();
+  } else if (!running) {
+    draw();
+  }
 }
 window.addEventListener('resize', resize);
 setTimeout(resize, 0);
@@ -3173,6 +3195,266 @@ function loop() {
 applyComboSieOffset();  // seed SIE offset box from table for initial combo
 setupScenario();
 draw();
+
+// ============================================================
+//  TAB SWITCHING
+// ============================================================
+let currentTab = 'fusion';
+
+function switchTab(name) {
+  currentTab = name;
+  document.getElementById('fusionTabBtn').classList.toggle('active', name === 'fusion');
+  document.getElementById('tempTabBtn').classList.toggle('active', name === 'temp');
+  document.getElementById('fusionControls').style.display = name === 'fusion' ? 'flex' : 'none';
+  document.getElementById('tempControls').style.display   = name === 'temp'   ? 'flex' : 'none';
+  document.getElementById('scrubBar').style.display       = name === 'fusion' ? ''     : 'none';
+  document.getElementById('replayBtn').disabled = true;
+  // Stop any running animation
+  if (tempRAF)  { cancelAnimationFrame(tempRAF); tempRAF = null; }
+  if (animId)   { cancelAnimationFrame(animId);  animId  = null; }
+  running = false; paused = false; tempRunning = false; tempPaused = false;
+  goBtn.textContent = '▶';
+  goBtn.classList.remove('running');
+  if (name === 'temp') {
+    initTempProtons();
+  }
+  resize();   // resize re-draws the correct tab via the currentTab check
+}
+
+// ============================================================
+//  TEMPERATURE TAB — constants & state
+// ============================================================
+const TEMP_N          = 20;
+const TEMP_R          = 8;          // proton radius in temp sim (px)
+const TEMP_COULOMB    = 180;        // repulsion strength
+const TEMP_SUBSTEPS   = 4;
+
+let tempProtons  = [];
+let tempRAF      = null;
+let tempRunning  = false;
+let tempPaused   = false;
+let tempSpeed    = 1.5;             // target average speed (px/frame)
+
+function tempSliderToSpeed(val) {
+  return 0.25 + (val / 100) * 4.5; // 0.25 … 4.75 px/frame
+}
+
+function getTempBox() {
+  const W = canvas.width, H = canvas.height;
+  const bW = Math.min(W * 0.72, H * 1.6);
+  const bH = H * 0.84;
+  const bX = (W - bW) / 2;
+  const bY = (H - bH) / 2;
+  return { x: bX, y: bY, w: bW, h: bH };
+}
+
+function rescaleTempVelocities() {
+  const N = tempProtons.length;
+  if (!N) return;
+  let sumV2 = 0;
+  for (const p of tempProtons) sumV2 += p.vx * p.vx + p.vy * p.vy;
+  const meanV = Math.sqrt(sumV2 / N);
+  if (meanV < 1e-6) {
+    for (const p of tempProtons) {
+      const a = Math.random() * Math.PI * 2;
+      p.vx = Math.cos(a) * tempSpeed; p.vy = Math.sin(a) * tempSpeed;
+    }
+  } else {
+    const sc = tempSpeed / meanV;
+    for (const p of tempProtons) { p.vx *= sc; p.vy *= sc; }
+  }
+}
+
+function initTempProtons() {
+  const box = getTempBox();
+  const R = TEMP_R, pad = R + 6;
+  const cols = Math.ceil(Math.sqrt(TEMP_N * box.w / box.h));
+  const rows = Math.ceil(TEMP_N / cols);
+  const dx   = (box.w - 2 * pad) / Math.max(cols - 1, 1);
+  const dy   = (box.h - 2 * pad) / Math.max(rows - 1, 1);
+  tempProtons = [];
+  let placed = 0;
+  outer: for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (placed >= TEMP_N) break outer;
+      const jx = (Math.random() - 0.5) * dx * 0.25;
+      const jy = (Math.random() - 0.5) * dy * 0.25;
+      const a  = Math.random() * Math.PI * 2;
+      tempProtons.push({
+        x: box.x + pad + c * dx + jx,
+        y: box.y + pad + r * dy + jy,
+        vx: Math.cos(a) * tempSpeed, vy: Math.sin(a) * tempSpeed,
+      });
+      placed++;
+    }
+  }
+  rescaleTempVelocities();
+}
+
+function stepTempPhysics() {
+  const box = getTempBox();
+  const N   = tempProtons.length;
+  const R   = TEMP_R;
+  const sub = TEMP_SUBSTEPS;
+
+  for (let s = 0; s < sub; s++) {
+    // Compute Coulomb accelerations
+    const ax = new Float32Array(N);
+    const ay = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      for (let j = i + 1; j < N; j++) {
+        const dx = tempProtons[j].x - tempProtons[i].x;
+        const dy = tempProtons[j].y - tempProtons[i].y;
+        const r2 = Math.max(dx * dx + dy * dy, (R * 2.1) ** 2);
+        const r  = Math.sqrt(r2);
+        const F  = TEMP_COULOMB / r2;
+        const fx = F * dx / r, fy = F * dy / r;
+        ax[i] -= fx; ay[i] -= fy;
+        ax[j] += fx; ay[j] += fy;
+      }
+    }
+    // Integrate and bounce
+    for (let i = 0; i < N; i++) {
+      const p = tempProtons[i];
+      p.vx += ax[i] / sub;
+      p.vy += ay[i] / sub;
+      p.x  += p.vx  / sub;
+      p.y  += p.vy  / sub;
+      if (p.x - R < box.x)          { p.x = box.x + R;          p.vx =  Math.abs(p.vx); }
+      if (p.x + R > box.x + box.w)  { p.x = box.x + box.w - R;  p.vx = -Math.abs(p.vx); }
+      if (p.y - R < box.y)          { p.y = box.y + R;           p.vy =  Math.abs(p.vy); }
+      if (p.y + R > box.y + box.h)  { p.y = box.y + box.h - R;  p.vy = -Math.abs(p.vy); }
+    }
+  }
+  // Soft thermostat: nudge mean speed toward target each frame
+  rescaleTempVelocities();
+}
+
+function drawTempProtonAt(x, y) {
+  const R = TEMP_R;
+  const g1 = ctx.createRadialGradient(x, y, 0, x, y, R * 1.15);
+  g1.addColorStop(0,    '#ff80b0');
+  g1.addColorStop(0.55, '#ff1a65');
+  g1.addColorStop(1,    'rgba(0,0,0,0)');
+  ctx.fillStyle = g1;
+  ctx.beginPath(); ctx.arc(x, y, R * 1.15, 0, Math.PI * 2); ctx.fill();
+  ctx.save();
+  ctx.shadowColor = '#ff2d78'; ctx.shadowBlur = 14;
+  const g2 = ctx.createRadialGradient(x, y, 0, x, y, R * 0.55);
+  g2.addColorStop(0, '#fff'); g2.addColorStop(1, 'rgba(255,120,180,0)');
+  ctx.globalAlpha = 0.55;
+  ctx.fillStyle = g2;
+  ctx.beginPath(); ctx.arc(x, y, R * 0.55, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+function drawTemp() {
+  ctx.fillStyle = '#05040f';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const box = getTempBox();
+  // Yellow container
+  ctx.save();
+  ctx.fillStyle   = 'rgba(255,215,0,0.04)';
+  ctx.fillRect(box.x, box.y, box.w, box.h);
+  ctx.strokeStyle = 'rgba(255,215,0,0.8)';
+  ctx.lineWidth   = 2;
+  ctx.shadowColor = 'rgba(255,215,0,0.9)';
+  ctx.shadowBlur  = 20;
+  ctx.strokeRect(box.x, box.y, box.w, box.h);
+  ctx.restore();
+
+  // Protons
+  ctx.save();
+  ctx.shadowColor = '#ff2d78'; ctx.shadowBlur = 12;
+  for (const p of tempProtons) drawTempProtonAt(p.x, p.y);
+  ctx.restore();
+}
+
+function tempLoop() {
+  stepTempPhysics();
+  drawTemp();
+  tempRAF = requestAnimationFrame(tempLoop);
+}
+
+// ─── Temperature slider icon canvases ────────────────────────────────────────
+function drawTempIcons() {
+  function drawIcon(id, lineLen, protonOnRight) {
+    const ic = document.getElementById(id);
+    if (!ic) return;
+    const c = ic.getContext('2d');
+    const w = ic.width, h = ic.height;
+    const R = 9;
+    const pcx = protonOnRight ? w - R - 4 : R + 4;
+    const pcy = h / 2;
+    c.clearRect(0, 0, w, h);
+    // Speed lines
+    const ys     = [h * 0.27, h * 0.5, h * 0.73];
+    const scales = [0.65, 1.0, 0.80];
+    ys.forEach((y, i) => {
+      const len = lineLen * scales[i];
+      const x0  = protonOnRight ? pcx - R - len : pcx + R;
+      const x1  = protonOnRight ? pcx - R       : pcx + R + len;
+      c.save();
+      c.strokeStyle = 'rgba(180,180,210,0.25)'; c.lineWidth = 4;
+      c.beginPath(); c.moveTo(x0, y); c.lineTo(x1, y); c.stroke();
+      c.strokeStyle = 'rgba(210,210,230,0.85)';  c.lineWidth = 1.5;
+      c.beginPath(); c.moveTo(x0, y); c.lineTo(x1, y); c.stroke();
+      c.restore();
+    });
+    // Proton
+    const g = c.createRadialGradient(pcx, pcy, 0, pcx, pcy, R * 1.1);
+    g.addColorStop(0, '#ff80b0'); g.addColorStop(0.55, '#ff1a65'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = g;
+    c.beginPath(); c.arc(pcx, pcy, R * 1.1, 0, Math.PI * 2); c.fill();
+    c.save(); c.shadowColor = '#ff2d78'; c.shadowBlur = 8;
+    const g2 = c.createRadialGradient(pcx, pcy, 0, pcx, pcy, R * 0.5);
+    g2.addColorStop(0, '#fff'); g2.addColorStop(1, 'rgba(255,120,180,0)');
+    c.globalAlpha = 0.5; c.fillStyle = g2;
+    c.beginPath(); c.arc(pcx, pcy, R * 0.5, 0, Math.PI * 2); c.fill();
+    c.restore();
+  }
+  drawIcon('tempProtonL', 8,  true);   // cool: short lines, proton on right
+  drawIcon('tempProtonR', 26, false);  // hot: long lines, proton on left
+}
+drawTempIcons();
+
+// ─── Patch Go button for temperature tab ────────────────────────────────────
+const _origGoBtnHandler = goBtn.onclick;
+goBtn.addEventListener('click', (e) => {
+  if (currentTab !== 'temp') return;   // fusion handled by existing listener
+  e.stopImmediatePropagation();
+  if (tempRunning) {
+    cancelAnimationFrame(tempRAF); tempRAF = null;
+    tempRunning = false; tempPaused = true;
+    goBtn.textContent = '▶'; goBtn.classList.remove('running');
+  } else {
+    if (!tempProtons.length || !tempPaused) initTempProtons();
+    tempPaused = false; tempRunning = true;
+    goBtn.textContent = '⏸'; goBtn.classList.add('running');
+    tempRAF = requestAnimationFrame(tempLoop);
+  }
+}, true);  // capture phase so it runs before existing bubble-phase listener
+
+// ─── Patch Clear button for temperature tab ──────────────────────────────────
+document.getElementById('clearBtn').addEventListener('click', (e) => {
+  if (currentTab !== 'temp') return;
+  e.stopImmediatePropagation();
+  cancelAnimationFrame(tempRAF); tempRAF = null;
+  tempRunning = false; tempPaused = false;
+  goBtn.textContent = '▶'; goBtn.classList.remove('running');
+  initTempProtons();
+  drawTemp();
+}, true);
+
+// ─── Temperature slider ──────────────────────────────────────────────────────
+document.getElementById('tempSlider').addEventListener('input', function () {
+  tempSpeed = tempSliderToSpeed(parseFloat(this.value));
+  rescaleTempVelocities();
+  if (!tempRunning) drawTemp();
+});
+// Seed initial tempSpeed from slider default value
+tempSpeed = tempSliderToSpeed(parseFloat(document.getElementById('tempSlider').value));
 </script>
 </body>
 </html>
