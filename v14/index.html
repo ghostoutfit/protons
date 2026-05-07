@@ -544,6 +544,10 @@
 </div>
 
 <script>
+// Active tab — declared first so every function can read it safely.
+// Defaults to 'temp' so fusion draw() never fires before switchTab() runs.
+let currentTab = 'temp';
+
 // ============================================================
 //  DOM REFERENCES
 // ============================================================
@@ -2197,7 +2201,6 @@ function drawEnergyGraph() {
 //  DRAW
 // ============================================================
 function draw() {
-  if (currentTab !== 'fusion') return;   // hard guard — never render fusion content on temp tab
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   const midX      = cameraSiteX || canvas.width  / 2;
@@ -2313,10 +2316,10 @@ function resize() {
   canvas.width        = window.innerWidth;
   canvas.height       = window.innerHeight - toolbarH - scrubH;
   energyGraph.width   = Math.max(1, window.innerWidth - 320);
-  if (typeof currentTab !== 'undefined' && currentTab === 'temp') {
+  if (currentTab === 'temp') {
     if (!tempRunning) { initTempProtons(); drawTemp(); }
-  } else {
-    if (!running) draw();  // draw() guards itself with currentTab === 'fusion' check
+  } else if (currentTab === 'fusion') {
+    if (!running) draw();
   }
 }
 window.addEventListener('resize', resize);
@@ -3216,7 +3219,6 @@ applyComboSieOffset();  // seed SIE offset box from table for initial combo
 // ============================================================
 //  TAB SWITCHING
 // ============================================================
-let currentTab = 'fusion';
 
 function switchTab(name) {
   currentTab = name;
