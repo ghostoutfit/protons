@@ -3434,9 +3434,10 @@ function drawTemp() {
     const alpha = 1 - age / 250;
     const r = TEMP_R * 2.0;  // fixed: covers the contact zone between two protons
     const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, r);
-    g.addColorStop(0,   `rgba(255,255,120,${(alpha * 0.95).toFixed(2)})`);
-    g.addColorStop(0.35,`rgba(255,180,0,${(alpha * 0.75).toFixed(2)})`);
-    g.addColorStop(1,   'rgba(255,100,0,0)');
+    g.addColorStop(0,    `rgba(255,255,255,${(alpha).toFixed(2)})`);
+    g.addColorStop(0.15, `rgba(255,255,200,${(alpha * 0.98).toFixed(2)})`);
+    g.addColorStop(0.4,  `rgba(255,200,0,${(alpha * 0.85).toFixed(2)})`);
+    g.addColorStop(1,    'rgba(255,80,0,0)');
     ctx.save();
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(f.x, f.y, r, 0, Math.PI * 2); ctx.fill();
