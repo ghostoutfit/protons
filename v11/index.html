@@ -2772,24 +2772,12 @@ function drawForcePanel() {
   }
   const sPR = PR * vizScaleS;
 
-  // Compute centering offset so the whole viz (particle + arrows) is centered.
-  // Walk the same arrow geometry as the draw pass to find the bounding box,
-  // then shift the particle origin so the bbox lands at (cx, cy).
-  let bbMinX = -sPR, bbMaxX = sPR, bbMinY = -sPR, bbMaxY = sPR;
-  if (arrowMode === 1) {
-    coulombVecs.forEach(v => {
-      const tx = v.nx * (sPR + v.len * zoom * vizScaleS);
-      const ty = v.ny * (sPR + v.len * zoom * vizScaleS);
-      bbMinX = Math.min(bbMinX, tx); bbMaxX = Math.max(bbMaxX, tx);
-      bbMinY = Math.min(bbMinY, ty); bbMaxY = Math.max(bbMaxY, ty);
-    });
-    if (!currentTabIsProton) strongVecs.forEach(v => {
-      const tx = v.nx * (sPR + v.len * zoom * vizScaleS);
-      const ty = v.ny * (sPR + v.len * zoom * vizScaleS);
-      bbMinX = Math.min(bbMinX, tx); bbMaxX = Math.max(bbMaxX, tx);
-      bbMinY = Math.min(bbMinY, ty); bbMaxY = Math.max(bbMaxY, ty);
-    });
-  } else {
+  // Centering offset:
+  // All Forces (mode 1) — center particle only, arrows radiate outward freely.
+  // Total Force (mode 2) — center the bbox of particle + net arrow so the whole viz is centered.
+  let offX = 0, offY = 0;
+  if (arrowMode === 2) {
+    let bbMinX = -sPR, bbMaxX = sPR, bbMinY = -sPR, bbMaxY = sPR;
     const sumVecs = (vecs) => vecs.reduce((a, v) => ({ x: a.x + v.nx * v.len, y: a.y + v.ny * v.len }), { x: 0, y: 0 });
     const addNetTip = (vec, scale = x => x) => {
       const mag = Math.sqrt(vec.x * vec.x + vec.y * vec.y);
@@ -2801,9 +2789,9 @@ function drawForcePanel() {
     };
     addNetTip(sumVecs(coulombVecs), x => Math.sqrt(x) * 6);
     if (!currentTabIsProton) addNetTip(sumVecs(strongVecs));
+    offX = -((bbMinX + bbMaxX) / 2);
+    offY = -((bbMinY + bbMaxY) / 2);
   }
-  const offX = -((bbMinX + bbMaxX) / 2);
-  const offY = -((bbMinY + bbMaxY) / 2);
 
   const sppx = cx + offX + jx * vizScaleS, sppy = cy + offY + jy * vizScaleS;
 
