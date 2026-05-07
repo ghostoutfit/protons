@@ -3219,10 +3219,19 @@ function switchTab(name) {
   running = false; paused = false; tempRunning = false; tempPaused = false;
   goBtn.textContent = '▶';
   goBtn.classList.remove('running');
+  // Size canvas first so getTempContainer() gets correct dimensions
+  const toolbarH = document.getElementById('toolbar').offsetHeight;
+  const scrubH   = document.getElementById('scrubBar').offsetHeight;
+  canvas.width        = window.innerWidth;
+  canvas.height       = window.innerHeight - toolbarH - scrubH;
+  energyGraph.width   = Math.max(1, window.innerWidth - 320);
   if (name === 'temp') {
+    tempFlashes = [];
     initTempProtons();
+    drawTemp();
+  } else {
+    if (!running) draw();
   }
-  resize();   // resize re-draws the correct tab via the currentTab check
 }
 
 // ============================================================
@@ -3230,7 +3239,7 @@ function switchTab(name) {
 // ============================================================
 const TEMP_N          = 20;
 const TEMP_R          = 24;         // proton radius in temp sim (px)
-const TEMP_COULOMB    = 3e6;        // repulsion strength (1/r^4 law)
+const TEMP_COULOMB    = 2e7;        // repulsion strength (1/r^4 law) — stronger at short range
 const TEMP_SUBSTEPS   = 4;
 
 let tempProtons  = [];
@@ -3240,14 +3249,15 @@ let tempPaused   = false;
 let tempSpeed    = 1.5;             // target average speed (px/frame)
 
 function tempSliderToSpeed(val) {
-  return 0.25 + (val / 100) * 4.5; // 0.25 … 4.75 px/frame
+  return 0.25 + (val / 100) * 3.375; // 0.25 … 3.625 px/frame  (75% of prior max)
 }
 
-function getTempEllipse() {
+function getTempContainer() {
   const W = canvas.width, H = canvas.height;
-  const rx = Math.min(W * 0.38, H * 0.82);
-  const ry = H * 0.44;
-  return { cx: W / 2, cy: H / 2, rx, ry };
+  const rx = Math.min(W * 0.44, H * 0.92);
+  const ry = H * 0.46;
+  const cr = Math.min(rx, ry) * 0.45;  // corner radius — halfway between rect and ellipse
+  return { cx: W / 2, cy: H / 2, rx, ry, cr };
 }
 
 function rescaleTempVelocities() {
@@ -3268,9 +3278,9 @@ function rescaleTempVelocities() {
 }
 
 function initTempProtons() {
-  const { cx, cy, rx, ry } = getTempEllipse();
+  const { cx, cy, rx, ry, cr } = getTempContainer();
   const R = TEMP_R, pad = R + 6;
-  const irx = rx - pad, iry = ry - pad;
+  const irx = rx - pad, iry = ry - pad, icr = Math.max(0, cr - pad);
   const cols = Math.ceil(Math.sqrt(TEMP_N * irx / iry)) + 1;
   const rows = Math.ceil(TEMP_N / cols) + 1;
   const dx   = (irx * 2) / Math.max(cols - 1, 1);
@@ -3282,8 +3292,12 @@ function initTempProtons() {
       const jy = (Math.random() - 0.5) * dy * 0.25;
       const px = cx - irx + c * dx + jx;
       const py = cy - iry + r * dy + jy;
-      // Reject positions outside the inner ellipse
-      if ((px - cx) ** 2 / irx ** 2 + (py - cy) ** 2 / iry ** 2 > 1) continue;
+      // Reject positions outside the inner rounded rect
+      const ex = Math.abs(px - cx), ey = Math.abs(py - cy);
+      if (ex > irx - icr && ey > iry - icr) {
+        const ddx = ex - (irx - icr), ddy = ey - (iry - icr);
+        if (ddx * ddx + ddy * ddy > icr * icr) continue;
+      } else if (ex > irx || ey > iry) continue;
       const a = Math.random() * Math.PI * 2;
       tempProtons.push({ x: px, y: py, vx: Math.cos(a) * tempSpeed, vy: Math.sin(a) * tempSpeed });
       if (tempProtons.length >= TEMP_N) break outer;
@@ -3293,11 +3307,11 @@ function initTempProtons() {
 }
 
 function stepTempPhysics() {
-  const { cx: ecx, cy: ecy, rx: erx, ry: ery } = getTempEllipse();
+  const { cx, cy, rx, ry, cr } = getTempContainer();
   const N   = tempProtons.length;
   const R   = TEMP_R;
   const sub = TEMP_SUBSTEPS;
-  const rimRx = erx - R, rimRy = ery - R;
+  const irx = rx - R, iry = ry - R, icr = Math.max(0, cr - R);
 
   for (let s = 0; s < sub; s++) {
     // Compute Coulomb accelerations
@@ -3315,24 +3329,33 @@ function stepTempPhysics() {
         ax[j] += fx; ay[j] += fy;
       }
     }
-    // Integrate and bounce off ellipse wall
+    // Integrate and bounce off rounded-rect wall
     for (let i = 0; i < N; i++) {
       const p = tempProtons[i];
       p.vx += ax[i] / sub;
       p.vy += ay[i] / sub;
       p.x  += p.vx  / sub;
       p.y  += p.vy  / sub;
-      const ex = p.x - ecx, ey = p.y - ecy;
-      if ((ex / rimRx) ** 2 + (ey / rimRy) ** 2 > 1) {
-        const angle = Math.atan2(ey / rimRy, ex / rimRx);
-        const cosA = Math.cos(angle), sinA = Math.sin(angle);
-        p.x = ecx + rimRx * cosA;
-        p.y = ecy + rimRy * sinA;
-        const nxRaw = cosA / rimRx, nyRaw = sinA / rimRy;
-        const nLen  = Math.sqrt(nxRaw * nxRaw + nyRaw * nyRaw);
-        const nnx = nxRaw / nLen, nny = nyRaw / nLen;
-        const dot = p.vx * nnx + p.vy * nny;
-        if (dot > 0) { p.vx -= 2 * dot * nnx; p.vy -= 2 * dot * nny; }
+      const ex = Math.abs(p.x - cx), ey = Math.abs(p.y - cy);
+      const sx = Math.sign(p.x - cx) || 1, sy = Math.sign(p.y - cy) || 1;
+      if (ex > irx - icr && ey > iry - icr) {
+        // Corner arc region
+        const ccx = cx + sx * (irx - icr), ccy = cy + sy * (iry - icr);
+        const ddx = p.x - ccx, ddy = p.y - ccy;
+        const dist = Math.sqrt(ddx * ddx + ddy * ddy);
+        if (dist > icr) {
+          p.x = ccx + ddx / dist * icr;
+          p.y = ccy + ddy / dist * icr;
+          const nnx = ddx / dist, nny = ddy / dist;
+          const dot = p.vx * nnx + p.vy * nny;
+          if (dot > 0) { p.vx -= 2 * dot * nnx; p.vy -= 2 * dot * nny; }
+        }
+      } else {
+        // Flat edge regions
+        if (p.x < cx - irx) { p.x = cx - irx; if (p.vx < 0) p.vx = -p.vx; }
+        if (p.x > cx + irx) { p.x = cx + irx; if (p.vx > 0) p.vx = -p.vx; }
+        if (p.y < cy - iry) { p.y = cy - iry; if (p.vy < 0) p.vy = -p.vy; }
+        if (p.y > cy + iry) { p.y = cy + iry; if (p.vy > 0) p.vy = -p.vy; }
       }
     }
   }
@@ -3371,11 +3394,11 @@ function drawTemp() {
   ctx.fillStyle = '#05040f';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  const { cx, cy, rx, ry } = getTempEllipse();
-  // Yellow ellipse container
+  const { cx, cy, rx, ry, cr } = getTempContainer();
+  // Yellow rounded-rect container
   ctx.save();
   ctx.beginPath();
-  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  ctx.roundRect(cx - rx, cy - ry, rx * 2, ry * 2, cr);
   ctx.fillStyle   = 'rgba(255,215,0,0.04)';
   ctx.fill();
   ctx.strokeStyle = 'rgba(255,215,0,0.8)';
@@ -3385,18 +3408,21 @@ function drawTemp() {
   ctx.stroke();
   ctx.restore();
 
-  // Flash effects — drawn before protons so protons render on top
+  // Flash glow — fixed size, fades by alpha only (no outward expansion)
   const now = performance.now();
   tempFlashes = tempFlashes.filter(f => {
     const age = now - f.t;
-    if (age > 300) return false;
-    const t = age / 300;
-    const r = TEMP_R * (0.5 + t * 2.2);
-    ctx.beginPath();
-    ctx.arc(f.x, f.y, r, 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(255,${Math.round(200 - t * 100)},0,${(1 - t).toFixed(2)})`;
-    ctx.lineWidth = (4 * (1 - t) + 1);
-    ctx.stroke();
+    if (age > 250) return false;
+    const alpha = 1 - age / 250;
+    const r = TEMP_R * 2.0;  // fixed: covers the contact zone between two protons
+    const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, r);
+    g.addColorStop(0,   `rgba(255,255,120,${(alpha * 0.95).toFixed(2)})`);
+    g.addColorStop(0.35,`rgba(255,180,0,${(alpha * 0.75).toFixed(2)})`);
+    g.addColorStop(1,   'rgba(255,100,0,0)');
+    ctx.save();
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(f.x, f.y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
     return true;
   });
 
@@ -3449,7 +3475,7 @@ function drawTempForceArrows() {
     }
     const fMag = Math.sqrt(fxNet * fxNet + fyNet * fyNet);
     if (fMag < 1e-6) continue;
-    const scale = Math.min(55, Math.log1p(fMag) * 7);
+    const scale = Math.min(550, Math.log1p(fMag) * 70);
     const ux = fxNet / fMag, uy = fyNet / fMag;
     const x0 = tempProtons[i].x, y0 = tempProtons[i].y;
     const x1 = x0 + ux * scale, y1 = y0 + uy * scale;
