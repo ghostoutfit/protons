@@ -1541,6 +1541,7 @@ function buildRandomProtons(n) {
 function resetSim() {
   running = false;
   replaying = false;
+  replayAccum = 0;
   cancelAnimationFrame(animId);
   goBtn.textContent = '▶ GO';
   goBtn.classList.remove('running');
@@ -1763,16 +1764,10 @@ function applyTab(tab) {
     document.querySelector('.force-mode-btn[data-mode="1"]').textContent = 'All';
     document.querySelector('.force-mode-btn[data-mode="2"]').textContent = 'Total';
   }
-  // Clear simulation state on tab switch
-  running = false;
-  cancelAnimationFrame(animId);
-  goBtn.textContent = '▶ GO';
-  goBtn.classList.remove('running');
-  particles = [];
-  snapshot = null;
+  // Clear sim + playback state on tab switch. resetSim() also clears
+  // particleHistory + timeSlider (issue #34) and the replaying flag (#35).
+  resetSim();
   selectedParticle = null;
-  replayBtn.disabled = true;
-  scrubReplayBtn.disabled = true;
   quantumEjectAt = quantumTimerStartAt = null;
   quantumFlashes = [];
   stabilityCheckFrame = null;
