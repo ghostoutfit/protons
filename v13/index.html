@@ -538,11 +538,71 @@
   #themeB { background: linear-gradient(135deg, #ff2d78 50%, #bd00ff 50%); }
   #themeC { background: linear-gradient(135deg, #ff2d78 50%, #00f5e0 50%); }
 
+  /* ── Force viz panel — exact v11 forcePanel style ─────────────────────────── */
+  #forceVizPanel {
+    display: none;
+    position: fixed;
+    right: 20px;
+    top: 200px;
+    border-radius: 12px;
+    width: 220px;
+    background: rgba(8,6,24,0.90);
+    border: 1px solid var(--accent2);
+    z-index: 15;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    padding: 10px 10px 8px;
+    box-shadow: 0 0 24px var(--accent2-dim);
+    cursor: grab;
+    user-select: none;
+    min-width: 140px;
+    min-height: 140px;
+    overflow: visible;
+  }
+  #forceVizPanel:active { cursor: grabbing; }
+  #forceVizPanel .fp-rh {
+    position: absolute;
+    z-index: 2;
+  }
+  #forceVizPanel .fp-rh:hover { background: var(--accent2-dim); border-radius: 3px; }
+  #forceVizPanel .fp-rh.n  { top:0; left:10px; right:10px; height:6px; cursor:n-resize; }
+  #forceVizPanel .fp-rh.s  { bottom:0; left:10px; right:10px; height:6px; cursor:s-resize; }
+  #forceVizPanel .fp-rh.e  { right:0; top:10px; bottom:10px; width:6px; cursor:e-resize; }
+  #forceVizPanel .fp-rh.w  { left:0; top:10px; bottom:10px; width:6px; cursor:w-resize; }
+  #forceVizPanel .fp-rh.nw { top:0; left:0; width:12px; height:12px; cursor:nw-resize; }
+  #forceVizPanel .fp-rh.ne { top:0; right:0; width:12px; height:12px; cursor:ne-resize; }
+  #forceVizPanel .fp-rh.sw { bottom:0; left:0; width:12px; height:12px; cursor:sw-resize; }
+  #forceVizPanel .fp-rh.se { bottom:0; right:0; width:12px; height:12px; cursor:se-resize; }
+  #forceVizKey {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    font-size: 17px;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+  }
+  #forceVizKey span { display: flex; align-items: center; gap: 5px; }
+  #forceVizCanvas { display: block; }
+
 </style>
 </head>
 <body>
 
 <canvas id="canvas"></canvas>
+
+<div id="forceVizPanel">
+  <div class="fp-rh nw" data-dir="nw"></div><div class="fp-rh ne" data-dir="ne"></div>
+  <div class="fp-rh sw" data-dir="sw"></div><div class="fp-rh se" data-dir="se"></div>
+  <div class="fp-rh n"  data-dir="n"></div><div class="fp-rh s" data-dir="s"></div>
+  <div class="fp-rh e"  data-dir="e"></div><div class="fp-rh w" data-dir="w"></div>
+  <div id="forceVizKey">
+    <span><span style="color:#46a5ff">■</span><span style="color:#46a5ff;text-shadow:0 0 4px #46a5ff,0 0 10px rgba(70,165,255,0.5)">Electric</span></span>
+    <span><span style="color:#ffb946">■</span><span style="color:#ffb946;text-shadow:0 0 4px #ffb946,0 0 10px rgba(255,185,70,0.5)">Strong</span></span>
+  </div>
+  <canvas id="forceVizCanvas" width="200" height="200"></canvas>
+</div>
 
 <div id="toolbar">
   <div class="toolbar-row">
@@ -608,7 +668,7 @@
         </div>
         <div id="forceModeRow" style="display:flex;flex-direction:column;gap:4px">
           <button class="awheel-item active" data-fmode="0">Forces off</button>
-          <button class="awheel-item" data-fmode="2">Total force</button>
+          <button class="awheel-item" data-fmode="2">Show forces</button>
         </div>
       </div>
     </div>
@@ -665,7 +725,7 @@ window.addEventListener('resize', () => {
   neutronState        = 'idle';
   chainNeutrons       = []; lastChainTime = null;
   enrichSites         = [];
-  mainNeutronsEmitted = false; mainEnergyTransferred = false;
+  mainNeutronsEmitted = false; mainEnergyTransferred = false; mainDaughters = null;
   document.getElementById('goBtn').textContent = '▶ GO';
   document.getElementById('goBtn').classList.remove('running');
   document.getElementById('scrubBar').classList.remove('visible');
@@ -920,7 +980,7 @@ function outerIntersection(c1, c2, R, ncx, ncy) {
   return d1 > d2 ? p1 : p2;
 }
 
-function drawCloudOutline(cx, cy, sphereR) {
+function drawCloudOutline(cx, cy, sphereR, c = ctx) {
   const R = PARTICLE_RADIUS;
   const N = Math.max(6, Math.round(2 * Math.PI * sphereR / (R * 1.5)));
 
@@ -929,35 +989,35 @@ function drawCloudOutline(cx, cy, sphereR) {
     return { x: cx + sphereR * Math.cos(a), y: cy + sphereR * Math.sin(a) };
   });
 
-  const arcs = centers.map((c, k) => {
+  const arcs = centers.map((cent, k) => {
     const prev = centers[(k - 1 + N) % N];
     const next = centers[(k + 1)     % N];
-    const sp   = outerIntersection(c, prev, R, cx, cy);
-    const ep   = outerIntersection(c, next, R, cx, cy);
+    const sp   = outerIntersection(cent, prev, R, cx, cy);
+    const ep   = outerIntersection(cent, next, R, cx, cy);
     return {
-      cx: c.x, cy: c.y,
-      startAngle: Math.atan2(sp.y - c.y, sp.x - c.x),
-      endAngle:   Math.atan2(ep.y - c.y, ep.x - c.x),
+      cx: cent.x, cy: cent.y,
+      startAngle: Math.atan2(sp.y - cent.y, sp.x - cent.x),
+      endAngle:   Math.atan2(ep.y - cent.y, ep.x - cent.x),
     };
   });
 
-  ctx.save();
-  ctx.shadowColor = 'rgba(80,160,255,0.9)';
-  ctx.shadowBlur  = 22;
-  ctx.strokeStyle = 'rgba(160,215,255,1)';
-  ctx.lineWidth   = 4;
-  ctx.beginPath();
+  c.save();
+  c.shadowColor = 'rgba(80,160,255,0.9)';
+  c.shadowBlur  = 22;
+  c.strokeStyle = 'rgba(160,215,255,1)';
+  c.lineWidth   = 4;
+  c.beginPath();
 
-  ctx.moveTo(arcs[0].cx + R * Math.cos(arcs[0].startAngle),
-             arcs[0].cy + R * Math.sin(arcs[0].startAngle));
+  c.moveTo(arcs[0].cx + R * Math.cos(arcs[0].startAngle),
+           arcs[0].cy + R * Math.sin(arcs[0].startAngle));
 
   for (const arc of arcs) {
-    ctx.arc(arc.cx, arc.cy, R, arc.startAngle, arc.endAngle, false);
+    c.arc(arc.cx, arc.cy, R, arc.startAngle, arc.endAngle, false);
   }
 
-  ctx.closePath();
-  ctx.stroke();
-  ctx.restore();
+  c.closePath();
+  c.stroke();
+  c.restore();
 }
 
 // ─── Fission outline — union-of-two-circles scalloped boundary ───────────────
@@ -1258,7 +1318,7 @@ function applyTab(tab) {
   neutronState        = 'idle';
   currentScrubFrac    = 0;
   maxRevealedFrac     = 0;
-  mainNeutronsEmitted = false; mainEnergyTransferred = false;
+  mainNeutronsEmitted = false; mainEnergyTransferred = false; mainDaughters = null;
   chainNeutrons       = []; lastChainTime = null;
   enrichSites         = [];
   chainParticleOffsets = null;
@@ -1325,6 +1385,12 @@ let wobbleMode = 'dip1';
 
 function pickWobbleMode() {
   const r = Math.random();
+  if (currentTab === 'fission') {
+    if (r < 0.80) return 'dip1';
+    if (r < 0.90) return 'dip2';
+    return 'dip3';
+  }
+  // chain tab
   if (r < 0.50) return 'dip1';
   if (r < 0.70) return 'dip2';
   if (r < 0.85) return 'dip3';
@@ -1543,8 +1609,11 @@ function drawAnimContent(t) {
     ctx.restore();
   }
 
-  if (!showParticles) drawFissionOutline(grp1cx, grp1cy, r1, grp2cx, grp2cy, r2);
-  if (showParticles) drawParticles([...pos1, ...pos2]);
+  // On chain tab, mainDaughters objects take over drawing after the split
+  if (!(currentTab === 'chain' && mainDaughters)) {
+    if (!showParticles) drawFissionOutline(grp1cx, grp1cy, r1, grp2cx, grp2cy, r2);
+    if (showParticles) drawParticles([...pos1, ...pos2]);
+  }
 
   const PHASE3_MAX_SEPT = (ANIM_T_END - PH2_END) / (1.0 - PH2_END);
   const neutronFrac = sepT / PHASE3_MAX_SEPT;
@@ -1572,7 +1641,10 @@ function renderAtFrac(frac) {
 
   ctx.save();
   const _W = canvas.width, _H = canvas.height;
-  ctx.translate(_W / 2, _H / 2);
+  const fvShift = (currentTab === 'fission' && arrowMode > 0)
+    ? -(forceVizPanelEl.offsetWidth + 20) / 2
+    : 0;
+  ctx.translate(_W / 2 + fvShift, _H / 2);
   ctx.scale(viewZoom, viewZoom);
   ctx.translate(-_W / 2, -_H / 2);
 
@@ -1640,6 +1712,7 @@ let chainRAF      = null;
 let lastChainTime = null;
 let mainNeutronsEmitted    = false;
 let mainEnergyTransferred  = false;
+let mainDaughters          = null;   // [{x,y,vx,vy,r,bounced}] — main fission products (chain tab)
 let totalFuelAdded  = 0;  // cumulative units of fuel ever added
 let energyInFields  = 0;  // fuel energy not yet released
 let energyInMotion  = 0;  // energy released by completed fissions
@@ -1765,6 +1838,18 @@ function updateChain(now) {
       if (d.y + d.r > b.y + b.h) { d.y = b.y + b.h - d.r;  d.vy = -Math.abs(d.vy); d.bounced = true; }
     }
   }
+
+  // Advance main fission daughter positions + bounce off container walls
+  if (mainDaughters) {
+    for (const d of mainDaughters) {
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+      if (d.x - d.r < b.x)       { d.x = b.x + d.r;       d.vx =  Math.abs(d.vx); d.bounced = true; }
+      if (d.x + d.r > b.x + b.w) { d.x = b.x + b.w - d.r; d.vx = -Math.abs(d.vx); d.bounced = true; }
+      if (d.y - d.r < b.y)       { d.y = b.y + d.r;        d.vy =  Math.abs(d.vy); d.bounced = true; }
+      if (d.y + d.r > b.y + b.h) { d.y = b.y + b.h - d.r;  d.vy = -Math.abs(d.vy); d.bounced = true; }
+    }
+  }
 }
 
 function drawChainOverlay() {
@@ -1858,6 +1943,10 @@ function drawChainOverlay() {
       }
     }
   }
+  // Main fission daughters: in background once any has bounced
+  if (mainDaughters && mainDaughters.some(d => d.bounced)) {
+    drawChainDaughters(mainDaughters[0], mainDaughters[1]);
+  }
   for (const n of chainNeutrons) { if (n.bounced) drawNeutron(n.x, n.y); }
   ctx.restore();
 
@@ -1878,6 +1967,10 @@ function drawChainOverlay() {
       }
     }
   }
+  // Main fission daughters: in foreground until first bounce
+  if (mainDaughters && !mainDaughters.some(d => d.bounced)) {
+    drawChainDaughters(mainDaughters[0], mainDaughters[1]);
+  }
   for (const n of chainNeutrons) { if (!n.bounced) drawNeutron(n.x, n.y); }
 }
 
@@ -1888,7 +1981,8 @@ function ensureChainLoop() {
     updateChain(now);
     drawStaticFrame();
     const stillActive = chainNeutrons.length > 0 ||
-                        enrichSites.some(s => s.state === 'fission' || s.daughters);
+                        enrichSites.some(s => s.state === 'fission' || s.daughters) ||
+                        mainDaughters !== null;
     chainRAF = stillActive ? requestAnimationFrame(chainTick) : null;
     if (!chainRAF) markPrerenderDone();
   }
@@ -1899,8 +1993,209 @@ function neutronImpactX() {
   return animParent.cx - animParent.sphereR - PARTICLE_RADIUS;
 }
 
+// ─── Force visualization panel (fission tab) ──────────────────────────────────
+const forceVizPanelEl = document.getElementById('forceVizPanel');
+const forceVizCv      = document.getElementById('forceVizCanvas');
+const FV_ELEC_COLOR   = 'rgba(70,165,255,0.88)';
+const FV_STRONG_COLOR = 'rgba(255,185,70,0.88)';
+
+// Arrow drawing matching v11's quadratic-curve + glow style
+function fvArrowOnCtx(c, fromX, fromY, nx, ny, len, color, lw) {
+  if (len < 1) return;
+  const midX = fromX + nx * len * 0.5, midY = fromY + ny * len * 0.5;
+  const tipX = fromX + nx * len,       tipY = fromY + ny * len;
+  const HEAD = Math.max(5, len * 0.18);
+  const perpX = -ny, perpY = nx;
+  const baseX = tipX - nx * HEAD, baseY = tipY - ny * HEAD;
+  c.strokeStyle = color; c.fillStyle = color;
+  c.save();
+  c.shadowColor = color; c.shadowBlur = 8;
+  c.lineWidth = lw; c.globalAlpha = 0.88; c.lineCap = 'round';
+  c.beginPath(); c.moveTo(fromX, fromY);
+  c.quadraticCurveTo(midX, midY, baseX, baseY);
+  c.stroke();
+  c.beginPath();
+  c.moveTo(tipX, tipY);
+  c.lineTo(baseX + perpX * 3.5, baseY + perpY * 3.5);
+  c.lineTo(baseX - perpX * 3.5, baseY - perpY * 3.5);
+  c.closePath(); c.fill();
+  c.restore();
+}
+
+// Draw a single proton or neutron in the force panel (v11 gradient style)
+function fvDrawParticle(c, px, py, r, type) {
+  const isP = type === 'proton';
+  const baseGrad = c.createRadialGradient(px, py, 0, px, py, r * 1.1);
+  if (isP) {
+    baseGrad.addColorStop(0, '#ff1a65'); baseGrad.addColorStop(0.82, '#ff1a65'); baseGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  } else {
+    baseGrad.addColorStop(0, '#70707f'); baseGrad.addColorStop(0.82, '#70707f'); baseGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  }
+  c.beginPath(); c.arc(px, py, r * 1.1, 0, Math.PI * 2);
+  c.fillStyle = baseGrad; c.fill();
+  const coreGrad = c.createRadialGradient(px, py, 0, px, py, r);
+  const core = isP ? '#ff80b0' : '#b0b0c4';
+  coreGrad.addColorStop(0, core); coreGrad.addColorStop(0.5, core); coreGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  c.globalAlpha = 0.82;
+  c.beginPath(); c.arc(px, py, r, 0, Math.PI * 2);
+  c.fillStyle = coreGrad; c.fill();
+  c.globalAlpha = 1;
+  if (isP) {
+    c.fillStyle = 'rgba(255,255,255,0.88)';
+    c.font = `bold ${Math.max(8, r * 1.1)}px "JetBrains Mono", monospace`;
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText('+', px, py + 1);
+  }
+}
+
+// Draw a group of particles scaled from world space into a panel region
+// worldParticles: [{x,y,type}] in world coords, worldCx/Cy = world centroid
+// panelCx/Cy = destination centre in panel, panelR = destination radius
+function fvDrawParticleGroup(c, worldParticles, worldCx, worldCy, worldSphereR, panelCx, panelCy, panelR) {
+  const scale = panelR / worldSphereR;
+  const PR = Math.max(2, PARTICLE_RADIUS * scale * 0.85);
+  // Sort back-to-front by z so front particles overdraw rear ones
+  const sorted = [...worldParticles].sort((a, b) => (a.z || 0) - (b.z || 0));
+  for (const p of sorted) {
+    const px = panelCx + (p.x - worldCx) * scale;
+    const py = panelCy + (p.y - worldCy) * scale;
+    fvDrawParticle(c, px, py, PR, p.type);
+  }
+}
+
+// Draw the real scallop cloud outline onto any context, with optional deformation transform.
+// scaleAlong/scalePerp applied along fissAngle axis. Pass c=fvc to draw in force panel.
+function fvCloudOutline(c, panelCx, panelCy, panelR, worldSphereR, scaleAlong, scalePerp, fissAngle) {
+  const pscale = panelR / worldSphereR;
+  c.save();
+  c.translate(panelCx, panelCy);
+  c.rotate(fissAngle);
+  c.scale(scaleAlong * pscale, scalePerp * pscale);
+  c.rotate(-fissAngle);
+  c.translate(-panelCx, -panelCy);
+  drawCloudOutline(panelCx, panelCy, worldSphereR, c);
+  c.restore();
+}
+
+function drawForceViz() {
+  if (currentTab !== 'fission' || arrowMode === 0) {
+    forceVizPanelEl.style.display = 'none';
+    return;
+  }
+  forceVizPanelEl.style.display = 'block';
+
+  const fvc = forceVizCv.getContext('2d');
+  const W = forceVizCv.width, H = forceVizCv.height;
+  fvc.clearRect(0, 0, W, H);
+
+  const cx = W / 2, cy = H / 2;
+  const panelR = animParent ? animParent.sphereR : 50;
+
+  const frac = currentScrubFrac;
+  // Always use the stored fission angle; default horizontal before any shot
+  const fissAngle = staticFissAngle;
+  const cosF = Math.cos(fissAngle), sinF = Math.sin(fissAngle);
+
+  // Arrow wrapper: start at (fromX,fromY), direction (nx,ny), length len
+  function arrow(fromX, fromY, nx, ny, len, color) {
+    fvArrowOnCtx(fvc, fromX, fromY, nx, ny, len, color, 9);
+  }
+
+  // Draw nucleus outline or particles for a given deformation
+  function drawNucleus(panelCx, panelCy, pR, sAlong, sPerp, particles) {
+    if (showParticles && particles) {
+      fvDrawParticleGroup(fvc, particles.pts, particles.wcx, particles.wcy, particles.wsR, panelCx, panelCy, pR);
+    } else if (animParent) {
+      fvCloudOutline(fvc, panelCx, panelCy, pR, animParent.sphereR, sAlong, sPerp, fissAngle);
+    }
+  }
+
+  // ── Balanced stable nucleus (before + during neutron approach) ───────────
+  // Always show balanced forces; they change once wobble starts
+  const maxBalanced = panelR * 1.08;
+  const stableParticles = animParent ? { pts: animParent.particles, wcx: animParent.cx, wcy: animParent.cy, wsR: animParent.sphereR } : null;
+
+  if (frac < NEUTRON_FRAC) {
+    drawNucleus(cx, cy, panelR, 1, 1, stableParticles);
+    // Balanced: electric outward = strong inward, equal length
+    arrow(cx, cy, cosF, sinF, maxBalanced, FV_ELEC_COLOR);
+    arrow(cx, cy, -cosF, -sinF, maxBalanced, FV_ELEC_COLOR);
+    arrow(cx + cosF * (panelR + maxBalanced), cy + sinF * (panelR + maxBalanced), -cosF, -sinF, maxBalanced, FV_STRONG_COLOR);
+    arrow(cx - cosF * (panelR + maxBalanced), cy - sinF * (panelR + maxBalanced),  cosF,  sinF, maxBalanced, FV_STRONG_COLOR);
+    return;
+  }
+
+  // ── Fission zone ─────────────────────────────────────────────────────────
+  const ff = (frac - NEUTRON_FRAC) / (1 - NEUTRON_FRAC);
+  const t  = PH1_END + ff * (FISS_STOP_T - PH1_END);
+
+  if (t <= PH2_END) {
+    // Phase 2: wobble — strong shrinks, electric stays
+    const ph2 = (t - PH1_END) / (PH2_END - PH1_END);
+    const w   = wobbleSignal(ph2, wobbleMode);
+    const deformAmp  = 0.15 * Math.min(1, ph2 / 0.10);
+    const wobble     = deformAmp * w;
+    const scaleAlong = 1 + wobble;
+    const scalePerp  = 1 / (1 + wobble * 0.7);
+    const deformFrac = deformAmp * w / 0.15;  // 0=spherical → 1=max elongation
+
+    let ph2Particles = null;
+    if (showParticles && animParent) {
+      const ncx = animParent.cx, ncy = animParent.cy;
+      const cosA = Math.cos(fissAngle), sinA = Math.sin(fissAngle);
+      const deformed = animParent.particles.map(p => {
+        const rx = p.x - ncx, ry = p.y - ncy;
+        const along = rx * cosA + ry * sinA;
+        const perp  = -rx * sinA + ry * cosA;
+        return { ...p,
+          x: ncx + along * scaleAlong * cosA - perp * scalePerp * sinA,
+          y: ncy + along * scaleAlong * sinA + perp * scalePerp * cosA,
+        };
+      });
+      ph2Particles = { pts: deformed, wcx: ncx, wcy: ncy, wsR: animParent.sphereR };
+    }
+    drawNucleus(cx, cy, panelR, scaleAlong, scalePerp, ph2Particles);
+
+    const maxE = panelR * 1.17;
+    const maxS = panelR * 1.08;
+    const electricLen = maxE;
+    const strongLen   = maxS * Math.max(0, 1 - deformFrac);
+
+    arrow(cx, cy,  cosF,  sinF, electricLen, FV_ELEC_COLOR);
+    arrow(cx, cy, -cosF, -sinF, electricLen, FV_ELEC_COLOR);
+    if (strongLen > 2) {
+      const surf = panelR * scaleAlong;
+      arrow(cx + cosF * (surf + strongLen), cy + sinF * (surf + strongLen), -cosF, -sinF, strongLen, FV_STRONG_COLOR);
+      arrow(cx - cosF * (surf + strongLen), cy - sinF * (surf + strongLen),  cosF,  sinF, strongLen, FV_STRONG_COLOR);
+    }
+
+  } else {
+    // Phase 3: separation — strong gone, electric only
+    const PHASE3_MAX = (FISS_STOP_T - PH2_END) / (1.0 - PH2_END);
+    const sepT = Math.min(1, ((t - PH2_END) / (1.0 - PH2_END)) / PHASE3_MAX);
+    const separation = panelR * (0.45 + sepT * 1.3);
+    const fragR1 = panelR * 0.65, fragR2 = panelR * 0.58;
+
+    const f1x = cx - cosF * separation, f1y = cy - sinF * separation;
+    const f2x = cx + cosF * separation, f2y = cy + sinF * separation;
+
+    if (showParticles && animProd1 && animProd2) {
+      fvDrawParticleGroup(fvc, animProd1.particles, animProd1.cx, animProd1.cy, animProd1.sphereR, f1x, f1y, fragR1);
+      fvDrawParticleGroup(fvc, animProd2.particles, animProd2.cx, animProd2.cy, animProd2.sphereR, f2x, f2y, fragR2);
+    } else if (animProd1 && animProd2) {
+      fvCloudOutline(fvc, f1x, f1y, fragR1, animProd1.sphereR, 1, 1, fissAngle);
+      fvCloudOutline(fvc, f2x, f2y, fragR2, animProd2.sphereR, 1, 1, fissAngle);
+    }
+
+    const electricLen = panelR * 1.05;
+    arrow(f1x, f1y, -cosF, -sinF, electricLen, FV_ELEC_COLOR);
+    arrow(f2x, f2y,  cosF,  sinF, electricLen, FV_ELEC_COLOR);
+  }
+}
+
 function drawStaticFrame() {
   renderAtFrac(currentScrubFrac);
+  drawForceViz();
 }
 
 function scrubVal(frac) { return Math.round(frac * 1000); }
@@ -1939,6 +2234,7 @@ function neutronTick(now) {
 
   if (currentTab !== 'chain') updateParticleJitter(animParent.particles.length, 1, true);
   renderAtFrac(currentScrubFrac);
+  drawForceViz();
   neutronRAF = requestAnimationFrame(neutronTick);
 }
 
@@ -1958,6 +2254,20 @@ function fissionTick(now) {
     if (wobbleMode !== 'stable') {
       energyInFields = Math.max(0, energyInFields - 1);
       energyInMotion += 1;
+      // Spawn bouncing daughter fragments for the main fission nucleus
+      const spd = 0.28 + Math.random() * 0.14;
+      const a = staticFissAngle;
+      mainDaughters = [
+        { x: animParent.cx, y: animParent.cy, vx: -Math.cos(a) * spd, vy: -Math.sin(a) * spd, r: prod1R, viewAngle: Math.random() * Math.PI * 2 },
+        { x: animParent.cx, y: animParent.cy, vx:  Math.cos(a) * spd, vy:  Math.sin(a) * spd, r: prod2R, viewAngle: Math.random() * Math.PI * 2 },
+      ];
+      // Convert unabsorbed fission neutrons to physics-based chain neutrons so they bounce off walls
+      for (const n of fissionNeutrons) {
+        if (n.absorbed) continue;
+        const nspd = 0.25 + Math.random() * 0.25;
+        chainNeutrons.push({ x: animParent.cx, y: animParent.cy, vx: Math.cos(n.angle) * nspd, vy: Math.sin(n.angle) * nspd });
+        n.absorbed = true;  // suppress scripted drawing
+      }
     }
   }
   // Check fission neutron collisions with enriched sites every frame after split
@@ -1990,6 +2300,7 @@ function fissionTick(now) {
   document.getElementById('scrubSlider').value = scrubVal(currentScrubFrac);
   document.getElementById('scrubPct').textContent = scrubPct(currentScrubFrac);
   renderAtFrac(currentScrubFrac);
+  drawForceViz();
   if (staticFissT < FISS_STOP_T) {
     neutronRAF = requestAnimationFrame(fissionTick);
   } else {
@@ -2330,6 +2641,7 @@ function playbackLoop(now) {
   if (prerenderFracs[idx] !== undefined) {
     currentScrubFrac = prerenderFracs[idx];
     renderAtFrac(currentScrubFrac);
+    drawForceViz();
     document.getElementById('scrubSlider').value = scrubVal(currentScrubFrac);
     document.getElementById('scrubPct').textContent = scrubPct(currentScrubFrac);
   }
@@ -2434,7 +2746,7 @@ document.getElementById('goBtn').addEventListener('click', () => {
   prerenderFracs   = [];
   prerenderTimes   = [];
 
-  mainNeutronsEmitted = false; mainEnergyTransferred = false;
+  mainNeutronsEmitted = false; mainEnergyTransferred = false; mainDaughters = null;
   chainNeutrons       = []; lastChainTime = null;
   for (const s of enrichSites) s.state = 'idle';
   heatmapDirty    = true;
@@ -2487,6 +2799,7 @@ document.getElementById('scrubSlider').addEventListener('input', function () {
   document.getElementById('scrubPct').textContent = scrubPct(currentScrubFrac);
   heatmapDirty = true;
   renderAtFrac(currentScrubFrac);
+  drawForceViz();
 });
 
 document.getElementById('newBtn').addEventListener('click', () => {
@@ -2499,7 +2812,7 @@ document.getElementById('newBtn').addEventListener('click', () => {
   neutronState        = 'idle';
   neutronLast         = 0;
   currentScrubFrac    = 0;
-  mainNeutronsEmitted = false; mainEnergyTransferred = false;
+  mainNeutronsEmitted = false; mainEnergyTransferred = false; mainDaughters = null;
   chainNeutrons       = []; lastChainTime = null;
   for (const s of enrichSites) { s.state = 'idle'; delete s.daughters; }
   // Recalculate energy: 1 for animParent + remaining fuel nuclei
@@ -2535,7 +2848,7 @@ document.getElementById('clearBtn').addEventListener('click', () => {
   neutronLast         = 0;
   currentScrubFrac    = 0;
   maxRevealedFrac     = 0;
-  mainNeutronsEmitted = false; mainEnergyTransferred = false;
+  mainNeutronsEmitted = false; mainEnergyTransferred = false; mainDaughters = null;
   chainNeutrons       = []; lastChainTime = null;
   enrichSites         = [];
   totalFuelAdded = 0; energyInFields = 0; energyInMotion = 0;
@@ -2622,8 +2935,56 @@ document.querySelectorAll('.awheel-item[data-fmode]').forEach(btn => {
   btn.addEventListener('click', () => {
     arrowMode = parseInt(btn.dataset.fmode);
     setForceWheelActive(btn);
+    drawStaticFrame();
   });
 });
+
+// ─── Force viz panel: resize + drag ──────────────────────────────────────────
+let _fvResize = null;
+document.querySelectorAll('#forceVizPanel .fp-rh').forEach(h => {
+  h.addEventListener('mousedown', e => {
+    e.stopPropagation();
+    const rect = forceVizPanelEl.getBoundingClientRect();
+    forceVizPanelEl.style.width  = rect.width  + 'px';
+    forceVizPanelEl.style.height = rect.height + 'px';
+    _fvResize = { dir: h.dataset.dir, sx: e.clientX, sy: e.clientY,
+                  ow: rect.width, oh: rect.height };
+  });
+});
+
+let _fvDrag = null;
+forceVizPanelEl.addEventListener('mousedown', e => {
+  if (e.target.classList.contains('fp-rh')) return;
+  const rect = forceVizPanelEl.getBoundingClientRect();
+  _fvDrag = { sx: e.clientX, sy: e.clientY, ox: rect.left, oy: rect.top };
+  forceVizPanelEl.style.right = 'auto';
+});
+
+window.addEventListener('mousemove', e => {
+  if (_fvResize) {
+    const { dir, sx, sy, ow, oh } = _fvResize;
+    const dx = e.clientX - sx, dy = e.clientY - sy;
+    let w = ow, h = oh;
+    if (dir.includes('w') || dir.includes('e')) w = Math.max(140, Math.min(canvas.width,  ow - dx));
+    if (dir.includes('s')) h = Math.max(140, Math.min(canvas.height, oh + dy));
+    if (dir.includes('n')) h = Math.max(140, Math.min(canvas.height, oh - dy));
+    forceVizPanelEl.style.width  = w + 'px';
+    forceVizPanelEl.style.height = h + 'px';
+    const keyH = document.getElementById('forceVizKey').offsetHeight;
+    const cw = Math.max(80, (w - 20)) | 0;
+    const ch = Math.max(80, (h - keyH - 26)) | 0;
+    if (forceVizCv.width !== cw || forceVizCv.height !== ch) {
+      forceVizCv.width = cw; forceVizCv.height = ch;
+    }
+    drawForceViz();
+  }
+  if (_fvDrag) {
+    forceVizPanelEl.style.left = (_fvDrag.ox + e.clientX - _fvDrag.sx) + 'px';
+    forceVizPanelEl.style.top  = (_fvDrag.oy + e.clientY - _fvDrag.sy) + 'px';
+  }
+});
+
+window.addEventListener('mouseup', () => { _fvResize = null; _fvDrag = null; });
 
 // ─── Energy model ─────────────────────────────────────────────────────────────
 // NO sharp changes anywhere — every transition is cosine-smooth.
