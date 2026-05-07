@@ -354,7 +354,7 @@
   /* ── Scrub bar ─────────────────────────────────────────────────────────── */
   #scrubBar {
     background: rgba(6,4,20,0.95);
-    border-top: 1px solid var(--ui-border);
+    border-top: 3px solid rgba(100,120,180,0.55);
     display: flex;
     flex-direction: row;
     flex-shrink: 0;
@@ -425,8 +425,8 @@
 
 <div id="toolbar">
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
-    <button class="tab-btn" id="fusionTabBtn" style="cursor:pointer" onclick="switchTab('fusion')">FUSION</button>
-    <button class="tab-btn active" id="tempTabBtn" style="cursor:pointer" onclick="switchTab('temp')">TEMPERATURE</button>
+    <button class="tab-btn active" id="fusionTabBtn" style="cursor:pointer" onclick="switchTab('fusion')">FUSION</button>
+    <button class="tab-btn" id="tempTabBtn" style="cursor:pointer" onclick="switchTab('temp')">TEMPERATURE</button>
   </div>
   <div style="display:flex;align-items:stretch;gap:12px;">
   <div style="display:flex;flex-direction:column;justify-content:flex-end;align-self:stretch;gap:6px;padding-bottom:10px;margin-right:4px;">
@@ -480,13 +480,12 @@
       <input type="range" id="simSpeedSlider" min="1" max="10" step="1" value="7" style="flex:1;">
       <span class="slider-icon" title="Fast">🐇</span>
     </div>
-    <label class="toggle-label"><input type="checkbox" id="scaledEnergyToggle"> Show Energy Changes to Scale</label>
-    <label class="toggle-label"><input type="checkbox" id="splitIEToggle"> Show Energy in Separate Fields</label>
   </div>
 
 <div style="padding:6px 10px 8px;border-top:1px solid rgba(255,255,255,0.08);">
   <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-bottom:5px;">Development Values</div>
   <label style="font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:6px;">SIE offset: <input type="number" id="sieOffsetInput" value="0" step="1" style="width:56px;background:rgba(10,8,30,0.8);color:var(--accent2);border:1px solid rgba(26,110,255,0.35);border-radius:6px;padding:2px 4px;font-size:11px;font-family:inherit;outline:none;"></label>
+  <label class="toggle-label" style="margin-top:4px;"><input type="checkbox" id="scaledEnergyToggle"> Scale</label>
 </div>
   </div><!-- /fusionControls -->
 
@@ -505,16 +504,15 @@
     </div>
     <div class="ctrl-box-blue" style="align-items:flex-start;gap:8px;min-width:180px;">
       <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em;">Forces</div>
-      <button id="showForceBtn" class="btn" style="font-size:11px;padding:5px 14px;width:100%;">Show Total Force</button>
-      <div style="display:flex;align-items:center;gap:4px;width:100%;">
-        <span style="font-size:13px;">🐢</span>
+      <button id="showForceBtn" class="btn" style="font-size:13px;padding:14px;width:100%;background:#1a6eff;color:#fff;border-color:#1a6eff;box-shadow:0 0 12px rgba(26,110,255,0.7);">Show Total Force</button>
+      <div style="display:flex;align-items:center;gap:4px;width:100%;margin-top:4px;">
+        <span class="slider-icon" title="Slow">🐢</span>
         <input type="range" id="tempSpeedSlider" min="1" max="10" step="1" value="10" style="flex:1;">
-        <span style="font-size:13px;">🐇</span>
+        <span class="slider-icon" title="Fast">🐇</span>
       </div>
-      <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;margin-top:4px;">Repulsion strength</div>
-      <div style="display:flex;align-items:center;gap:6px;width:100%;">
-        <input type="range" id="tempCoulombSlider" min="1" max="100" step="1" value="100" style="flex:1;">
-        <span id="tempCoulombVal" style="font-size:10px;color:var(--accent2);min-width:38px;text-align:right;font-family:'JetBrains Mono',monospace;"></span>
+      <div style="display:none;">
+        <input type="range" id="tempCoulombSlider" min="1" max="100" step="1" value="25">
+        <span id="tempCoulombVal"></span>
       </div>
     </div>
   </div>
@@ -529,6 +527,10 @@
 
 <div id="scrubBar" style="display:none">
   <div id="scrubLeft">
+    <div id="energyGraphLabels" style="display:flex;gap:24px;padding:4px 10px 3px;font-size:18px;font-weight:bold;font-family:'JetBrains Mono',monospace;">
+      <span style="color:#ff3a6e;text-shadow:0 0 10px rgba(255,45,100,0.9);">Energy of Motion</span>
+      <span style="color:#7b6fff;text-shadow:0 0 10px rgba(120,100,255,0.9);">Energy in Fields</span>
+    </div>
     <canvas id="energyGraph" height="150"></canvas>
     <div id="phaseTimeline" style="display:flex;">
       <div class="phase-seg" id="phaseSeg-approach" style="background:rgba(255,255,255,0.05);color:var(--text-dim);flex:1;font-size:0px;">Before</div>
@@ -543,10 +545,14 @@
   </div>
 </div>
 
+<!-- Separate Fields toggle — floats over top of bar chart panel -->
+<label id="separateFieldsLabel" class="toggle-label" style="position:fixed;top:0;right:0;width:320px;display:none;justify-content:center;align-items:center;font-size:22px;padding:8px 0;background:rgba(4,3,20,0.88);border-bottom:1px solid rgba(0,180,255,0.25);border-left:1px solid rgba(0,180,255,0.25);z-index:10;box-sizing:border-box;">
+  <input type="checkbox" id="splitIEToggle"> Separate Fields
+</label>
+
 <script>
 // Active tab — declared first so every function can read it safely.
-// Defaults to 'temp' so fusion draw() never fires before switchTab() runs.
-let currentTab = 'temp';
+let currentTab = 'fusion';
 
 // ============================================================
 //  DOM REFERENCES
@@ -596,10 +602,10 @@ const COMBO_TABLE = {
   'n+t':   { sieOffset: 100, immediateKE: 58, keOut:  8, gammaKE:  0 },
   't+n':   { sieOffset: 100, immediateKE: 58, keOut:  8, gammaKE:  0 },
   // Cat 2 — productive fusion (KE Out = immediateKE − 2)
-  't+d':   { sieOffset: 18000, sieOffsetUnscaled: 172, immediateKE: 70, keOut: 68, keInScaled: 17600, keOutScaled: 16700, gammaKE:  0 },
-  'd+t':   { sieOffset: 18000, sieOffsetUnscaled: 172, immediateKE: 70, keOut: 68, keInScaled: 17600, keOutScaled: 16700, gammaKE:  0 },
-  'd+d':   { sieOffset: 150, sieOffsetUnscaled: 100, immediateKE: 20, keOut: 18, gammaKE:  0 },
-  't+t':   { sieOffset: 300, sieOffsetUnscaled: 250, immediateKE: 37, keOut: 35, gammaKE:  0 },
+  't+d':   { sieOffset: 178, sieOffsetUnscaled: 178, immediateKE: 86, keOut: 84, keInScaled: 17600, keOutScaled: 16700, gammaKE:  0 },
+  'd+t':   { sieOffset: 178, sieOffsetUnscaled: 178, immediateKE: 86, keOut: 84, keInScaled: 17600, keOutScaled: 16700, gammaKE:  0 },
+  'd+d':   { sieOffset: 92, sieOffsetUnscaled: 92, immediateKE: 20, keOut: 18, gammaKE:  0 },
+  't+t':   { sieOffset: 258, sieOffsetUnscaled: 258, immediateKE: 47, keOut: 41, gammaKE:  0 },
   // Cat 3 — gamma emission
   'p+n':   { sieOffset: 100, immediateKE: 54, keOut:  4, gammaKE: 50 },
   'n+p':   { sieOffset: 100, immediateKE: 54, keOut:  4, gammaKE: 50 },
@@ -615,7 +621,7 @@ const COMBO_TABLE = {
   'p+he':  { sieOffset: 250 }, 'he+p':  { sieOffset: 250 },
   'd+he':  { sieOffset: 300 }, 'he+d':  { sieOffset: 300 },
   't+he':  { sieOffset: 350 }, 'he+t':  { sieOffset: 350 },
-  'he+he': { sieOffset: 500 },
+  'he+he': { sieOffset: 425 },
 };
 
 function getComboEntry() {
@@ -703,7 +709,7 @@ let cameraSiteX = 0, cameraSiteY = 0;
 //  DISPLAY STATE
 // ============================================================
 let showField = true;
-let barYRange = 120;
+let barYRange = 24;
 let barYRangeScaled = null;  // null = auto (use combo max); set by drag when scaledEnergy
 let barScaleDrag = null;     // { startY, startRange } while dragging the scale
 let splitIE   = false;
@@ -1843,8 +1849,6 @@ function niceTickStep(range) {
 }
 
 function drawBarChart() {
-  if (particles.length === 0) return;
-
   const W  = 320;
   const H  = canvas.height;
   const gx = canvas.width - W;
@@ -1863,28 +1867,33 @@ function drawBarChart() {
   ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx, gy + H); ctx.stroke();
   ctx.restore();
 
-  const { ke: displayKE, eie: displayEIE, sie: displaySIE, ie: displayIE } = getDisplayEnergy();
+  const noData = particles.length === 0;
+  const { ke: displayKE, eie: displayEIE, sie: displaySIE, ie: displayIE } = noData
+    ? { ke: 0, eie: 0, sie: 0, ie: 0 }
+    : getDisplayEnergy();
 
   const bars = splitIE
     ? [
-        { label: 'Energy in Motion',        value: displayKE,  color: '#ff2060', glow: 'rgba(255,20,80,0.9)'    },
-        { label: 'Energy in Electric Field', value: displayEIE, color: '#00e5ff', glow: 'rgba(0,220,255,0.9)'   },
-        { label: 'Energy in Strong Field',   value: displaySIE, color: '#ff8040', glow: 'rgba(255,128,64,0.9)'  },
+        { label: 'Energy of Motion', value: displayKE,  color: '#ff2060', glow: 'rgba(255,20,80,0.9)'   },
+        { label: 'Electric',         value: displayEIE, color: '#00e5ff', glow: 'rgba(0,220,255,0.9)'   },
+        { label: 'Strong',           value: displaySIE, color: '#ff8040', glow: 'rgba(255,128,64,0.9)'  },
       ]
     : [
-        { label: 'Energy in Motion',  value: displayKE,  color: '#ff2060', glow: 'rgba(255,20,80,0.9)'    },
-        { label: 'Energy in Fields',  value: displayIE,  color: '#7b6fff', glow: 'rgba(120,100,255,0.9)' },
+        { label: 'Energy of Motion', value: displayKE,  color: '#ff2060', glow: 'rgba(255,20,80,0.9)'   },
+        { label: 'Energy in Fields', value: displayIE,  color: '#7b6fff', glow: 'rgba(120,100,255,0.9)' },
       ];
 
+  // Reserve space at top for the Separate Fields toggle overlay
+  const checkboxH = document.getElementById('separateFieldsLabel').offsetHeight || 44;
   // Layout — no Y-axis margin needed when not showing to scale
   const yAxisW   = scaledEnergy ? 42 : 10;
   const padR     = 10;    // right padding
   const labelH   = 62;    // height of bar text labels below baseline
   const controlH = 8;
   const titleH   = 36;    // room for phase title at top
-  const chartH   = H - labelH - controlH - titleH;
+  const chartH   = H - labelH - controlH - titleH - checkboxH;
   const baseline = gy + H - labelH - controlH;
-  const chartTop = gy + titleH;
+  const chartTop = gy + titleH + checkboxH;
   const chartX   = gx + yAxisW;
   const chartW   = W - yAxisW - padR;
   const comboEntry = getComboEntry();
@@ -1893,43 +1902,27 @@ function drawBarChart() {
     ? (barYRangeScaled ?? autoMax)
     : barYRange;
 
-  // ── Gridlines + Y-axis labels (only when showing to scale) ──────
+  // ── 5 horizontal gridlines (always, no numbers) ──────────────
+  ctx.save();
+  for (let i = 0; i <= 5; i++) {
+    const py = baseline - (i / 5) * chartH;
+    if (py < chartTop - 2) continue;
+    const isBaseline = i === 0;
+    ctx.strokeStyle = isBaseline ? 'rgba(0,200,255,0.7)' : 'rgba(0,200,255,0.2)';
+    ctx.lineWidth   = isBaseline ? 2 : 1.5;
+    if (isBaseline) { ctx.shadowColor = 'rgba(0,200,255,1.0)'; ctx.shadowBlur = 8; }
+    else            { ctx.shadowBlur = 0; }
+    ctx.beginPath(); ctx.moveTo(gx, py); ctx.lineTo(gx + W, py); ctx.stroke();
+  }
+  ctx.restore();
+
   if (scaledEnergy) {
-    const step = niceTickStep(maxVal);
-    const ticks = [];
-    for (let v = 0; v <= maxVal; v += step) ticks.push(v);
-
-    ctx.save();
-    ctx.font      = '10px "JetBrains Mono", monospace';
-    ctx.textAlign = 'right';
-    ticks.forEach((v, idx) => {
-      const py = baseline - valToFrac(v, maxVal, false) * chartH;
-      if (py < chartTop - 2) return;
-      const isTop = (idx === ticks.length - 1);
-      ctx.save();
-      ctx.strokeStyle = v === 0 ? 'rgba(0,200,255,0.35)' : 'rgba(0,200,255,0.1)';
-      ctx.lineWidth   = v === 0 ? 1 : 0.75;
-      if (v === 0) { ctx.shadowColor = 'rgba(0,200,255,0.5)'; ctx.shadowBlur = 4; }
-      ctx.beginPath(); ctx.moveTo(gx, py); ctx.lineTo(gx + W, py); ctx.stroke();
-      ctx.restore();
-      ctx.fillStyle = v === 0 ? 'rgba(0,200,255,0.5)' : 'rgba(0,200,255,0.35)';
-      ctx.fillText(isTop ? fmtMeV(v) + ' MeV' : fmtMeV(v), chartX - 4, py + 3.5);
-    });
-    ctx.restore();
-
     // Drag-to-rescale affordance
     ctx.save();
     ctx.fillStyle = barScaleDrag ? 'rgba(0,200,255,0.7)' : 'rgba(0,200,255,0.28)';
     ctx.font      = '10px "JetBrains Mono", monospace';
     ctx.textAlign = 'left';
     ctx.fillText('⇕ drag scale', gx + 4, chartTop + 13);
-    ctx.restore();
-  } else {
-    // Not to scale: just draw the baseline
-    ctx.save();
-    ctx.shadowColor = 'rgba(0,200,255,0.5)'; ctx.shadowBlur = 4;
-    ctx.strokeStyle = 'rgba(0,200,255,0.35)'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(gx, baseline); ctx.lineTo(gx + W, baseline); ctx.stroke();
     ctx.restore();
   }
 
@@ -1943,7 +1936,7 @@ function drawBarChart() {
     const bw     = barW * 0.8;
     const barTop = baseline - barPx;
 
-    if (barPx > 0) {
+    if (!noData && barPx > 0) {
       const rectY = bar.value >= 0 ? barTop : baseline;
       const rectH = barPx;
       const r     = Math.min(6, bw / 2, rectH / 2);
@@ -2006,6 +1999,22 @@ function drawBarChart() {
     ctx.restore();
   });
 
+  // ── Shared "Energy in Fields" label spanning both field bars (splitIE only) ──
+  if (splitIE) {
+    const x1 = chartX + 1 * barW + barW * 0.1;  // left edge of EIE bar
+    const x2 = chartX + 2 * barW + barW * 0.9;  // right edge of SIE bar
+    const centerX = (x1 + x2) / 2;
+    ctx.save();
+    ctx.shadowColor = 'rgba(180,140,255,0.7)'; ctx.shadowBlur = 8;
+    ctx.fillStyle   = 'rgba(180,140,255,0.85)';
+    ctx.font        = 'bold 14px "JetBrains Mono", monospace';
+    ctx.textAlign   = 'center';
+    ctx.fillText('Energy in Fields', centerX, baseline + 50);
+    ctx.restore();
+  }
+
+  if (noData) { ctx.restore(); return; }
+
   // ── Phase label ───────────────────────────────────────────────
   const phaseColors = {
     approach:    '#00e5ff',
@@ -2021,7 +2030,7 @@ function drawBarChart() {
   ctx.fillStyle   = pCol;
   ctx.font        = 'bold 15px "JetBrains Mono", monospace';
   ctx.textAlign   = 'center';
-  ctx.fillText(phaseLabel, gx + W / 2, gy + 22);
+  ctx.fillText(phaseLabel, gx + W / 2, gy + checkboxH + 22);
   ctx.restore();
 
   ctx.restore();
@@ -2138,14 +2147,9 @@ function drawEnergyGraph() {
     egCtx.restore();
   }
 
-  // Colors: EIE=purple, SIE=orange, KE=pink
-  if (splitIE) {
-    plotNeonLine('#ff8040', 'rgba(255,128,64,0.9)', f => (f.edisp || {}).sie || 0);
-    plotNeonLine('#7b6fff', 'rgba(120,100,255,0.9)',f => (f.edisp || {}).eie || 0);
-  } else {
-    plotNeonLine('#7b6fff', 'rgba(120,100,255,0.9)',f => (f.edisp || {}).ie  || 0);
-  }
-  plotNeonLine('#ff3a6e', 'rgba(255,45,100,0.9)',   f => (f.edisp || {}).ke || 0);
+  // Line graph always shows combined IE (splitIE only affects bar charts)
+  plotNeonLine('#7b6fff', 'rgba(120,100,255,0.9)', f => (f.edisp || {}).ie || 0);
+  plotNeonLine('#ff3a6e', 'rgba(255,45,100,0.9)',  f => (f.edisp || {}).ke || 0);
 
   // Drag-to-zoom selection overlay
   if (egDragStartPx !== null && egDragCurPx !== null) {
@@ -2169,32 +2173,6 @@ function drawEnergyGraph() {
     egCtx.restore();
   }
 
-  // Neon legend — left side, vertically centered
-  const legend = splitIE
-    ? [
-        { text: 'Energy in Electric Field', color: '#7b6fff', glow: 'rgba(120,100,255,0.9)'  },
-        { text: 'Energy in Strong Field',   color: '#ff8040', glow: 'rgba(255,128,64,0.9)'   },
-        { text: 'Energy in Motion',         color: '#ff3a6e', glow: 'rgba(255,45,100,0.9)'   },
-      ]
-    : [
-        { text: 'Energy in Fields',  color: '#7b6fff', glow: 'rgba(120,100,255,0.9)'  },
-        { text: 'Energy in Motion',  color: '#ff3a6e', glow: 'rgba(255,45,100,0.9)'   },
-      ];
-
-  egCtx.font = 'bold 18px "JetBrains Mono", monospace';
-  egCtx.textBaseline = 'middle';
-  const LPAD = 10, LROW = 26;
-  const totalLegendH = legend.length * LROW - (LROW - 20);
-  const legendStartY = (H - totalLegendH) / 2 + 14;
-
-  legend.forEach((item, i) => {
-    const ly = legendStartY + i * LROW;
-    egCtx.save();
-    egCtx.shadowColor = item.glow; egCtx.shadowBlur = 10;
-    egCtx.fillStyle   = item.color;
-    egCtx.fillText(item.text, LPAD, ly);
-    egCtx.restore();
-  });
 }
 
 // ============================================================
@@ -2630,7 +2608,7 @@ timeSlider.addEventListener('input', () => {
 //  CONTROLS
 // ============================================================
 document.getElementById('splitIEToggle').addEventListener('change', function() {
-  splitIE = this.checked; // checked = show separate fields
+  splitIE = this.checked;
   if (!running) draw();
 });
 document.getElementById('fullTimelineBtn').addEventListener('click', () => {
@@ -3237,6 +3215,10 @@ function switchTab(name) {
   // Size canvas first so getTempContainer() gets correct dimensions
   const toolbarH = document.getElementById('toolbar').offsetHeight;
   const scrubH   = document.getElementById('scrubBar').offsetHeight;
+  // Position and show/hide the Separate Fields toggle over the bar chart
+  const sfLabel = document.getElementById('separateFieldsLabel');
+  sfLabel.style.display = name === 'fusion' ? 'flex' : 'none';
+  sfLabel.style.top = toolbarH + 'px';
   canvas.width        = window.innerWidth;
   canvas.height       = window.innerHeight - toolbarH - scrubH;
   energyGraph.width   = Math.max(1, window.innerWidth - 320);
@@ -3254,7 +3236,7 @@ function switchTab(name) {
 // ============================================================
 const TEMP_N          = 20;
 const TEMP_R          = 24;         // proton radius in temp sim (px)
-let   tempCoulomb     = 2e7;        // repulsion strength (1/r^4 law) — tunable via dev slider
+let   tempCoulomb     = 5e6;        // repulsion strength (1/r^4 law) — tunable via dev slider
 let   tempTimeScale   = 1.0;        // slow-motion factor: physics steps per render frame (0.1–1.0)
 let   tempFrameAccum  = 0;          // fractional step accumulator for slow-motion
 const TEMP_SUBSTEPS   = 4;
@@ -3656,8 +3638,8 @@ document.getElementById('tempCoulombSlider').addEventListener('input', function 
 });
 updateCoulombLabel();
 
-// Start on Temperature tab
-switchTab('temp');
+// Start on Fusion tab
+switchTab('fusion');
 </script>
 </body>
 </html>
