@@ -3541,24 +3541,38 @@ function ambientLoop() {
 ambientLoop();
 iconAnimLoop();
 
-// ── Single authoritative init ─────────────────────────────────────────
-// applyTab() is the ONLY source of truth for tab state.
-// HTML defaults are ignored — JS always drives the initial state.
-if (location.hash === '#nucleus') {
-  applyTab(false);
-} else if (location.hash === '#protons') {
-  document.getElementById('tabB').style.display = 'none';
+// ── Hash-driven tab routing (applyHash is the ONLY source of truth) ──
+// Re-establishes a known baseline UI before applying the per-hash branch
+// so back/forward through hashes never accumulates stale mutations.
+// Bound to both init and `hashchange` so URL navigation always updates the
+// UI (issue #37).
+function applyHash() {
   const tabA = document.getElementById('tabA');
-  tabA.textContent = 'PROTONS';
-  tabA.style.pointerEvents = 'none';
-  applyTab(true);
-} else if (location.hash === '#fission') {
-  document.querySelectorAll('.ctrl-box-label').forEach(el => el.style.display = 'none');
-  document.querySelectorAll('.fission-tab').forEach(el => el.style.display = '');
-  applyTab(true);
-} else {
-  applyTab(true);
+  // Baseline: both tabs visible and clickable, default Tab A label, no
+  // fission cross-links visible, control-box labels visible.
+  document.getElementById('tabB').style.display = '';
+  tabA.textContent = 'Protons';
+  tabA.style.pointerEvents = '';
+  document.querySelectorAll('.ctrl-box-label').forEach(el => el.style.display = '');
+  document.querySelectorAll('.fission-tab').forEach(el => el.style.display = 'none');
+
+  if (location.hash === '#nucleus') {
+    applyTab(false);
+  } else if (location.hash === '#protons') {
+    document.getElementById('tabB').style.display = 'none';
+    tabA.textContent = 'PROTONS';
+    tabA.style.pointerEvents = 'none';
+    applyTab(true);
+  } else if (location.hash === '#fission') {
+    document.querySelectorAll('.ctrl-box-label').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('.fission-tab').forEach(el => el.style.display = '');
+    applyTab(true);
+  } else {
+    applyTab(true);
+  }
 }
+applyHash();
+window.addEventListener('hashchange', applyHash);
 
 // Apply force mode AFTER tab is set so currentTabIsProton is correct.
 setForceModeActive(arrowMode);
