@@ -3219,6 +3219,10 @@ function switchTab(name) {
   running = false; paused = false; tempRunning = false; tempPaused = false;
   goBtn.textContent = '▶';
   goBtn.classList.remove('running');
+  // Clear playback state (particleHistory, scrubFrame, timeSlider, collisionPhase,
+  // photon, escape state) so the time slider doesn't scrub the previous tab's
+  // recording after switching tabs. Issue #66.
+  resetState();
   // Size canvas first so getTempContainer() gets correct dimensions
   const toolbarH = document.getElementById('toolbar').offsetHeight;
   const scrubH   = document.getElementById('scrubBar').offsetHeight;
@@ -3648,8 +3652,14 @@ document.getElementById('tempCoulombSlider').addEventListener('input', function 
 });
 updateCoulombLabel();
 
-// Start on tab specified by URL hash (#temp), defaulting to fusion
-switchTab(location.hash === '#temp' ? 'temp' : 'fusion');
+// Hash-driven tab routing — applied at load and on every hashchange so browser
+// back/forward, in-page anchors, and direct hash edits all update the tab.
+// Issue #67.
+function applyHash() {
+  switchTab(location.hash === '#temp' ? 'temp' : 'fusion');
+}
+applyHash();
+window.addEventListener('hashchange', applyHash);
 </script>
 </body>
 </html>
