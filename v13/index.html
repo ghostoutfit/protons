@@ -538,6 +538,23 @@
   #themeB { background: linear-gradient(135deg, #ff2d78 50%, #bd00ff 50%); }
   #themeC { background: linear-gradient(135deg, #ff2d78 50%, #00f5e0 50%); }
 
+  /* ── Dev timecode panel ───────────────────────────────────────────────────── */
+  #devTimecodePanel {
+    display: none; position: fixed; right: 20px; top: 60px;
+    background: rgba(8,6,24,0.88); border: 1px solid rgba(70,165,255,0.35);
+    border-radius: 8px; padding: 7px 10px; font-size: 11px;
+    color: var(--text-dim); z-index: 14; backdrop-filter: blur(8px);
+    white-space: nowrap; pointer-events: none;
+  }
+  #devTimecodePanel .dev-hd {
+    font-size: 9px; text-transform: uppercase; letter-spacing: 1px;
+    color: rgba(70,165,255,0.55); margin-bottom: 5px;
+  }
+  #devTimecodePanel .tc-row {
+    display: flex; justify-content: space-between; gap: 10px; margin: 2px 0;
+  }
+  #devTimecodePanel .tc-val { color: #c8d8ff; font-variant-numeric: tabular-nums; }
+
   /* ── Force viz panel — exact v11 forcePanel style ─────────────────────────── */
   #forceVizPanel {
     display: none;
@@ -545,7 +562,7 @@
     right: 20px;
     top: 200px;
     border-radius: 12px;
-    width: 220px;
+    width: 374px;
     background: rgba(8,6,24,0.90);
     border: 1px solid var(--accent2);
     z-index: 15;
@@ -592,16 +609,21 @@
 
 <canvas id="canvas"></canvas>
 
+<div id="devTimecodePanel">
+  <div class="dev-hd">Timecodes</div>
+  <div id="devTimecodeRows"></div>
+</div>
+
 <div id="forceVizPanel">
   <div class="fp-rh nw" data-dir="nw"></div><div class="fp-rh ne" data-dir="ne"></div>
   <div class="fp-rh sw" data-dir="sw"></div><div class="fp-rh se" data-dir="se"></div>
   <div class="fp-rh n"  data-dir="n"></div><div class="fp-rh s" data-dir="s"></div>
   <div class="fp-rh e"  data-dir="e"></div><div class="fp-rh w" data-dir="w"></div>
   <div id="forceVizKey">
-    <span><span style="color:#46a5ff">■</span><span style="color:#46a5ff;text-shadow:0 0 4px #46a5ff,0 0 10px rgba(70,165,255,0.5)">Electric</span></span>
-    <span><span style="color:#ffb946">■</span><span style="color:#ffb946;text-shadow:0 0 4px #ffb946,0 0 10px rgba(255,185,70,0.5)">Strong</span></span>
+    <span><span style="color:#46a5ff">■</span><span style="color:#46a5ff;text-shadow:0 0 4px #46a5ff,0 0 10px rgba(70,165,255,0.5)">Electric Force</span></span>
+    <span><span style="color:#ffb946">■</span><span style="color:#ffb946;text-shadow:0 0 4px #ffb946,0 0 10px rgba(255,185,70,0.5)">Strong Force</span></span>
   </div>
-  <canvas id="forceVizCanvas" width="200" height="200"></canvas>
+  <canvas id="forceVizCanvas" width="354" height="400"></canvas>
 </div>
 
 <div id="toolbar">
@@ -682,7 +704,7 @@
     <button id="scrubReplayBtn" class="btn" disabled>&#8634;</button>
     <span class="slider-icon" style="font-size:16px">⏱</span>
     <input type="range" id="scrubSlider" min="0" max="1000" value="0">
-    <span id="scrubPct">0%</span>
+    <span id="scrubPct">0</span>
     <label class="toggle-label" style="margin-left:10px;white-space:nowrap"><input type="checkbox" id="energyGraphToggle"> Energy Graph</label>
   </div>
 </div>
@@ -1065,48 +1087,48 @@ function sampleUnionBoundary(cx1, cy1, r1, cx2, cy2, r2) {
   return pts;
 }
 
-function drawFissionOutline(cx1, cy1, r1, cx2, cy2, r2) {
+function drawFissionOutline(cx1, cy1, r1, cx2, cy2, r2, c = ctx) {
   const R = PARTICLE_RADIUS;
   const d = Math.sqrt((cx2-cx1)**2 + (cy2-cy1)**2);
 
   if (d >= r1 + r2) {
-    drawCloudOutline(cx1, cy1, r1);
-    drawCloudOutline(cx2, cy2, r2);
+    drawCloudOutline(cx1, cy1, r1, c);
+    drawCloudOutline(cx2, cy2, r2, c);
     return;
   }
 
   const pts = sampleUnionBoundary(cx1, cy1, r1, cx2, cy2, r2);
-  if (!pts) { drawCloudOutline(cx1, cy1, r1); drawCloudOutline(cx2, cy2, r2); return; }
+  if (!pts) { drawCloudOutline(cx1, cy1, r1, c); drawCloudOutline(cx2, cy2, r2, c); return; }
   const N = pts.length;
 
-  const arcs = pts.map((c, k) => {
+  const arcs = pts.map((cent, k) => {
     const prev = pts[(k - 1 + N) % N];
     const next = pts[(k + 1)     % N];
-    const sp   = outerIntersection(c, prev, R, c.refCx, c.refCy);
-    const ep   = outerIntersection(c, next, R, c.refCx, c.refCy);
+    const sp   = outerIntersection(cent, prev, R, cent.refCx, cent.refCy);
+    const ep   = outerIntersection(cent, next, R, cent.refCx, cent.refCy);
     return {
-      cx: c.x, cy: c.y,
-      startAngle: Math.atan2(sp.y - c.y, sp.x - c.x),
-      endAngle:   Math.atan2(ep.y - c.y, ep.x - c.x),
+      cx: cent.x, cy: cent.y,
+      startAngle: Math.atan2(sp.y - cent.y, sp.x - cent.x),
+      endAngle:   Math.atan2(ep.y - cent.y, ep.x - cent.x),
     };
   });
 
-  ctx.save();
-  ctx.shadowColor = 'rgba(80,160,255,0.9)';
-  ctx.shadowBlur  = 22;
-  ctx.strokeStyle = 'rgba(160,215,255,1)';
-  ctx.lineWidth   = 4;
-  ctx.beginPath();
+  c.save();
+  c.shadowColor = 'rgba(80,160,255,0.9)';
+  c.shadowBlur  = 22;
+  c.strokeStyle = 'rgba(160,215,255,1)';
+  c.lineWidth   = 4;
+  c.beginPath();
 
-  ctx.moveTo(arcs[0].cx + R * Math.cos(arcs[0].startAngle),
-             arcs[0].cy + R * Math.sin(arcs[0].startAngle));
+  c.moveTo(arcs[0].cx + R * Math.cos(arcs[0].startAngle),
+           arcs[0].cy + R * Math.sin(arcs[0].startAngle));
   for (const arc of arcs) {
-    ctx.arc(arc.cx, arc.cy, R, arc.startAngle, arc.endAngle, false);
+    c.arc(arc.cx, arc.cy, R, arc.startAngle, arc.endAngle, false);
   }
 
-  ctx.closePath();
-  ctx.stroke();
-  ctx.restore();
+  c.closePath();
+  c.stroke();
+  c.restore();
 }
 
 // ─── Neutron — plain circle outline matching the cloud border style ───────────
@@ -1329,7 +1351,7 @@ function applyTab(tab) {
   document.getElementById('scrubReplayBtn').disabled = true;
   document.getElementById('scrubBar').classList.remove('visible');
   document.getElementById('scrubSlider').value = 0;
-  document.getElementById('scrubPct').textContent = '0%';
+  document.getElementById('scrubPct').textContent = '0';
 
   currentTab = tab;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -2000,24 +2022,25 @@ const FV_ELEC_COLOR   = 'rgba(70,165,255,0.88)';
 const FV_STRONG_COLOR = 'rgba(255,185,70,0.88)';
 
 // Arrow drawing matching v11's quadratic-curve + glow style
-function fvArrowOnCtx(c, fromX, fromY, nx, ny, len, color, lw) {
+function fvArrowOnCtx(c, fromX, fromY, nx, ny, len, color, lw, headLen) {
   if (len < 1) return;
+  const HEAD = headLen !== undefined ? headLen : Math.max(5, len * 0.234);
   const midX = fromX + nx * len * 0.5, midY = fromY + ny * len * 0.5;
   const tipX = fromX + nx * len,       tipY = fromY + ny * len;
-  const HEAD = Math.max(5, len * 0.18);
   const perpX = -ny, perpY = nx;
   const baseX = tipX - nx * HEAD, baseY = tipY - ny * HEAD;
   c.strokeStyle = color; c.fillStyle = color;
   c.save();
   c.shadowColor = color; c.shadowBlur = 8;
-  c.lineWidth = lw; c.globalAlpha = 0.88; c.lineCap = 'round';
+  c.lineWidth = lw; c.globalAlpha = 1.0; c.lineCap = 'round';
   c.beginPath(); c.moveTo(fromX, fromY);
   c.quadraticCurveTo(midX, midY, baseX, baseY);
   c.stroke();
+  const hw = lw * 1.44;
   c.beginPath();
   c.moveTo(tipX, tipY);
-  c.lineTo(baseX + perpX * 3.5, baseY + perpY * 3.5);
-  c.lineTo(baseX - perpX * 3.5, baseY - perpY * 3.5);
+  c.lineTo(baseX + perpX * hw, baseY + perpY * hw);
+  c.lineTo(baseX - perpX * hw, baseY - perpY * hw);
   c.closePath(); c.fill();
   c.restore();
 }
@@ -2077,28 +2100,76 @@ function fvCloudOutline(c, panelCx, panelCy, panelR, worldSphereR, scaleAlong, s
   c.restore();
 }
 
-function drawForceViz() {
-  if (currentTab !== 'fission' || arrowMode === 0) {
-    forceVizPanelEl.style.display = 'none';
-    return;
+const devTimecodeEl = document.getElementById('devTimecodePanel');
+const devTimecodeRows = document.getElementById('devTimecodeRows');
+
+function updateTimecodes() {
+  // Convert a t-value (in animation-space) to slider integer 0-1000
+  function sliderFromT(t) {
+    const ff = (t - PH1_END) / (FISS_STOP_T - PH1_END);
+    return Math.round((NEUTRON_FRAC + ff * (1 - NEUTRON_FRAC)) * 1000);
   }
-  forceVizPanelEl.style.display = 'block';
+  function sliderFromPh2(ph2) {
+    return sliderFromT(PH1_END + ph2 * (PH2_END - PH1_END));
+  }
+
+  const entries = [];
+  entries.push(['Neutron hits',  sliderFromT(PH1_END)]);
+
+  if (wobbleMode === 'dip1') {
+    entries.push(['Max oblong',   sliderFromPh2(1)]);
+  } else if (wobbleMode === 'dip2') {
+    entries.push(['1st peak',     sliderFromPh2(0.25)]);
+    entries.push(['Max oblong',   sliderFromPh2(1)]);
+  } else if (wobbleMode === 'dip3') {
+    entries.push(['1st peak',     sliderFromPh2(1/6)]);
+    entries.push(['2nd peak',     sliderFromPh2(1/2)]);
+    entries.push(['Max oblong',   sliderFromPh2(1)]);
+  }
+
+  entries.push(['Split',         sliderFromT(PH2_END)]);
+  entries.push(['Anim end',      sliderFromT(FISS_STOP_T)]);
+
+  const mode = wobbleMode === 'dip1' ? 'dip1 (1 dip)' : wobbleMode === 'dip2' ? 'dip2 (2 dips)' : 'dip3 (3 dips)';
+  devTimecodeRows.innerHTML = `<div class="tc-row" style="color:rgba(70,165,255,0.45);margin-bottom:4px">${mode}</div>` +
+    entries.map(([label, val]) =>
+      `<div class="tc-row"><span>${label}</span><span class="tc-val">${val}</span></div>`
+    ).join('');
+}
+
+function drawForceViz() {
+  if (currentTab !== 'fission' || arrowMode === 0) return;
 
   const fvc = forceVizCv.getContext('2d');
   const W = forceVizCv.width, H = forceVizCv.height;
   fvc.clearRect(0, 0, W, H);
 
   const cx = W / 2, cy = H / 2;
-  const panelR = animParent ? animParent.sphereR : 50;
+  const panelR = animParent ? animParent.sphereR * 0.8 : 40;
 
   const frac = currentScrubFrac;
   // Always use the stored fission angle; default horizontal before any shot
   const fissAngle = staticFissAngle;
   const cosF = Math.cos(fissAngle), sinF = Math.sin(fissAngle);
 
+  // Fixed arrowhead size (based on max arrow length) — only stem shortens
+  const fixedHead = panelR * 1.17 * 0.234;
+
   // Arrow wrapper: start at (fromX,fromY), direction (nx,ny), length len
-  function arrow(fromX, fromY, nx, ny, len, color) {
-    fvArrowOnCtx(fvc, fromX, fromY, nx, ny, len, color, 9);
+  // hl = head length override; undefined = proportional to len (whole arrow scales)
+  function arrow(fromX, fromY, nx, ny, len, color, hl = fixedHead) {
+    fvArrowOnCtx(fvc, fromX, fromY, nx, ny, len, color, 9, hl);
+  }
+
+  // Perpendicular to fission axis (used to offset parallel arrows)
+  const perpX = -sinF, perpY = cosF;
+  const sep = 12;  // px separation between paired arrows
+
+  // Draw arrow centered at (hcx, hcy), pointing in (dx, dy), offset perp by perpOff
+  function centeredArrow(hcx, hcy, dx, dy, len, color, perpOff, hl = fixedHead) {
+    const fx = hcx - dx * len / 2 + perpX * perpOff;
+    const fy = hcy - dy * len / 2 + perpY * perpOff;
+    arrow(fx, fy, dx, dy, len, color, hl);
   }
 
   // Draw nucleus outline or particles for a given deformation
@@ -2117,11 +2188,14 @@ function drawForceViz() {
 
   if (frac < NEUTRON_FRAC) {
     drawNucleus(cx, cy, panelR, 1, 1, stableParticles);
-    // Balanced: electric outward = strong inward, equal length
-    arrow(cx, cy, cosF, sinF, maxBalanced, FV_ELEC_COLOR);
-    arrow(cx, cy, -cosF, -sinF, maxBalanced, FV_ELEC_COLOR);
-    arrow(cx + cosF * (panelR + maxBalanced), cy + sinF * (panelR + maxBalanced), -cosF, -sinF, maxBalanced, FV_STRONG_COLOR);
-    arrow(cx - cosF * (panelR + maxBalanced), cy - sinF * (panelR + maxBalanced),  cosF,  sinF, maxBalanced, FV_STRONG_COLOR);
+    // Balanced: electric outward = strong inward, equal length — centered on each half, parallel
+    const halfOff = panelR * 1.0;
+    const rhcx = cx + cosF * halfOff, rhcy = cy + sinF * halfOff;
+    const lhcx = cx - cosF * halfOff, lhcy = cy - sinF * halfOff;
+    centeredArrow(rhcx, rhcy,  cosF,  sinF, maxBalanced, FV_ELEC_COLOR,    sep);
+    centeredArrow(rhcx, rhcy, -cosF, -sinF, maxBalanced, FV_STRONG_COLOR, -sep);
+    centeredArrow(lhcx, lhcy, -cosF, -sinF, maxBalanced, FV_ELEC_COLOR,    sep);
+    centeredArrow(lhcx, lhcy,  cosF,  sinF, maxBalanced, FV_STRONG_COLOR, -sep);
     return;
   }
 
@@ -2159,47 +2233,73 @@ function drawForceViz() {
     const maxE = panelR * 1.17;
     const maxS = panelR * 1.08;
     const electricLen = maxE;
-    const strongLen   = maxS * Math.max(0, 1 - deformFrac);
+    // Strong weakens as nucleus elongates: full when round, 50% of electric at max oblong
+    const strongLen = maxS + deformFrac * (0.5 * maxE - maxS);
 
-    arrow(cx, cy,  cosF,  sinF, electricLen, FV_ELEC_COLOR);
-    arrow(cx, cy, -cosF, -sinF, electricLen, FV_ELEC_COLOR);
-    if (strongLen > 2) {
-      const surf = panelR * scaleAlong;
-      arrow(cx + cosF * (surf + strongLen), cy + sinF * (surf + strongLen), -cosF, -sinF, strongLen, FV_STRONG_COLOR);
-      arrow(cx - cosF * (surf + strongLen), cy - sinF * (surf + strongLen),  cosF,  sinF, strongLen, FV_STRONG_COLOR);
-    }
+    // Centered on each deformed half, parallel arrows
+    const halfOff2 = panelR * scaleAlong * 1.0;
+    const rhcx = cx + cosF * halfOff2, rhcy = cy + sinF * halfOff2;
+    const lhcx = cx - cosF * halfOff2, lhcy = cy - sinF * halfOff2;
+    centeredArrow(rhcx, rhcy,  cosF,  sinF, electricLen, FV_ELEC_COLOR,    sep);
+    centeredArrow(lhcx, lhcy, -cosF, -sinF, electricLen, FV_ELEC_COLOR,    sep);
+    centeredArrow(rhcx, rhcy, -cosF, -sinF, strongLen,   FV_STRONG_COLOR, -sep);
+    centeredArrow(lhcx, lhcy,  cosF,  sinF, strongLen,   FV_STRONG_COLOR, -sep);
 
   } else {
-    // Phase 3: separation — strong gone, electric only
-    const PHASE3_MAX = (FISS_STOP_T - PH2_END) / (1.0 - PH2_END);
-    const sepT = Math.min(1, ((t - PH2_END) / (1.0 - PH2_END)) / PHASE3_MAX);
-    const separation = panelR * (0.45 + sepT * 1.3);
-    const fragR1 = panelR * 0.65, fragR2 = panelR * 0.58;
+    // Phase 3: camera follows f2; f1 shoots off using main-canvas shoot timing (4× speed)
+    const sepT      = (t - PH2_END) / (1.0 - PH2_END);
+    const shootT    = Math.min(1, sepT / 0.075);
+    const shootEase = Math.min(1, 3 * shootT * shootT * shootT);
 
-    const f1x = cx - cosF * separation, f1y = cy - sinF * separation;
-    const f2x = cx + cosF * separation, f2y = cy + sinF * separation;
+    const fragR2 = panelR * 0.58;
+    const fragR1 = panelR * 0.65;
+    const maxE   = panelR * 1.17;
 
+    // f2 stays centered; f1 shoots off at 4× the previous speed
+    const f2x = cx, f2y = cy;
+    const f1sep = (panelR + fragR1) * (0.05 + shootEase * 16);
+    const f1x = cx - cosF * f1sep, f1y = cy - sinF * f1sep;
+
+    // Draw using union outline (peanut while overlapping, separate when apart)
     if (showParticles && animProd1 && animProd2) {
       fvDrawParticleGroup(fvc, animProd1.particles, animProd1.cx, animProd1.cy, animProd1.sphereR, f1x, f1y, fragR1);
       fvDrawParticleGroup(fvc, animProd2.particles, animProd2.cx, animProd2.cy, animProd2.sphereR, f2x, f2y, fragR2);
-    } else if (animProd1 && animProd2) {
-      fvCloudOutline(fvc, f1x, f1y, fragR1, animProd1.sphereR, 1, 1, fissAngle);
-      fvCloudOutline(fvc, f2x, f2y, fragR2, animProd2.sphereR, 1, 1, fissAngle);
+    } else {
+      drawFissionOutline(f1x, f1y, fragR1, f2x, f2y, fragR2, fvc);
     }
 
-    const electricLen = panelR * 1.05;
-    arrow(f1x, f1y, -cosF, -sinF, electricLen, FV_ELEC_COLOR);
-    arrow(f2x, f2y,  cosF,  sinF, electricLen, FV_ELEC_COLOR);
+    // Electric arrows fade quickly: 20% of max by frame 900 (sepT ≈ 0.0384)
+    const sepT900 = (PH1_END + 0.875 * (FISS_STOP_T - PH1_END) - PH2_END) / (1.0 - PH2_END);
+    const electricLen = maxE * Math.pow(0.20, sepT / sepT900);
+
+    // From frame 830 onward, whole arrow (including head) shrinks; before that, fixed head
+    const sepT830 = (PH1_END + 0.7875 * (FISS_STOP_T - PH1_END) - PH2_END) / (1.0 - PH2_END);
+    const hl = sepT < sepT830 ? fixedHead : undefined;
+
+    // f2: base anchored at surface, tip retracts as arrow shortens
+    arrow(f2x + cosF * fragR2, f2y + sinF * fragR2, cosF, sinF, electricLen, FV_ELEC_COLOR, hl);
+    // f1: base anchored at surface, pointing outward (away from f2), only while visible
+    if (f1x > -fragR1 - electricLen && f1x < W + fragR1 + electricLen) {
+      arrow(f1x - cosF * fragR1, f1y - sinF * fragR1, -cosF, -sinF, electricLen, FV_ELEC_COLOR, hl);
+    }
   }
 }
 
+function syncForceVizVisibility() {
+  const show = currentTab === 'fission' && arrowMode > 0;
+  forceVizPanelEl.style.display = show ? 'block' : 'none';
+  devTimecodeEl.style.display   = show ? 'block' : 'none';
+}
+
 function drawStaticFrame() {
+  syncForceVizVisibility();   // set display before renderAtFrac reads offsetWidth
+  syncForceVizVisibility();
   renderAtFrac(currentScrubFrac);
   drawForceViz();
 }
 
 function scrubVal(frac) { return Math.round(frac * 1000); }
-function scrubPct(frac) { return Math.round(frac * 100) + '%'; }
+function scrubPct(frac) { return Math.round(frac * 1000); }
 
 
 function neutronTick(now) {
@@ -2222,6 +2322,7 @@ function neutronTick(now) {
     staticFissStart  = now;
     wobbleMode     = isFirstFission ? 'dip1' : pickWobbleMode();
     isFirstFission = false;
+    updateTimecodes();
     SHAKE_DURATION = (5 + Math.random() * 10) * 100;   // 500–1500 ms (1 unit = 100 ms)
     resetExcitedSpots();
     staticFissT      = PH1_END;
@@ -2233,6 +2334,7 @@ function neutronTick(now) {
   }
 
   if (currentTab !== 'chain') updateParticleJitter(animParent.particles.length, 1, true);
+  syncForceVizVisibility();
   renderAtFrac(currentScrubFrac);
   drawForceViz();
   neutronRAF = requestAnimationFrame(neutronTick);
@@ -2299,6 +2401,7 @@ function fissionTick(now) {
   currentScrubFrac = NEUTRON_FRAC + Math.min(1, ff) * (1 - NEUTRON_FRAC);
   document.getElementById('scrubSlider').value = scrubVal(currentScrubFrac);
   document.getElementById('scrubPct').textContent = scrubPct(currentScrubFrac);
+  syncForceVizVisibility();
   renderAtFrac(currentScrubFrac);
   drawForceViz();
   if (staticFissT < FISS_STOP_T) {
@@ -2760,7 +2863,7 @@ document.getElementById('goBtn').addEventListener('click', () => {
   maxRevealedFrac = 0;
   if (currentTab !== 'chain') document.getElementById('scrubBar').classList.add('visible');
   document.getElementById('scrubSlider').value = 0;
-  document.getElementById('scrubPct').textContent = '0%';
+  document.getElementById('scrubPct').textContent = '0';
   document.getElementById('replayBtn').disabled = false;
   document.getElementById('scrubReplayBtn').disabled = false;
   btn.textContent = '⏸';
@@ -2780,7 +2883,7 @@ function doReplay() {
   maxRevealedFrac  = 0;
   egCtx.clearRect(0, 0, egCanvas.width, egCanvas.height);
   document.getElementById('scrubSlider').value = 0;
-  document.getElementById('scrubPct').textContent = '0%';
+  document.getElementById('scrubPct').textContent = '0';
   playbackStartRealT = performance.now();
   document.getElementById('goBtn').textContent = '⏸';
   document.getElementById('goBtn').classList.add('running');
@@ -2798,6 +2901,7 @@ document.getElementById('scrubSlider').addEventListener('input', function () {
   currentScrubFrac = parseInt(this.value) / 1000;
   document.getElementById('scrubPct').textContent = scrubPct(currentScrubFrac);
   heatmapDirty = true;
+  syncForceVizVisibility();
   renderAtFrac(currentScrubFrac);
   drawForceViz();
 });
@@ -2859,7 +2963,7 @@ document.getElementById('clearBtn').addEventListener('click', () => {
   document.getElementById('scrubReplayBtn').disabled = true;
   document.getElementById('scrubBar').classList.remove('visible');
   document.getElementById('scrubSlider').value = 0;
-  document.getElementById('scrubPct').textContent = '0%';
+  document.getElementById('scrubPct').textContent = '0';
   drawStaticFrame();
 });
 
@@ -2956,8 +3060,8 @@ let _fvDrag = null;
 forceVizPanelEl.addEventListener('mousedown', e => {
   if (e.target.classList.contains('fp-rh')) return;
   const rect = forceVizPanelEl.getBoundingClientRect();
-  _fvDrag = { sx: e.clientX, sy: e.clientY, ox: rect.left, oy: rect.top };
-  forceVizPanelEl.style.right = 'auto';
+  // Only allow vertical drag; right edge stays pinned to window right
+  _fvDrag = { sy: e.clientY, oy: rect.top };
 });
 
 window.addEventListener('mousemove', e => {
@@ -2979,8 +3083,7 @@ window.addEventListener('mousemove', e => {
     drawForceViz();
   }
   if (_fvDrag) {
-    forceVizPanelEl.style.left = (_fvDrag.ox + e.clientX - _fvDrag.sx) + 'px';
-    forceVizPanelEl.style.top  = (_fvDrag.oy + e.clientY - _fvDrag.sy) + 'px';
+    forceVizPanelEl.style.top = (_fvDrag.oy + e.clientY - _fvDrag.sy) + 'px';
   }
 });
 
