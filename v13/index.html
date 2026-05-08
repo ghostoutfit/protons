@@ -2193,13 +2193,18 @@ function drawForceViz() {
   const stableParticles = animParent ? { pts: animParent.particles, wcx: animParent.cx, wcy: animParent.cy, wsR: animParent.sphereR } : null;
 
   if (preImpact) {
+    // Nucleus is drawn unsquashed — its particles are already in their
+    // rotated positions (animParent.particles is mutated by the drag), so
+    // the panel mirrors the main canvas exactly.
+    drawNucleus(cx, cy, panelR, 1, 1, stableParticles);
+    // Arrows alone get the vertical squash (pitch cue) so the user sees the
+    // axis tilting forward/backward without distorting the nucleus drawing.
     if (pitchScale !== 1) {
       fvc.save();
       fvc.translate(cx, cy);
-      fvc.scale(1, pitchScale);   // squash vertically as the nucleus tilts
+      fvc.scale(1, pitchScale);
       fvc.translate(-cx, -cy);
     }
-    drawNucleus(cx, cy, panelR, 1, 1, stableParticles);
     // Balanced: electric outward = strong inward, equal length — centered on each half, parallel
     const halfOff = panelR * 1.0;
     const rhcx = cx + cosF * halfOff, rhcy = cy + sinF * halfOff;
