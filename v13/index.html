@@ -3089,6 +3089,75 @@ window.addEventListener('mousemove', e => {
 
 window.addEventListener('mouseup', () => { _fvResize = null; _fvDrag = null; });
 
+// ─── Nucleus rotation ────────────────────────────────────────────────────────
+// Click + drag the parent nucleus while idle to rotate it around the vertical
+// axis. Each particle's local (x − cx, z) is rotated; y is untouched. As z
+// flips sign during rotation, drawParticles' z-sort moves particles between
+// the front and back of the rendered nucleus.
+let nucleusDrag = null;  // { lastX } during an active drag
+
+function pickNucleus(clientX, clientY) {
+  if (!animParent) return false;
+  const rect = canvas.getBoundingClientRect();
+  const sx = clientX - rect.left, sy = clientY - rect.top;
+  const W = canvas.width, H = canvas.height;
+  // Inverse of renderAtFrac's canvas transform (translate, scale, translate).
+  const fvShift = (currentTab === 'fission' && arrowMode > 0)
+    ? -(forceVizPanelEl.offsetWidth + 20) / 2
+    : 0;
+  const wx = (sx - W/2 - fvShift) / viewZoom + W/2;
+  const wy = (sy - H/2) / viewZoom + H/2;
+  const dx = wx - animParent.cx, dy = wy - animParent.cy;
+  return dx*dx + dy*dy <= animParent.sphereR * animParent.sphereR;
+}
+
+function rotateNucleusY(deltaTheta) {
+  if (!animParent) return;
+  const cx = animParent.cx;
+  const c = Math.cos(deltaTheta), s = Math.sin(deltaTheta);
+  for (const p of animParent.particles) {
+    const lx = p.x - cx;
+    const lz = p.z;
+    p.x = cx + lx * c + lz * s;
+    p.z = -lx * s + lz * c;
+  }
+  // Cached offsets used by the chain tab now reflect the old orientation.
+  chainParticleOffsets = null;
+}
+
+function canRotateNucleus() {
+  return currentTab === 'fission' && neutronState === 'idle' && !!animParent;
+}
+
+canvas.addEventListener('mousedown', (e) => {
+  if (!canRotateNucleus()) return;
+  if (!pickNucleus(e.clientX, e.clientY)) return;
+  nucleusDrag = { lastX: e.clientX };
+  canvas.style.cursor = 'grabbing';
+  e.preventDefault();
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (nucleusDrag) return;  // window listener handles the drag itself
+  canvas.style.cursor = (canRotateNucleus() && pickNucleus(e.clientX, e.clientY))
+    ? 'grab'
+    : '';
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (!nucleusDrag) return;
+  const dx = e.clientX - nucleusDrag.lastX;
+  nucleusDrag.lastX = e.clientX;
+  rotateNucleusY(dx * (Math.PI * 2 / 600));  // ~600 px per full turn
+  drawStaticFrame();
+});
+
+window.addEventListener('mouseup', () => {
+  if (!nucleusDrag) return;
+  nucleusDrag = null;
+  canvas.style.cursor = '';
+});
+
 // ─── Energy model ─────────────────────────────────────────────────────────────
 // NO sharp changes anywhere — every transition is cosine-smooth.
 //   BEFORE                    : KE flat 0.62, EIE flat 0.38
