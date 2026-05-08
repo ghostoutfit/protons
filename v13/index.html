@@ -3090,11 +3090,12 @@ window.addEventListener('mousemove', e => {
 window.addEventListener('mouseup', () => { _fvResize = null; _fvDrag = null; });
 
 // ─── Nucleus rotation ────────────────────────────────────────────────────────
-// Click + drag the parent nucleus while idle to rotate it around the vertical
-// axis. Each particle's local (x − cx, z) is rotated; y is untouched. As z
-// flips sign during rotation, drawParticles' z-sort moves particles between
-// the front and back of the rendered nucleus.
-let nucleusDrag = null;  // { lastX } during an active drag
+// Click + drag the parent nucleus while idle to rotate it. Horizontal drag
+// rotates around the vertical axis (left/right swing); vertical drag rotates
+// around the horizontal axis (top/bottom tilt). Trackball convention — the
+// surface follows the cursor. As particles' z flips sign, drawParticles'
+// z-sort swaps them between the front and back of the rendered nucleus.
+let nucleusDrag = null;  // { lastX, lastY } during an active drag
 
 function pickNucleus(clientX, clientY) {
   if (!animParent) return false;
@@ -3125,6 +3126,19 @@ function rotateNucleusY(deltaTheta) {
   chainParticleOffsets = null;
 }
 
+function rotateNucleusX(deltaTheta) {
+  if (!animParent) return;
+  const cy = animParent.cy;
+  const c = Math.cos(deltaTheta), s = Math.sin(deltaTheta);
+  for (const p of animParent.particles) {
+    const ly = p.y - cy;
+    const lz = p.z;
+    p.y = cy + ly * c + lz * s;
+    p.z = -ly * s + lz * c;
+  }
+  chainParticleOffsets = null;
+}
+
 function canRotateNucleus() {
   return currentTab === 'fission' && neutronState === 'idle' && !!animParent;
 }
@@ -3132,7 +3146,7 @@ function canRotateNucleus() {
 canvas.addEventListener('mousedown', (e) => {
   if (!canRotateNucleus()) return;
   if (!pickNucleus(e.clientX, e.clientY)) return;
-  nucleusDrag = { lastX: e.clientX };
+  nucleusDrag = { lastX: e.clientX, lastY: e.clientY };
   canvas.style.cursor = 'grabbing';
   e.preventDefault();
 });
@@ -3147,8 +3161,12 @@ canvas.addEventListener('mousemove', (e) => {
 window.addEventListener('mousemove', (e) => {
   if (!nucleusDrag) return;
   const dx = e.clientX - nucleusDrag.lastX;
+  const dy = e.clientY - nucleusDrag.lastY;
   nucleusDrag.lastX = e.clientX;
-  rotateNucleusY(dx * (Math.PI * 2 / 600));  // ~600 px per full turn
+  nucleusDrag.lastY = e.clientY;
+  const radPerPx = (Math.PI * 2) / 600;  // ~600 px per full turn, both axes
+  if (dx) rotateNucleusY(dx * radPerPx);
+  if (dy) rotateNucleusX(dy * radPerPx);
   drawStaticFrame();
 });
 
