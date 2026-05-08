@@ -2264,6 +2264,7 @@ function renderFrame(idx) {
   const liveCEEB    = chargedEscapeEIEBase;
   const liveCamX    = cameraSiteX, liveCamY = cameraSiteY;
   const livePhoton  = photon;
+  const liveMAEIE   = maxApproachEIE;
   particles            = frame.p;
   collisionPhase       = frame.collisionPhase || 'approach';
   collisionFrames      = frame.collisionFrames ?? 999;
@@ -2281,7 +2282,7 @@ function renderFrame(idx) {
   collisionFrames      = liveCF;
   collisionDisplayKE   = liveCDKE;
   collisionDisplayEIE  = liveCDEIE;
-  maxApproachEIE       = frame.maxApproachEIE ?? maxApproachEIE;
+  maxApproachEIE       = liveMAEIE;
   gammaCarriedEnergy   = liveGCE;
   chargedNuclearEscape = liveCNE;
   chargedEscapeEIEBase = liveCEEB;
