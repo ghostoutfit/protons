@@ -2148,10 +2148,14 @@ function drawForceViz() {
   const panelR = animParent ? animParent.sphereR * 0.8 : 40;
 
   const frac = currentScrubFrac;
-  // Pre-impact (neutron still flying or not yet fired) the panel always shows
-  // a horizontal pair of arrows — the chosen axis isn't revealed until the
-  // neutron lands. After impact, the actual `staticFissAngle` drives the viz.
-  const fissAngle = (frac < NEUTRON_FRAC) ? 0 : staticFissAngle;
+  // Pre-impact: the panel shows a horizontal pair of arrows by default. While
+  // the user is actively rotating the nucleus, the arrows mirror the rotation
+  // in 2D (dragRotY → clockwise/counter spin in the panel) and a vertical
+  // squash communicates the forward/backward tilt (dragRotX → cos squash on Y).
+  // Post-impact, `staticFissAngle` drives the viz.
+  const preImpact = frac < NEUTRON_FRAC;
+  const fissAngle = preImpact ? (nucleusDrag ? dragRotY : 0) : staticFissAngle;
+  const pitchScale = (preImpact && nucleusDrag) ? Math.cos(dragRotX) : 1;
   const cosF = Math.cos(fissAngle), sinF = Math.sin(fissAngle);
 
   // Fixed arrowhead size (based on max arrow length) — only stem shortens
@@ -2188,7 +2192,13 @@ function drawForceViz() {
   const maxBalanced = panelR * 1.08;
   const stableParticles = animParent ? { pts: animParent.particles, wcx: animParent.cx, wcy: animParent.cy, wsR: animParent.sphereR } : null;
 
-  if (frac < NEUTRON_FRAC) {
+  if (preImpact) {
+    if (pitchScale !== 1) {
+      fvc.save();
+      fvc.translate(cx, cy);
+      fvc.scale(1, pitchScale);   // squash vertically as the nucleus tilts
+      fvc.translate(-cx, -cy);
+    }
     drawNucleus(cx, cy, panelR, 1, 1, stableParticles);
     // Balanced: electric outward = strong inward, equal length — centered on each half, parallel
     const halfOff = panelR * 1.0;
@@ -2198,6 +2208,7 @@ function drawForceViz() {
     centeredArrow(rhcx, rhcy, -cosF, -sinF, maxBalanced, FV_STRONG_COLOR, -sep);
     centeredArrow(lhcx, lhcy, -cosF, -sinF, maxBalanced, FV_ELEC_COLOR,    sep);
     centeredArrow(lhcx, lhcy,  cosF,  sinF, maxBalanced, FV_STRONG_COLOR, -sep);
+    if (pitchScale !== 1) fvc.restore();
     return;
   }
 
@@ -3106,6 +3117,10 @@ window.addEventListener('mouseup', () => { _fvResize = null; _fvDrag = null; });
 // surface follows the cursor. As particles' z flips sign, drawParticles'
 // z-sort swaps them between the front and back of the rendered nucleus.
 let nucleusDrag = null;  // { lastX, lastY } during an active drag
+// Accumulated rotation during an active nucleus drag — used by the force viz
+// panel to rotate its arrow pair in real time. Reset to 0 on mouseup so the
+// panel snaps back to a horizontal axis when the user releases the nucleus.
+let dragRotY = 0, dragRotX = 0;
 
 function pickNucleus(clientX, clientY) {
   if (!animParent) return false;
@@ -3177,13 +3192,21 @@ window.addEventListener('mousemove', (e) => {
   const radPerPx = (Math.PI * 2) / 600;  // ~600 px per full turn, both axes
   if (dx) rotateNucleusY(dx * radPerPx);
   if (dy) rotateNucleusX(dy * radPerPx);
+  // Track the drag's accumulated rotation so the force viz panel can mirror
+  // it. Reset to 0 on mouseup (below) so the arrows snap back to horizontal.
+  dragRotY += dx * radPerPx;
+  dragRotX += dy * radPerPx;
   drawStaticFrame();
+  drawForceViz();
 });
 
 window.addEventListener('mouseup', () => {
   if (!nucleusDrag) return;
   nucleusDrag = null;
+  dragRotY = 0;
+  dragRotX = 0;
   canvas.style.cursor = '';
+  drawForceViz();   // snap arrows back to horizontal
 });
 
 // ─── Energy model ─────────────────────────────────────────────────────────────
