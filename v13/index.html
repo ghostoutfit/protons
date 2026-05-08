@@ -2148,8 +2148,10 @@ function drawForceViz() {
   const panelR = animParent ? animParent.sphereR * 0.8 : 40;
 
   const frac = currentScrubFrac;
-  // Always use the stored fission angle; default horizontal before any shot
-  const fissAngle = staticFissAngle;
+  // Pre-impact (neutron still flying or not yet fired) the panel always shows
+  // a horizontal pair of arrows — the chosen axis isn't revealed until the
+  // neutron lands. After impact, the actual `staticFissAngle` drives the viz.
+  const fissAngle = (frac < NEUTRON_FRAC) ? 0 : staticFissAngle;
   const cosF = Math.cos(fissAngle), sinF = Math.sin(fissAngle);
 
   // Fixed arrowhead size (based on max arrow length) — only stem shortens
@@ -2318,6 +2320,9 @@ function neutronTick(now) {
   if (neutronX + PARTICLE_RADIUS >= animParent.cx - animParent.sphereR) {
     staticNeutronIX  = animParent.cx - animParent.sphereR * 0.85;
     staticNeutronIY  = animParent.cy;
+    // Pick the fission axis here — at impact — so the force viz panel doesn't
+    // reveal the chosen direction during the neutron's flight.
+    staticFissAngle  = (Math.random() - 0.5) * Math.PI;
     neutronState     = 'fission';
     staticFissStart  = now;
     wobbleMode     = isFirstFission ? 'dip1' : pickWobbleMode();
@@ -2853,7 +2858,10 @@ document.getElementById('goBtn').addEventListener('click', () => {
   chainNeutrons       = []; lastChainTime = null;
   for (const s of enrichSites) s.state = 'idle';
   heatmapDirty    = true;
-  staticFissAngle = (Math.random() - 0.5) * Math.PI;   // fission axis chosen early
+  // Reset the fission axis so the force viz panel shows a neutral horizontal
+  // pair of arrows during the neutron's flight — the actual axis is chosen
+  // when the neutron impacts the nucleus (in neutronTick).
+  staticFissAngle = 0;
   genFissionNeutrons();
   neutronState = 'flying';
   neutronX     = -PARTICLE_RADIUS - 5;
@@ -2916,6 +2924,7 @@ document.getElementById('newBtn').addEventListener('click', () => {
   neutronState        = 'idle';
   neutronLast         = 0;
   currentScrubFrac    = 0;
+  staticFissAngle     = 0;   // force viz returns to horizontal until impact
   mainNeutronsEmitted = false; mainEnergyTransferred = false; mainDaughters = null;
   chainNeutrons       = []; lastChainTime = null;
   for (const s of enrichSites) { s.state = 'idle'; delete s.daughters; }
@@ -2952,6 +2961,7 @@ document.getElementById('clearBtn').addEventListener('click', () => {
   neutronLast         = 0;
   currentScrubFrac    = 0;
   maxRevealedFrac     = 0;
+  staticFissAngle     = 0;   // force viz returns to horizontal until impact
   mainNeutronsEmitted = false; mainEnergyTransferred = false; mainDaughters = null;
   chainNeutrons       = []; lastChainTime = null;
   enrichSites         = [];
