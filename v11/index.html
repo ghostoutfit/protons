@@ -1367,20 +1367,20 @@ let didDrag = false;
 canvas.addEventListener('mousedown', (e) => {
   const pos = getCanvasPos(e);
   didDrag = false;
-  if (groupSelectMode) {
-    selBox = { x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y };
-    return;
-  }
   const idx = findParticleAt(pos.x, pos.y);
   if (idx >= 0) {
+    // Hovering a particle — drag it regardless of mode
     dragging = idx;
     dragOffsetX = particles[idx].x - pos.x;
     dragOffsetY = particles[idx].y - pos.y;
     particles[idx].vx = 0;
     particles[idx].vy = 0;
     canvas.style.cursor = 'grabbing';
-    selectedParticle = idx;
+    if (!groupSelectMode) { selectedParticle = idx; }
     if (!running) draw();
+  } else if (groupSelectMode) {
+    // Empty space in group mode — start rubber-band selection
+    selBox = { x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y };
   } else {
     selectedParticle = null;
     if (!running) draw();
@@ -1388,33 +1388,42 @@ canvas.addEventListener('mousedown', (e) => {
 });
 
 window.addEventListener('mousemove', (e) => {
+  const pos = getCanvasPos(e);
+  if (dragging !== null) {
+    // Dragging a particle — works in both modes
+    const p = particles[dragging];
+    didDrag = true;
+    p.x = pos.x + dragOffsetX;
+    p.y = pos.y + dragOffsetY;
+    p.vx = 0;
+    p.vy = 0;
+    if (!running) { computeEnergy(); draw(); }
+    return;
+  }
   if (groupSelectMode) {
     if (selBox) {
-      const pos = getCanvasPos(e);
       selBox.x2 = pos.x; selBox.y2 = pos.y;
       didDrag = true;
       if (!running) draw();
     }
-    canvas.style.cursor = 'crosshair';
+    const hover = findParticleAt(pos.x, pos.y);
+    canvas.style.cursor = hover >= 0 ? 'grab' : 'crosshair';
     return;
   }
-  if (dragging === null) {
-    const pos = getCanvasPos(e);
-    const idx = findParticleAt(pos.x, pos.y);
-    canvas.style.cursor = idx >= 0 ? 'grab' : 'default';
-    return;
-  }
-  const pos = getCanvasPos(e);
-  const p = particles[dragging];
-  didDrag = true;
-  p.x = pos.x + dragOffsetX;
-  p.y = pos.y + dragOffsetY;
-  p.vx = 0;
-  p.vy = 0;
-  if (!running) { computeEnergy(); draw(); }
+  const hover = findParticleAt(pos.x, pos.y);
+  canvas.style.cursor = hover >= 0 ? 'grab' : 'default';
 });
 
 window.addEventListener('mouseup', (e) => {
+  if (dragging !== null) {
+    separateOverlaps();
+    if (!running) { computeEnergy(); draw(); }
+    dragging = null;
+    const pos = getCanvasPos(e);
+    const hover = findParticleAt(pos.x, pos.y);
+    canvas.style.cursor = groupSelectMode ? (hover >= 0 ? 'grab' : 'crosshair') : (hover >= 0 ? 'grab' : 'default');
+    return;
+  }
   if (groupSelectMode && selBox) {
     const minX = Math.min(selBox.x1, selBox.x2), maxX = Math.max(selBox.x1, selBox.x2);
     const minY = Math.min(selBox.y1, selBox.y2), maxY = Math.max(selBox.y1, selBox.y2);
@@ -1429,14 +1438,7 @@ window.addEventListener('mouseup', (e) => {
     }
     selBox = null;
     if (!running) draw();
-    return;
   }
-  if (dragging !== null) {
-    separateOverlaps();
-    if (!running) { computeEnergy(); draw(); }
-  }
-  dragging = null;
-  canvas.style.cursor = groupSelectMode ? 'crosshair' : 'default';
 });
 
 // ============================================================
