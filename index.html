@@ -3,158 +3,94 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Proton Simulations</title>
+<title>Nuclear Interactions</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
-  body {
-    background: #0a0a1a;
-    color: #e0e0e0;
-    font-family: 'Segoe UI', system-ui, sans-serif;
-    min-height: 100vh;
-    padding: 60px 20px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-
-  h1 {
-    font-size: 32px;
-    font-weight: 700;
-    color: #ff6b6b;
-    margin-bottom: 8px;
-  }
-
-  .subtitle {
-    color: #6b7280;
-    font-size: 15px;
-    margin-bottom: 48px;
-  }
-
-  .versions {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
+  html, body {
     width: 100%;
-    max-width: 640px;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
   }
 
-  a.version {
+  #bg {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
     display: block;
-    background: #12122a;
-    border: 1px solid #2a2a4a;
-    border-radius: 10px;
-    padding: 20px 24px;
-    text-decoration: none;
-    color: #e0e0e0;
-    transition: all 0.15s;
   }
 
-  a.version:hover {
-    border-color: #6366f1;
-    background: #1a1a3a;
+  #title-container {
+    position: fixed;
+    inset: 80px;
   }
 
-  a.version .name {
-    font-size: 18px;
-    font-weight: 600;
-    color: #fff;
-    margin-bottom: 4px;
+  #title {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
   }
 
-  a.version .desc {
-    font-size: 14px;
-    color: #9ca3af;
-    line-height: 1.5;
+  /* Overlay that JS sizes to match the actual displayed image rect */
+  #hotspots {
+    position: absolute;
+    pointer-events: none;
   }
 
-  a.version.dev {
-    border-color: #f59e0b44;
-  }
-
-  a.version.dev:hover {
-    border-color: #f59e0b;
-    background: #1a1a2a;
-  }
-
-  a.version.dev .name {
-    color: #f59e0b;
-  }
-
-  .tag {
-    display: inline-block;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    padding: 2px 8px;
-    border-radius: 4px;
-    margin-left: 8px;
-    vertical-align: middle;
-  }
-
-  .tag-dev {
-    background: #f59e0b22;
-    color: #f59e0b;
-  }
-
-  .tag-latest {
-    background: #22c55e22;
-    color: #22c55e;
+  #hotspots a {
+    position: absolute;
+    pointer-events: all;
+    cursor: pointer;
+    /* Uncomment to debug hit zones: */
+    /* background: rgba(255,0,0,0.25); */
   }
 </style>
 </head>
 <body>
 
-<h1>Proton Simulations</h1>
-<p class="subtitle">Interactive explorations of electrostatic forces and energy</p>
+<img id="bg" src="images/TitleFull.png" alt="">
 
-<div class="versions">
-  <a class="version dev" href="dev/">
-    <div class="name">Dev Sandbox <span class="tag tag-dev">dev</span></div>
-    <div class="desc">Work-in-progress. Latest experiments and features being tested.</div>
-  </a>
-
-  <a class="version dev" href="v8/">
-    <div class="name">v8 <span class="tag tag-dev">dev</span></div>
-    <div class="desc">v6 base · explicit P+N cluster builder · no buckets or trash can</div>
-  </a>
-
-  <a class="version dev" href="v7/">
-    <div class="name">v7 <span class="tag tag-dev">dev</span></div>
-    <div class="desc">D+T fusion · bound clusters · fixed 1.5x zoom</div>
-  </a>
-
-  <a class="version dev" href="v6/">
-    <div class="name">v6 <span class="tag tag-dev">dev</span></div>
-    <div class="desc">v5 without force arrows · split IE bar chart · Conserve! mode</div>
-  </a>
-
-  <a class="version dev" href="v5/">
-    <div class="name">v5 <span class="tag tag-dev">dev</span></div>
-    <div class="desc">Fixed physics (Coulomb 139, Strong 0.5) · Ribbon electric field viz</div>
-  </a>
-
-  <a class="version" href="v4/">
-    <div class="name">v4 &mdash; Fusion Zoom <span class="tag tag-latest">latest</span></div>
-    <div class="desc">Two neutrons on a collision course. Watch the strong force bind them with a cinematic zoom into the potential well.</div>
-  </a>
-
-  <a class="version" href="v3/">
-    <div class="name">v3 &mdash; Multi-Particle</div>
-    <div class="desc">Strong field heatmap · Control strong force and electric force strength</div>
-  </a>
-
-  <a class="version" href="v2/">
-    <div class="name">v2 &mdash; Two-Particle</div>
-    <div class="desc">Strong field heatmap · Control strong force and electric force strength</div>
-  </a>
-
-  <a class="version" href="v1/">
-    <div class="name">v1 &mdash; Coulomb Repulsion</div>
-    <div class="desc">Heatmap · Connecting lines · Blob — three ways to visualize interaction energy</div>
-  </a>
+<div id="title-container">
+  <img id="title" src="images/TitleText.jpg" alt="Nuclear Interactions">
+  <div id="hotspots">
+    <a href="v11/"        style="top:34.3%;left:17.9%;width:66.9%;height:8.5%"></a>
+    <a href="v11/#nucleus" style="top:44.4%;left:17.9%;width:66.9%;height:8.4%"></a>
+    <a href="v13/"        style="top:54.4%;left:17.9%;width:66.9%;height:8.6%"></a>
+    <a href="v13/#chain"  style="top:64.6%;left:17.9%;width:66.9%;height:8.7%"></a>
+    <a href="v14/#temp"   style="top:74.5%;left:17.9%;width:66.9%;height:8.4%"></a>
+    <a href="v14/"        style="top:84.5%;left:17.9%;width:66.9%;height:8.5%"></a>
+  </div>
 </div>
+
+<script>
+  const IMG_W = 1150, IMG_H = 820;
+
+  function positionHotspots() {
+    const container = document.getElementById('title-container');
+    const hotspots  = document.getElementById('hotspots');
+    const cw = container.clientWidth;
+    const ch = container.clientHeight;
+
+    const scale = Math.min(cw / IMG_W, ch / IMG_H);
+    const dw = IMG_W * scale;
+    const dh = IMG_H * scale;
+    const dx = (cw - dw) / 2;
+    const dy = (ch - dh) / 2;
+
+    hotspots.style.left   = dx + 'px';
+    hotspots.style.top    = dy + 'px';
+    hotspots.style.width  = dw + 'px';
+    hotspots.style.height = dh + 'px';
+  }
+
+  document.getElementById('title').addEventListener('load', positionHotspots);
+  window.addEventListener('resize', positionHotspots);
+  positionHotspots();
+</script>
 
 </body>
 </html>
