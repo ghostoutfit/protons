@@ -773,10 +773,10 @@
   </div>
   <div class="toolbar-row">
     <!-- Far left: GO + REPLAY + CLEAR column -->
-    <div style="display:flex;flex-direction:column;justify-content:flex-end;align-self:stretch;gap:6px;padding-bottom:10px">
-      <button id="goBtn" class="btn">&#9654; GO</button>
-      <button id="replayBtn" class="btn" disabled>&#8634;</button>
-      <button id="clearBtn" class="btn">Clear</button>
+    <div style="display:flex;flex-direction:column;align-self:stretch;gap:6px;padding:10px 0">
+      <button id="goBtn" class="btn" style="flex:1">&#9654; GO</button>
+      <button id="replayBtn" class="btn" disabled style="flex:1">&#8634;</button>
+      <button id="clearBtn" class="btn" style="flex:1">Clear</button>
     </div>
 
     <!-- Pink box: New button + neutron speed + Add more fuel -->
@@ -1508,9 +1508,10 @@ function applyTab(tab) {
   viewZoom = zoomFromSlider(defaultZoomV);
   // Lock container at default chain zoom; clear when leaving chain tab
   const isChain = tab === 'chain';
+  document.getElementById('replayBtn').style.display         = isChain ? 'none' : '';
   document.getElementById('playbackSpeedRow').style.display  = isChain ? 'none' : '';
   document.getElementById('zoomSliderRow').style.display     = isChain ? 'none' : '';
-  document.getElementById('showElectricRow').style.display      = isChain ? 'none' : '';
+  document.getElementById('showElectricRow').style.display   = isChain ? 'none' : '';
   document.getElementById('forceModeRow').style.display      = isChain ? 'none' : 'flex';
   if (tab === 'chain') {
     fixedContainerBounds = computeContainerBounds();
@@ -3283,7 +3284,7 @@ document.querySelectorAll('.awheel-item[data-pmode]').forEach(btn => {
     showParticles = btn.dataset.pmode === 'particles';
     setParticleWheelActive(btn);
     if (showParticles && !idleParticleRAF) idleParticleLoop();
-    else drawStaticFrame();
+    drawStaticFrame();
   });
 });
 
