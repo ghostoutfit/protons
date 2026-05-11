@@ -486,6 +486,7 @@
   <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-bottom:5px;">Development Values</div>
   <label style="font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:6px;">SIE offset: <input type="number" id="sieOffsetInput" value="0" step="1" style="width:56px;background:rgba(10,8,30,0.8);color:var(--accent2);border:1px solid rgba(26,110,255,0.35);border-radius:6px;padding:2px 4px;font-size:11px;font-family:inherit;outline:none;"></label>
   <label class="toggle-label" style="margin-top:4px;"><input type="checkbox" id="scaledEnergyToggle"> Scale</label>
+  <div id="frameCounter" style="margin-top:5px;font-size:10px;color:var(--text-dim);letter-spacing:0.05em;">frame: 0</div>
 </div>
   </div><!-- /fusionControls -->
 
@@ -562,7 +563,13 @@ const ctx         = canvas.getContext('2d');
 const goBtn       = document.getElementById('goBtn');
 const replayBtn   = document.getElementById('replayBtn');
 const timeSlider  = document.getElementById('timeSlider');
-const timeLabelEl = { textContent: '' }; // timeLabel element removed; stub to avoid errors
+const timeLabelEl    = { textContent: '' }; // timeLabel element removed; stub to avoid errors
+const frameCounterEl = document.getElementById('frameCounter');
+function updateFrameCounter(current, total) {
+  const cur = current != null ? `${current} / ${total}` : `${total}`;
+  const dur = collisionStartFrame >= 0 ? `  during@${collisionStartFrame + 1}` : '';
+  frameCounterEl.textContent = `frame: ${cur}${dur}`;
+}
 const energyGraph = document.getElementById('energyGraph');
 const egCtx       = energyGraph.getContext('2d');
 
@@ -581,6 +588,7 @@ const equilibriumRatio    = 0.35;
 const COLLISION_FRAMES    = 15;    // max frames of collision phase
 const ESCAPE_ANIM_FRAMES  = 5;     // frames to lerp into escape geometry
 const FRAME_SPEED         = 1.5;   // dt per frame
+const CAT2_KE_RAMP_FRAMES = 4;     // collision frames over which Cat2 KE ramps to peak
 
 // Photon capture (Cat3)
 const PHOTON_SPEED    = 18;        // px per frame
@@ -669,8 +677,11 @@ let initialTotal = 0;
 let initialKE    = 0;   // CM-frame KE at sim start in sim units — used by escape physics
 let keVPerSimUnit = 1;  // conversion factor: sim-unit → keV, for approach-phase bar display
 // Phase timeline boundary frames (indices into particleHistory)
-let collisionStartFrame = -1;
-let escapeStartFrame    = -1;
+let collisionStartFrame   = -1;
+let escapeStartFrame      = -1;
+let collisionOnsetKE      = 0;   // collisionDisplayKE at onset — ramp start value (Cat2)
+let collisionOnsetEIE     = 0;   // collisionDisplayEIE at onset — ramp start value (Cat2)
+let collisionPeakEIE      = 0;   // target EIE after ramp completes (Cat2)
 
 let collisionDisplayKE  = null;  // explicit KE override for bar chart; null = show actual physics
 let collisionDisplayEIE = null;  // frozen EIE for collision phase; null = show actual physics
@@ -2320,8 +2331,11 @@ function resetState() {
   maxApproachEIE      = 0;
   collisionPeakKE     = 0;
   gammaCarriedEnergy  = 0;
-  collisionStartFrame = -1;
-  escapeStartFrame    = -1;
+  collisionStartFrame   = -1;
+  escapeStartFrame      = -1;
+  collisionOnsetKE      = 0;
+  collisionOnsetEIE     = 0;
+  collisionPeakEIE      = 0;
   if (typeof updatePhaseTimeline !== 'undefined') updatePhaseTimeline();
   escapeAnimFrame    = 0;
   escapeAnimStartPos  = null;
@@ -2603,9 +2617,11 @@ timeSlider.addEventListener('input', () => {
   if (val >= particleHistory.length - 1) {
     scrubFrame = -1;
     timeLabelEl.textContent = `${particleHistory.length}`;
+    updateFrameCounter(null, particleHistory.length);
   } else {
     scrubFrame = val;
     timeLabelEl.textContent = `${val + 1} / ${particleHistory.length}`;
+    updateFrameCounter(val + 1, particleHistory.length);
     if (!running) renderFrame(val);
   }
 });
@@ -2870,6 +2886,7 @@ function loop() {
 
   if (scrubFrame >= 0) {
     timeLabelEl.textContent = `${scrubFrame + 1} / ${particleHistory.length}`;
+    updateFrameCounter(scrubFrame + 1, particleHistory.length);
     renderFrame(scrubFrame);
     animId = requestAnimationFrame(loop);
     return;
@@ -2990,6 +3007,14 @@ function loop() {
     collisionFrames++;
     updateCamera();
 
+    // Cat2: ramp collisionDisplayKE from approach value → peak over CAT2_KE_RAMP_FRAMES.
+    // This makes the Strong→KE transfer visible during normal playback (not just scrubbing).
+    if (isCategory2() && collisionOnsetKE > 0 && collisionFrames <= CAT2_KE_RAMP_FRAMES) {
+      const t = collisionFrames / CAT2_KE_RAMP_FRAMES;
+      collisionDisplayKE  = collisionOnsetKE  + (collisionPeakKE  - collisionOnsetKE)  * t;
+      collisionDisplayEIE = collisionOnsetEIE + (collisionPeakEIE - collisionOnsetEIE) * t;
+    }
+
     // P+P and N+N are single particles: the meaningful collision event
     // is the bounce itself, which happens in a few frames. Don't wait
     // for COLLISION_FRAMES — fire escape as soon as they start separating.
@@ -3009,7 +3034,7 @@ function loop() {
     // Category 2 early escape: fire as soon as cluster CMs separate (min 5 frames).
     // Prevents D+D (and other Cat2) from visually "hanging" as a fused nucleus
     // while the strong force temporarily traps all particles in a common well.
-    if (!fireEscape && isCategory2() && collisionFrames >= 5) {
+    if (!fireEscape && isCategory2() && collisionFrames >= CAT2_KE_RAMP_FRAMES + 5) {
       const lSz3 = lSz2, rSz3 = n2 - lSz3;
       let lcx3=0,lcy3=0,rcx3=0,rcy3=0,lvx3=0,lvy3=0,rvx3=0,rvy3=0;
       for (let i=0;     i<lSz3; i++) { lcx3+=particles[i].x; lcy3+=particles[i].y; lvx3+=particles[i].vx; lvy3+=particles[i].vy; }
@@ -3091,9 +3116,6 @@ function loop() {
     lockClusterVelocities();
     const { lcx, lcy, rcx, rcy } = updateCamera();
 
-    // Enter collision the instant any cross-cluster particle pair reaches
-    // strong-force range — this is when the collision actually happens,
-    // not after the clusters have already reversed direction.
     if (!isCoulombOnly() && crossClusterContact()) {
       collisionPhase      = 'collision';
       collisionFrames     = 0;
@@ -3104,17 +3126,38 @@ function loop() {
       const colEntry = getComboEntry();
       const scale    = speedScale();
       const isDT = (leftChoice === 'd' && rightChoice === 't') || (leftChoice === 't' && rightChoice === 'd');
+
+      // Compute target (peak) display values
+      let targetCDKE;
       if (!scaledEnergy && leftChoice === 'd' && rightChoice === 'd') {
-        collisionDisplayKE = 11 * scale / 0.2; // displays as 11 after ds=0.2
+        targetCDKE = 11 * scale / 0.2;
       } else if (scaledEnergy && isDT && colEntry?.keInScaled != null) {
-        collisionDisplayKE = colEntry.keInScaled;  // D+T: spike to full fusion KE at DURING start
+        targetCDKE = colEntry.keInScaled;
       } else {
-        collisionDisplayKE = colEntry ? colEntry.immediateKE * scale
-                                      : Math.max(initialKE * keVPerSimUnit, colE.ke * keVPerSimUnit);
+        targetCDKE = colEntry ? colEntry.immediateKE * scale
+                              : Math.max(initialKE * keVPerSimUnit, colE.ke * keVPerSimUnit);
       }
-      collisionPeakKE     = collisionDisplayKE;
-      // D+T: freeze EIE at the peak it reached during approach (protons stay bound)
-      collisionDisplayEIE = (scaledEnergy && isDT) ? maxApproachEIE * keVPerSimUnit : colE.eie;
+      collisionPeakKE = targetCDKE;
+      const targetCDEIE = (scaledEnergy && isDT) ? maxApproachEIE * keVPerSimUnit : colE.eie;
+
+      if (isCategory2()) {
+        // Cat2 (D-D, D-T, T-T): ramp KE from approach value → peak over CAT2_KE_RAMP_FRAMES.
+        // Use the PREVIOUS frame's displayed bar values as the ramp start so the
+        // transition is seamless and always upward (pre-strong-force KE < fusion peak).
+        const ds  = scaledEnergy ? 1 : 0.2;
+        const kv  = scaledEnergy ? keVPerSimUnit : 1;
+        const prevFr = particleHistory.length > 0 ? particleHistory[particleHistory.length - 1] : null;
+        const prevBarKE  = prevFr ? prevFr.edisp.ke  : 0;
+        const prevBarEIE = prevFr ? prevFr.edisp.eie : colE.eie * kv;
+        collisionOnsetKE  = prevBarKE / ds;   // collisionDisplayKE units: bar = prevBarKE ✓
+        collisionOnsetEIE = prevBarEIE;        // used directly as eie in getDisplayEnergy
+        collisionPeakEIE  = targetCDEIE;
+        collisionDisplayKE  = collisionOnsetKE;
+        collisionDisplayEIE = collisionOnsetEIE;
+      } else {
+        collisionDisplayKE  = targetCDKE;
+        collisionDisplayEIE = targetCDEIE;
+      }
     } else {
       // No nuclear contact yet — track peak EIE for D+T freeze
       const curEIE = computeEnergy().eie;
@@ -3188,6 +3231,7 @@ function loop() {
     timeSlider.value = timeSlider.max;
   }
   timeLabelEl.textContent = `${particleHistory.length}`;
+  updateFrameCounter(null, particleHistory.length);
   updatePhaseTimeline();
 
   draw();
