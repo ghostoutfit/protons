@@ -812,6 +812,91 @@
   #themeB { background: linear-gradient(135deg, #ff2d78 50%, #bd00ff 50%); }  /* pink / purple */
   #themeC { background: linear-gradient(135deg, #ff2d78 50%, #00f5e0 50%); }  /* pink / teal   */
 
+  /* dev: white background for screenshots */
+  .shot-toggle {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 11px; color: var(--text-dim);
+    user-select: none; cursor: pointer; margin-left: 4px;
+  }
+  .shot-toggle input { margin: 0; cursor: pointer; }
+  body.screenshot-mode { background: #fff !important; }
+  body.screenshot-mode #toolbar { background: rgba(255,255,255,0.38) !important; box-shadow: none !important; }
+  body.screenshot-mode #toolbar,
+  body.screenshot-mode #toolbar * {
+    color: #000 !important;
+    text-shadow: none !important;
+  }
+  body.screenshot-mode #toolbar button {
+    border-color: #000 !important;
+    box-shadow: none !important;
+  }
+  body.screenshot-mode #toolbar .tab-btn:not(.active) {
+    color: #888 !important;
+    border-color: #888 !important;
+    background: transparent !important;
+  }
+  body.screenshot-mode #toolbar .tab-btn.active {
+    color: #000 !important;
+    border-color: #000 !important;
+    background: rgba(0,0,0,0.06) !important;
+  }
+  body.screenshot-mode input[type="range"] {
+    box-shadow: none !important;
+    background: rgba(0,0,0,0.15) !important;
+  }
+  body.screenshot-mode input[type="range"]::-webkit-slider-thumb {
+    background: #000 !important;
+    box-shadow: none !important;
+  }
+  body.screenshot-mode input[type="range"]::-moz-range-thumb {
+    background: #000 !important;
+    box-shadow: none !important;
+  }
+  body.screenshot-mode .slider-icon {
+    filter: brightness(0) !important;
+    opacity: 1 !important;
+  }
+  body.screenshot-mode #forcePanel {
+    background: rgba(255,255,255,0.96) !important;
+    border-color: rgba(0,0,0,0.35) !important;
+    box-shadow: none !important;
+  }
+  body.screenshot-mode #forcePanel,
+  body.screenshot-mode #forcePanel * {
+    color: #000 !important;
+    text-shadow: none !important;
+  }
+  body.screenshot-mode #forcePanel button {
+    border-color: #000 !important;
+    box-shadow: none !important;
+  }
+  /* Preserve educational color codes: electric = blue, strong = orange */
+  body.screenshot-mode .field-label-electric { color: #46a5ff !important; }
+  body.screenshot-mode .field-label-strong   { color: #ffb946 !important; }
+  body.screenshot-mode #forcePanelKey [style*="46a5ff"] { color: #46a5ff !important; }
+  body.screenshot-mode #forcePanelKey [style*="ffb946"] { color: #ffb946 !important; }
+  body.screenshot-mode #showHideForces {
+    background: transparent !important;
+    color: #000 !important;
+    border-color: #000 !important;
+  }
+  /* Time-slider scrub bar — match toolbar look */
+  body.screenshot-mode #scrubBar {
+    background: rgba(255,255,255,0.38) !important;
+    border-top-color: rgba(0,0,0,0.15) !important;
+    box-shadow: none !important;
+  }
+  body.screenshot-mode #scrubBar,
+  body.screenshot-mode #scrubBar * {
+    color: #000 !important;
+    text-shadow: none !important;
+  }
+  body.screenshot-mode #scrubBar button {
+    border-color: #000 !important;
+    box-shadow: none !important;
+  }
+  body.screenshot-mode #timeSlider { accent-color: #000 !important; }
+
   /* ========================================
      STATS & MISC
      ======================================== */
@@ -856,6 +941,7 @@
       <button class="theme-btn active" id="themeA" title="Synthwave"></button>
       <button class="theme-btn" id="themeB" title="Industrial"></button>
       <button class="theme-btn" id="themeC" title="Neon Blue"></button>
+      <label class="shot-toggle" title="White background for screenshots"><input type="checkbox" id="screenshotMode">Light</label>
     </div>
   </div>
   <div class="toolbar-row" style="align-items:stretch;gap:12px">
@@ -2532,15 +2618,21 @@ function drawArrowLabel(c, fromX, fromY, nx, ny, len, label) {
   if (!label || len < 6) return;
   const lx = fromX + nx * (len + 9);
   const ly = fromY + ny * (len + 9);
+  const LIGHT = document.body.classList.contains('screenshot-mode');
   c.save();
   c.font = 'bold 14px "JetBrains Mono", monospace';
   c.textAlign = 'center';
   c.textBaseline = 'middle';
-  c.lineWidth = 3;
-  c.strokeStyle = 'rgba(0,0,0,0.85)';
-  c.strokeText(label, lx, ly);
-  c.fillStyle = isProtonLabel(label) ? PROTON_LABEL_COLOR : NEUTRON_LABEL_COLOR;
-  c.fillText(label, lx, ly);
+  if (LIGHT) {
+    c.fillStyle = '#000';
+    c.fillText(label, lx, ly);
+  } else {
+    c.lineWidth = 3;
+    c.strokeStyle = 'rgba(0,0,0,0.85)';
+    c.strokeText(label, lx, ly);
+    c.fillStyle = isProtonLabel(label) ? PROTON_LABEL_COLOR : NEUTRON_LABEL_COLOR;
+    c.fillText(label, lx, ly);
+  }
   c.restore();
 }
 
@@ -3353,6 +3445,10 @@ function applyTheme(key) {
 document.getElementById('themeA').addEventListener('click', () => applyTheme('A'));
 document.getElementById('themeB').addEventListener('click', () => applyTheme('B'));
 document.getElementById('themeC').addEventListener('click', () => applyTheme('C'));
+document.getElementById('screenshotMode').addEventListener('change', e => {
+  document.body.classList.toggle('screenshot-mode', e.target.checked);
+  if (!running) draw();
+});
 // Per-particle jitter offsets — must be declared before applyTheme('A') calls draw()
 let jitter = [];
 

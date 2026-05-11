@@ -24,10 +24,10 @@ To run locally: `python3 -m http.server` in the repo root, then open
 
 | Version | Title in `<title>` | Lines | Tabs | Role |
 |---------|--------------------|-------|------|------|
-| **v11** | Nuclear Simulation v11 | 3572 | Protons / Investigate Stability | Main proton + nucleus sim |
+| **v11** | Nuclear Simulation v11 | 3598 | Protons / Investigate Stability | Main proton + nucleus sim |
 | **v12** | Nuclear Simulation v12 | 4547 | (Tab A / Tab B) | Lab-Journal-bearing nucleus sim — kept around because v15 borrows its `SideSim` |
-| **v13** | Nuclear Fission — v13 | 2971 | Fission / Chain Reaction | Current fission sim — replaced v15's role |
-| **v14** | Nuclear Fusion — v14 | 3655 | FUSION / TEMPERATURE | Standalone fusion + temperature/heat sim |
+| **v13** | Nuclear Fission — v13 | 3575 | Fission / Chain Reaction | Current fission sim — replaced v15's role |
+| **v14** | Nuclear Fusion — v14 | 3682 | FUSION / TEMPERATURE | Standalone fusion + temperature/heat sim |
 | **v15** | Nuclear Fission — v13 *(stale)* | 3792 | Fission / Chain Reaction | Older fission + Lab Journal. Loads v12 in a hidden iframe for `SideSim` card playback. Last touched in `63982ee`; v13 is where new fission work happens. |
 
 v1–v10 and v100 are history only. **All recent commit activity is on v11, v13, v14.**
@@ -108,6 +108,9 @@ Runs every frame in the live loop; `findAllClusters()` inside it is O(n²).
 | Themes (Synthwave / Midnight / Plasma) | v11, v12 | `THEMES` object, `currentTheme` |
 | Field auto-off for notebook playback | v12 | Frame-time check → `SideSim.isRunning()` |
 | Fission animation + Chain Reaction tab | v13 (canonical), v15 (older) | Cluster-centered animation, daughter ejection, enrich sites, prompt neutron flight |
+| Nucleus drag-to-rotate (yaw + pitch) | v13 | Click-and-drag the parent nucleus pre-flight; mutates `animParent.particles` in place, invalidates `chainParticleOffsets` cache |
+| Force-viz panel (electric + strong arrows along fission axis) | v13 | `drawForceViz`; pre-impact axis = drag yaw / 0; post-impact axis = `staticFissAngle` chosen at impact |
+| Light-mode toggle (white background for screenshots) | v11, v13, v14 | `body.screenshot-mode` CSS class; v13/v14 also gate `ctx.fillStyle` for the canvas background fill |
 | Fusion tab + COMBO_TABLE (D+T, D+D, T+T, etc.) | v14 | Tracks per-combo immediateKE, keOut, sieOffset, gammaKE |
 | Temperature tab (1/r⁴ repulsion in rounded-rect container, thermostat slider, slow-mo) | v14 | Wall bouncing handled in `stepTempPhysics()` |
 | Hard-sphere elastic proton collisions | v14 | Recent — "no overlap, roll around the edge" + visual overlap clamping |
@@ -279,6 +282,101 @@ Inside `step()`, after force integration: any overlapping pair is separated and 
 - No `centerTracking` / cluster-tracking camera button.
 - No themes.
 - No quantum stability / unstable-neutron timer.
+
+## v13: Fission + Chain Reaction
+
+`v13/index.html` (3575 lines). The current fission sim — replaced v15's role. Models a single fission event (a slow neutron strikes a heavy nucleus and splits it) plus a chain-reaction tab where neutrons released by each fission can trigger neighboring enriched sites.
+
+### Tabs
+- **FISSION** (default): one parent nucleus at canvas center, one neutron incoming from the left edge. Energy/force visualization in a small force-viz panel pinned at top-right.
+- **CHAIN REACTION**: a grid of parent nuclei with several enriched sites. Neutrons released by each fission can land on a neighboring enriched site and trigger a new fission, propagating until they fly off-canvas.
+
+The two "Protons" / "Investigate Stability" tabs in v13's tab bar are `<a>` cross-links back to `../v11/index.html#fission`; only Fission and Chain Reaction are local.
+
+`applyTab(name)` is the single funnel. It cancels all in-flight RAFs (`neutronRAF`, `playbackRAF`, `chainRAF`), resets phase state (`neutronState = 'idle'`, clears history, `mainDaughters = null`, `enrichSites = []`), swaps which control rows are visible (chain hides the playback-speed / electric-field controls; fission shows force-mode controls), and resets accumulated energy counters.
+
+### Phase machine
+The whole fission animation is parameterized by a normalized scrub fraction `t ∈ [0, 1]`, so the time slider can scrub forwards/backwards through it deterministically. Key thresholds (from the constants near the top of the animation block):
+
+```
+NEUTRON_FRAC = 0.20    // neutron flight occupies the first 20% of the timeline
+PH1_END      = 0.30    // jitter + wobble buildup ends here
+PH2_END      = 0.375   // elongation peak (squash/stretch) ends here
+ANIM_T_END   = 0.47    // daughter-ejection window ends here; rest is free flight
+```
+
+`neutronTick()` advances the incoming neutron 0 → NEUTRON_FRAC. **Impact = the moment the random fission axis is chosen** (`staticFissAngle = (Math.random() - 0.5) * Math.PI`), then `neutronState = 'fission'` and `fissionTick()` takes over. The axis pick is reset to `0` on NEW / Clear / Go so the force-viz panel sits horizontal until impact actually happens.
+
+`fissionTick()` runs PH1 → PH2 → ANIM_T → free flight, deforming `animParent.particles` in place, then handing positions off to the daughter clusters (`animProd1`, `animProd2`) for ejection.
+
+### Cluster / nucleus model
+`initNuclei()` generates three nuclei via `generateNucleus(Z, N, cx, cy, seed)`:
+- **Parent** — U-250 (78p + 172n) at canvas center
+- **Prod1** — Pd-150 (47p + 103n)
+- **Prod2** — Eu-100 (31p + 69n)
+
+All particles live in `animParent.particles[]`. `animMap[]` is precomputed at init and tells each parent particle which daughter cluster it belongs to once fission starts. The two daughters are drawn out of `animProd1` / `animProd2` once their cluster center crosses out of the parent's footprint.
+
+For chain mode, every enriched site has its own `{ cx, cy, state, fissT, angle, wobbleMode }`. Per-site geometry derives from `animParent` via `chainParticleOffsets` — a lazy cache that bakes the current 3D rotation of the parent into static offsets.
+
+### Force visualization panel
+A small fixed `#forceVizPanel` at top-right; not the v11/v12-style draggable force panel.
+
+`drawForceViz()` draws the parent nucleus (using `animParent.particles` directly, so it tracks any drag rotation) plus an arrow pair (electric blue + strong yellow) along the chosen fission axis.
+
+```
+frac < NEUTRON_FRAC  →  fissAngle = nucleusDrag ? dragRotY : 0
+frac ≥ NEUTRON_FRAC  →  fissAngle = staticFissAngle  (chosen at impact)
+```
+
+Pre-impact, a `pitchScale = Math.cos(dragRotX)` is wrapped around **just the four arrow draws** (not the nucleus): vertical drag squashes the arrows top-to-bottom to indicate the axis tilting forward/backward into the screen plane. The nucleus itself is left undeformed because it is already drawn from the same particle positions as the main canvas.
+
+### Nucleus rotation (drag)
+The parent nucleus is grabbable on the fission tab while idle.
+
+- `pickNucleus(clientX, clientY)` — sphere hit-test on the main canvas; accounts for the force-viz panel's screen offset so a click near the visible nucleus picks it whether the user clicked the main canvas or the panel.
+- `rotateNucleusY(deltaTheta)` — yaw: rotates each particle's local `(x − cx, z)`.
+- `rotateNucleusX(deltaTheta)` — pitch: rotates each particle's local `(y − cy, z)`. Trackball convention: drag down → top of nucleus tips toward the viewer.
+- Both invalidate `chainParticleOffsets` so chain-mode rendering picks up the new rotation.
+- `canRotateNucleus()` gates rotation to `currentTab === 'fission' && neutronState === 'idle' && !!animParent`.
+
+`mousedown` captures `{lastX, lastY}`, `mousemove` accumulates `dragRotY` and `dragRotX` per tick (sensitivity ≈ 600 px per full turn), `mouseup` clears the drag and resets both accumulators to 0 — so the force-viz arrows snap back to horizontal on release.
+
+### Chain reaction
+- Multiple parent nuclei in a grid; a fixed number of enriched sites sprinkled in.
+- `chainNeutrons[]` are the neutrons in flight; when one comes within `captureR` of an enriched site, `triggerEnrichSite()` starts that site's fission and spawns 2–3 new prompt neutrons.
+- `mainDaughters` holds the daughter-cluster pair from the seed fission so they can also be drawn during chain playback.
+- Chain tab locks zoom at the computed grid bounds — no centerTracking-style camera, just a fixed view.
+
+### Replay / scrubber
+**v13 has NO `particleHistory` ring buffer.** Unlike v11/v12, scrubbing in v13 is *phase-indexed* — the slider directly drives `currentScrubFrac ∈ [0, 1]` and `renderAtFrac(frac)` reconstructs the geometry analytically from the phase machine. There is no frame buffer, so memory cost is constant and you can scrub past the end without losing history.
+
+`drawStaticFrame()` is the single non-running renderer; it calls `renderAtFrac(currentScrubFrac)` and `drawForceViz()`. Mousemove during a nucleus drag explicitly calls `drawForceViz()` so the panel updates in real time even though `drawStaticFrame()` itself doesn't paint the panel.
+
+### Key globals — physics + animation
+
+```javascript
+const PARTICLE_RADIUS    = 10;
+const coulombStrength    = 150;     // distinct from v11/v12 (139) and v14 (400)
+const NEUTRON_FRAC       = 0.20;
+const PH1_END            = 0.30;
+const PH2_END            = 0.375;
+const ANIM_T_END         = 0.47;
+const NORMAL_DURATION    = 5000;    // ms — fission playback length
+const CHAIN_NORMAL_DURATION = 5000;
+let   staticFissAngle    = 0;       // reset on NEW / Clear / Go; randomized at impact
+let   dragRotY = 0, dragRotX = 0;   // drag accumulators; cleared on mouseup
+let   wobbleMode;                   // 'dip1' / 'dip2' / 'dip3' / 'stable'
+```
+
+### What v13 does NOT have
+- No Lab Journal, no `SideSim`, no `../v2/sheets-api.js`.
+- No `particleHistory` ring buffer, no frame-indexed scrubbing — playback is phase-indexed.
+- No v11/v12-style draggable resizable force panel — only the simpler fixed `#forceVizPanel`.
+- No stability table / `NUCLEUS_TABLE` — fission dynamics, not a stability model.
+- No `centerTracking` / cluster-following camera.
+- No bar chart / energy graph.
+- No themes wired to body classes the way v11 does (themes change CSS vars + body inline bg, but no `theme-teal` body class).
 
 ## Gotchas
 

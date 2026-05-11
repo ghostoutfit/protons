@@ -413,6 +413,63 @@
     #portrait-overlay { display: flex; }
     body > *:not(#portrait-overlay) { display: none !important; }
   }
+
+  /* dev: white background for screenshots */
+  .shot-toggle {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 11px; color: var(--text-dim);
+    user-select: none; cursor: pointer; margin-left: auto;
+  }
+  .shot-toggle input { margin: 0; cursor: pointer; }
+  body.screenshot-mode,
+  body.screenshot-mode #canvasWrap { background: #fff !important; }
+  body.screenshot-mode #toolbar { background: rgba(255,255,255,0.72) !important; box-shadow: none !important; border-bottom-color: rgba(0,0,0,0.1) !important; }
+  body.screenshot-mode #toolbar,
+  body.screenshot-mode #toolbar * {
+    color: #000 !important;
+    text-shadow: none !important;
+  }
+  body.screenshot-mode #toolbar button {
+    border-color: #000 !important;
+    box-shadow: none !important;
+  }
+  body.screenshot-mode #toolbar .tab-btn:not(.active) {
+    color: #888 !important;
+    border-color: #888 !important;
+    background: transparent !important;
+  }
+  body.screenshot-mode #toolbar .tab-btn.active {
+    color: #000 !important;
+    border-color: #000 !important;
+    background: rgba(0,0,0,0.06) !important;
+  }
+  body.screenshot-mode input[type="range"] {
+    box-shadow: none !important;
+    background: rgba(0,0,0,0.15) !important;
+  }
+  body.screenshot-mode input[type="range"]::-webkit-slider-thumb {
+    background: #000 !important;
+    box-shadow: none !important;
+  }
+  body.screenshot-mode input[type="range"]::-moz-range-thumb {
+    background: #000 !important;
+    box-shadow: none !important;
+  }
+  body.screenshot-mode .slider-icon {
+    filter: brightness(0) !important;
+    opacity: 1 !important;
+  }
+  body.screenshot-mode #scrubBar {
+    background: rgba(255,255,255,0.72) !important;
+    border-top-color: rgba(0,0,0,0.15) !important;
+    box-shadow: none !important;
+  }
+  body.screenshot-mode #scrubBar,
+  body.screenshot-mode #scrubBar * { color: #000 !important; text-shadow: none !important; }
+  body.screenshot-mode #scrubBar button { border-color: #000 !important; box-shadow: none !important; }
+  body.screenshot-mode #timeSlider { accent-color: #000 !important; }
+  body.screenshot-mode #energyGraph { background: #fff !important; }
+  body.screenshot-mode #scrubRight { border-left-color: rgba(0,0,0,0.15) !important; }
 </style>
 </head>
 <body>
@@ -427,6 +484,7 @@
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
     <button class="tab-btn active" id="fusionTabBtn" style="cursor:pointer" onclick="switchTab('fusion')">FUSION</button>
     <button class="tab-btn" id="tempTabBtn" style="cursor:pointer" onclick="switchTab('temp')">TEMPERATURE</button>
+    <label class="shot-toggle" title="White background for screenshots"><input type="checkbox" id="screenshotMode">Light</label>
   </div>
   <div style="display:flex;align-items:stretch;gap:12px;">
   <div style="display:flex;flex-direction:column;justify-content:flex-end;align-self:stretch;gap:6px;padding-bottom:10px;margin-right:4px;">
@@ -1869,16 +1927,18 @@ function drawBarChart() {
   const gx = canvas.width - W;
   const gy = 0;
 
+  const LIGHT = document.body.classList.contains('screenshot-mode');
+
   ctx.save();
 
   // Panel background
-  ctx.fillStyle = 'rgba(4,3,20,0.88)';
+  ctx.fillStyle = LIGHT ? 'rgba(255,255,255,0.96)' : 'rgba(4,3,20,0.88)';
   ctx.fillRect(gx, gy, W, H);
 
   // Left border glow
   ctx.save();
-  ctx.shadowColor = 'rgba(0,200,255,0.4)'; ctx.shadowBlur = 12;
-  ctx.strokeStyle = 'rgba(0,180,255,0.25)'; ctx.lineWidth = 1;
+  ctx.shadowColor = LIGHT ? 'rgba(0,0,0,0)' : 'rgba(0,200,255,0.4)'; ctx.shadowBlur = LIGHT ? 0 : 12;
+  ctx.strokeStyle = LIGHT ? 'rgba(0,0,0,0.20)' : 'rgba(0,180,255,0.25)'; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx, gy + H); ctx.stroke();
   ctx.restore();
 
@@ -1897,6 +1957,15 @@ function drawBarChart() {
         { label: 'Energy of Motion', value: displayKE,  color: '#ff2060', glow: 'rgba(255,20,80,0.9)'   },
         { label: 'Energy in Fields', value: displayIE,  color: '#7b6fff', glow: 'rgba(120,100,255,0.9)' },
       ];
+
+  if (LIGHT) {
+    // Greyscale for KE and combined IE; keep Electric/Strong colored (educational codes)
+    bars.forEach(b => {
+      if (b.label === 'Energy of Motion') { b.color = '#222'; b.glow = 'rgba(0,0,0,0)'; }
+      else if (b.label === 'Energy in Fields') { b.color = '#666'; b.glow = 'rgba(0,0,0,0)'; }
+      else { b.glow = 'rgba(0,0,0,0)'; }  // Electric / Strong: keep color, kill glow
+    });
+  }
 
   // Reserve space at top for the Separate Fields toggle overlay
   const checkboxH = document.getElementById('separateFieldsLabel').offsetHeight || 44;
@@ -1923,10 +1992,14 @@ function drawBarChart() {
     const py = baseline - (i / 5) * chartH;
     if (py < chartTop - 2) continue;
     const isBaseline = i === 0;
-    ctx.strokeStyle = isBaseline ? 'rgba(0,200,255,0.7)' : 'rgba(0,200,255,0.2)';
+    ctx.strokeStyle = isBaseline
+      ? (LIGHT ? 'rgba(0,0,0,0.55)' : 'rgba(0,200,255,0.7)')
+      : (LIGHT ? 'rgba(0,0,0,0.15)' : 'rgba(0,200,255,0.2)');
     ctx.lineWidth   = isBaseline ? 2 : 1.5;
-    if (isBaseline) { ctx.shadowColor = 'rgba(0,200,255,1.0)'; ctx.shadowBlur = 8; }
-    else            { ctx.shadowBlur = 0; }
+    if (isBaseline) {
+      ctx.shadowColor = LIGHT ? 'rgba(0,0,0,0)' : 'rgba(0,200,255,1.0)';
+      ctx.shadowBlur  = LIGHT ? 0 : 8;
+    } else { ctx.shadowBlur = 0; }
     ctx.beginPath(); ctx.moveTo(gx, py); ctx.lineTo(gx + W, py); ctx.stroke();
   }
   ctx.restore();
@@ -1934,7 +2007,9 @@ function drawBarChart() {
   if (scaledEnergy) {
     // Drag-to-rescale affordance
     ctx.save();
-    ctx.fillStyle = barScaleDrag ? 'rgba(0,200,255,0.7)' : 'rgba(0,200,255,0.28)';
+    ctx.fillStyle = LIGHT
+      ? (barScaleDrag ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.4)')
+      : (barScaleDrag ? 'rgba(0,200,255,0.7)' : 'rgba(0,200,255,0.28)');
     ctx.font      = '10px "JetBrains Mono", monospace';
     ctx.textAlign = 'left';
     ctx.fillText('⇕ drag scale', gx + 4, chartTop + 13);
@@ -2020,8 +2095,8 @@ function drawBarChart() {
     const x2 = chartX + 2 * barW + barW * 0.9;  // right edge of SIE bar
     const centerX = (x1 + x2) / 2;
     ctx.save();
-    ctx.shadowColor = 'rgba(180,140,255,0.7)'; ctx.shadowBlur = 8;
-    ctx.fillStyle   = 'rgba(180,140,255,0.85)';
+    ctx.shadowColor = LIGHT ? 'rgba(0,0,0,0)' : 'rgba(180,140,255,0.7)'; ctx.shadowBlur = LIGHT ? 0 : 8;
+    ctx.fillStyle   = LIGHT ? '#000' : 'rgba(180,140,255,0.85)';
     ctx.font        = 'bold 14px "JetBrains Mono", monospace';
     ctx.textAlign   = 'center';
     ctx.fillText('Energy in Fields', centerX, baseline + 50);
@@ -2039,9 +2114,9 @@ function drawBarChart() {
   };
   let phaseLabel = { approach: 'Before', collision: 'During', escapeAnim: 'After', escape: 'After' }[collisionPhase] || '';
   if (coulombScatterEscape) phaseLabel = 'After';
-  const pCol = phaseColors[collisionPhase] || 'rgba(0,200,255,0.5)';
+  const pCol = LIGHT ? '#000' : (phaseColors[collisionPhase] || 'rgba(0,200,255,0.5)');
   ctx.save();
-  ctx.shadowColor = pCol; ctx.shadowBlur = 16;
+  ctx.shadowColor = LIGHT ? 'rgba(0,0,0,0)' : pCol; ctx.shadowBlur = LIGHT ? 0 : 16;
   ctx.fillStyle   = pCol;
   ctx.font        = 'bold 15px "JetBrains Mono", monospace';
   ctx.textAlign   = 'center';
@@ -2080,6 +2155,18 @@ function drawEnergyGraph() {
   const W = energyGraph.width, H = energyGraph.height;
   egCtx.clearRect(0, 0, W, H);
 
+  const LIGHT = document.body.classList.contains('screenshot-mode');
+  const _gridCol     = LIGHT ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.05)';
+  const _ieCol       = LIGHT ? '#222'             : '#7b6fff';
+  const _ieGlow      = LIGHT ? 'rgba(0,0,0,0)'    : 'rgba(120,100,255,0.9)';
+  const _keCol       = LIGHT ? '#888'             : '#ff3a6e';
+  const _keGlow      = LIGHT ? 'rgba(0,0,0,0)'    : 'rgba(255,45,100,0.9)';
+  const _cursorCol   = LIGHT ? 'rgba(0,0,0,0.75)' : 'rgba(255,255,255,0.55)';
+  const _cursorGlow  = LIGHT ? 'rgba(0,0,0,0)'    : 'rgba(255,255,255,0.6)';
+  const _selFill     = LIGHT ? 'rgba(0,0,0,0.08)' : 'rgba(120,100,255,0.12)';
+  const _selStroke   = LIGHT ? 'rgba(0,0,0,0.4)'  : 'rgba(120,100,255,0.6)';
+  const _selGlow     = LIGHT ? 'rgba(0,0,0,0)'    : 'rgba(120,100,255,0.8)';
+
   const n = particleHistory.length;
   if (n < 2) return;
 
@@ -2100,7 +2187,7 @@ function drawEnergyGraph() {
   maxY *= 1.1;
 
   // Faint horizontal grid lines
-  egCtx.strokeStyle = 'rgba(255,255,255,0.05)';
+  egCtx.strokeStyle = _gridCol;
   egCtx.lineWidth = 1;
   for (let i = 1; i <= 3; i++) {
     const y = H - (i / 4) * H;
@@ -2163,18 +2250,18 @@ function drawEnergyGraph() {
   }
 
   // Line graph always shows combined IE (splitIE only affects bar charts)
-  plotNeonLine('#7b6fff', 'rgba(120,100,255,0.9)', f => (f.edisp || {}).ie || 0);
-  plotNeonLine('#ff3a6e', 'rgba(255,45,100,0.9)',  f => (f.edisp || {}).ke || 0);
+  plotNeonLine(_ieCol, _ieGlow, f => (f.edisp || {}).ie || 0);
+  plotNeonLine(_keCol, _keGlow, f => (f.edisp || {}).ke || 0);
 
   // Drag-to-zoom selection overlay
   if (egDragStartPx !== null && egDragCurPx !== null) {
     const x0 = Math.min(egDragStartPx, egDragCurPx);
     const x1 = Math.max(egDragStartPx, egDragCurPx);
-    egCtx.fillStyle = 'rgba(120,100,255,0.12)';
+    egCtx.fillStyle = _selFill;
     egCtx.fillRect(x0, 0, x1 - x0, H);
     egCtx.save();
-    egCtx.shadowColor = 'rgba(120,100,255,0.8)'; egCtx.shadowBlur = 4;
-    egCtx.strokeStyle = 'rgba(120,100,255,0.6)'; egCtx.lineWidth = 1;
+    egCtx.shadowColor = _selGlow; egCtx.shadowBlur = LIGHT ? 0 : 4;
+    egCtx.strokeStyle = _selStroke; egCtx.lineWidth = 1;
     egCtx.strokeRect(x0, 0, x1 - x0, H);
     egCtx.restore();
   }
@@ -2182,8 +2269,8 @@ function drawEnergyGraph() {
   // Cursor line
   if (cur >= zStart && cur <= zEnd) {
     egCtx.save();
-    egCtx.shadowColor = 'rgba(255,255,255,0.6)'; egCtx.shadowBlur = 6;
-    egCtx.strokeStyle = 'rgba(255,255,255,0.55)'; egCtx.lineWidth = 1;
+    egCtx.shadowColor = _cursorGlow; egCtx.shadowBlur = LIGHT ? 0 : 6;
+    egCtx.strokeStyle = _cursorCol; egCtx.lineWidth = 1;
     egCtx.beginPath(); egCtx.moveTo(splitX, 0); egCtx.lineTo(splitX, H); egCtx.stroke();
     egCtx.restore();
   }
@@ -3451,7 +3538,7 @@ function drawTempProtonAt(x, y) {
 }
 
 function drawTemp() {
-  ctx.fillStyle = '#05040f';
+  ctx.fillStyle = document.body.classList.contains('screenshot-mode') ? '#fff' : '#05040f';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   const { cx, cy, rx, ry, cr } = getTempContainer();
@@ -3696,6 +3783,11 @@ document.getElementById('tempCoulombSlider').addEventListener('input', function 
   if (!tempRunning) drawTemp();
 });
 updateCoulombLabel();
+
+document.getElementById('screenshotMode').addEventListener('change', e => {
+  document.body.classList.toggle('screenshot-mode', e.target.checked);
+  if (currentTab === 'temp') drawTemp(); else draw();
+});
 
 // Hash-driven tab routing — applied at load and on every hashchange so browser
 // back/forward, in-page anchors, and direct hash edits all update the tab.

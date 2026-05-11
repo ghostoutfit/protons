@@ -556,6 +556,76 @@
   #themeB { background: linear-gradient(135deg, #ff2d78 50%, #bd00ff 50%); }
   #themeC { background: linear-gradient(135deg, #ff2d78 50%, #00f5e0 50%); }
 
+  /* dev: white background for screenshots */
+  .shot-toggle {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 11px; color: var(--text-dim);
+    user-select: none; cursor: pointer; margin-left: 4px;
+  }
+  .shot-toggle input { margin: 0; cursor: pointer; }
+  body.screenshot-mode { background: #fff !important; }
+  body.screenshot-mode #toolbar { background: rgba(255,255,255,0.42) !important; box-shadow: none !important; }
+  body.screenshot-mode #toolbar,
+  body.screenshot-mode #toolbar * {
+    color: #000 !important;
+    text-shadow: none !important;
+  }
+  body.screenshot-mode #toolbar button {
+    border-color: #000 !important;
+    box-shadow: none !important;
+  }
+  body.screenshot-mode #toolbar .tab-btn:not(.active) {
+    color: #888 !important;
+    border-color: #888 !important;
+    background: transparent !important;
+  }
+  body.screenshot-mode #toolbar .tab-btn.active {
+    color: #000 !important;
+    border-color: #000 !important;
+    background: rgba(0,0,0,0.06) !important;
+  }
+  body.screenshot-mode input[type="range"] {
+    box-shadow: none !important;
+    background: rgba(0,0,0,0.15) !important;
+  }
+  body.screenshot-mode input[type="range"]::-webkit-slider-thumb {
+    background: #000 !important;
+    box-shadow: none !important;
+  }
+  body.screenshot-mode input[type="range"]::-moz-range-thumb {
+    background: #000 !important;
+    box-shadow: none !important;
+  }
+  body.screenshot-mode .slider-icon {
+    filter: brightness(0) !important;
+    opacity: 1 !important;
+  }
+  body.screenshot-mode #scrubBar {
+    background: rgba(255,255,255,0.42) !important;
+    border-top-color: rgba(0,0,0,0.15) !important;
+    box-shadow: none !important;
+  }
+  body.screenshot-mode #scrubBar,
+  body.screenshot-mode #scrubBar * { color: #000 !important; text-shadow: none !important; }
+  body.screenshot-mode #scrubBar button { border-color: #000 !important; box-shadow: none !important; }
+  body.screenshot-mode #scrubSlider { accent-color: #000 !important; }
+  body.screenshot-mode #energyGraph { background: #fff !important; }
+  body.screenshot-mode #forceVizPanel {
+    background: rgba(255,255,255,0.96) !important;
+    border-color: rgba(0,0,0,0.35) !important;
+    box-shadow: none !important;
+  }
+  body.screenshot-mode #forceVizPanel,
+  body.screenshot-mode #forceVizPanel * {
+    color: #000 !important;
+    text-shadow: none !important;
+  }
+  /* Preserve educational color codes: electric = blue, strong = orange */
+  body.screenshot-mode .field-label-electric { color: #46a5ff !important; }
+  body.screenshot-mode .field-label-strong   { color: #ffb946 !important; }
+  body.screenshot-mode #forceVizKey [style*="46a5ff"] { color: #46a5ff !important; }
+  body.screenshot-mode #forceVizKey [style*="ffb946"] { color: #ffb946 !important; }
+
   /* ── Dev timecode panel ───────────────────────────────────────────────────── */
   #devTimecodePanel {
     display: none; position: fixed; right: 20px; top: 60px;
@@ -656,6 +726,7 @@
       <button class="theme-btn active" id="themeA" title="Synthwave"></button>
       <button class="theme-btn" id="themeB" title="Industrial"></button>
       <button class="theme-btn" id="themeC" title="Neon Blue"></button>
+      <label class="shot-toggle" title="White background for screenshots"><input type="checkbox" id="screenshotMode">Light</label>
     </div>
   </div>
   <div class="toolbar-row">
@@ -1041,11 +1112,12 @@ function drawCloudOutline(cx, cy, sphereR, c = ctx) {
     };
   });
 
+  const LIGHT = document.body.classList.contains('screenshot-mode');
   c.save();
-  c.shadowColor = 'rgba(80,160,255,0.9)';
-  c.shadowBlur  = 22;
-  c.strokeStyle = 'rgba(160,215,255,1)';
-  c.lineWidth   = 4;
+  c.shadowColor = LIGHT ? 'rgba(0,0,0,0)' : 'rgba(80,160,255,0.9)';
+  c.shadowBlur  = LIGHT ? 0 : 22;
+  c.strokeStyle = LIGHT ? '#333' : 'rgba(160,215,255,1)';
+  c.lineWidth   = LIGHT ? 2.5 : 4;
   c.beginPath();
 
   c.moveTo(arcs[0].cx + R * Math.cos(arcs[0].startAngle),
@@ -1131,11 +1203,12 @@ function drawFissionOutline(cx1, cy1, r1, cx2, cy2, r2, c = ctx) {
     };
   });
 
+  const LIGHT = document.body.classList.contains('screenshot-mode');
   c.save();
-  c.shadowColor = 'rgba(80,160,255,0.9)';
-  c.shadowBlur  = 22;
-  c.strokeStyle = 'rgba(160,215,255,1)';
-  c.lineWidth   = 4;
+  c.shadowColor = LIGHT ? 'rgba(0,0,0,0)' : 'rgba(80,160,255,0.9)';
+  c.shadowBlur  = LIGHT ? 0 : 22;
+  c.strokeStyle = LIGHT ? '#333' : 'rgba(160,215,255,1)';
+  c.lineWidth   = LIGHT ? 2.5 : 4;
   c.beginPath();
 
   c.moveTo(arcs[0].cx + R * Math.cos(arcs[0].startAngle),
@@ -1152,11 +1225,12 @@ function drawFissionOutline(cx1, cy1, r1, cx2, cy2, r2, c = ctx) {
 // ─── Neutron — plain circle outline matching the cloud border style ───────────
 function drawNeutronOutline(x, y) {
   const R = PARTICLE_RADIUS;
+  const LIGHT = document.body.classList.contains('screenshot-mode');
   ctx.save();
-  ctx.shadowColor = 'rgba(80,160,255,0.9)';
-  ctx.shadowBlur  = 22;
-  ctx.strokeStyle = 'rgba(160,215,255,1)';
-  ctx.lineWidth   = 4;
+  ctx.shadowColor = LIGHT ? 'rgba(0,0,0,0)' : 'rgba(80,160,255,0.9)';
+  ctx.shadowBlur  = LIGHT ? 0 : 22;
+  ctx.strokeStyle = LIGHT ? '#333' : 'rgba(160,215,255,1)';
+  ctx.lineWidth   = LIGHT ? 2.5 : 4;
   ctx.beginPath();
   ctx.arc(x, y, R, 0, Math.PI * 2);
   ctx.stroke();
@@ -1394,6 +1468,7 @@ function applyTab(tab) {
   document.getElementById('enrichBtn').style.display = tab === 'chain' ? '' : 'none';
   heatmapDirty = true;
   if (typeof drawStaticFrame === 'function') drawStaticFrame();
+  if (showParticles && !idleParticleRAF && typeof idleParticleLoop === 'function') idleParticleLoop();
 }
 let showParticles = true;
 let currentScrubFrac = 0;
@@ -1675,7 +1750,7 @@ function drawAnimContent(t) {
 
 // ─── Canonical renderer — single source of truth for any scrub position ───────
 function renderAtFrac(frac) {
-  ctx.fillStyle = '#05040f';
+  ctx.fillStyle = document.body.classList.contains('screenshot-mode') ? '#fff' : '#05040f';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   if (!animParent) { if (currentTab === 'chain') drawChainBarChart(); drawEnergyGraph(); return; }
 
@@ -1947,12 +2022,15 @@ function drawChainOverlay() {
       ctx.restore();
     }
     // Excited glow ring
+    const _LIGHT = document.body.classList.contains('screenshot-mode');
     ctx.save();
     ctx.translate(cx, cy); ctx.rotate(site.angle);
     ctx.scale(scaleAlong, scalePerp); ctx.rotate(-site.angle); ctx.translate(-cx, -cy);
     ctx.beginPath(); ctx.arc(cx, cy, sphereR * (1 + ph2 * 0.08), 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(255,45,120,${0.3 + ph2 * 0.5})`;
-    ctx.lineWidth = 3 + ph2 * 5; ctx.shadowBlur = 18 * ph2; ctx.shadowColor = '#ff2d78';
+    ctx.strokeStyle = _LIGHT ? `rgba(40,40,40,${0.3 + ph2 * 0.5})` : `rgba(255,45,120,${0.3 + ph2 * 0.5})`;
+    ctx.lineWidth = 3 + ph2 * 5;
+    ctx.shadowBlur  = _LIGHT ? 0 : 18 * ph2;
+    ctx.shadowColor = _LIGHT ? 'rgba(0,0,0,0)' : '#ff2d78';
     ctx.stroke();
     ctx.restore();
   }
@@ -3124,11 +3202,12 @@ document.getElementById('energyGraphToggle').addEventListener('change', function
 let idleParticleRAF = null;
 function idleParticleLoop() {
   if (!showParticles) { idleParticleRAF = null; return; }
-  if (neutronState === 'idle' || neutronState === 'done') {
-    if (currentTab !== 'chain' && animParent) updateParticleJitter(animParent.particles.length, 1, true);
+  if ((neutronState === 'idle' || neutronState === 'done') &&
+      currentTab === 'fission' && animParent && !nucleusDrag) {
+    updateParticleJitter(animParent.particles.length, 1, true);
     drawStaticFrame();
   }
-  idleParticleRAF = currentTab !== 'chain' ? requestAnimationFrame(idleParticleLoop) : null;
+  idleParticleRAF = requestAnimationFrame(idleParticleLoop);
 }
 
 function setParticleWheelActive(targetBtn) {
@@ -3356,23 +3435,30 @@ function drawChainBarChart() {
   const gx = canvas.width - PW;
   const gy = 0;
 
+  const LIGHT = document.body.classList.contains('screenshot-mode');
+
   ctx.save();
 
   // Panel background
-  ctx.fillStyle = 'rgba(4,3,20,0.88)';
+  ctx.fillStyle = LIGHT ? 'rgba(255,255,255,0.96)' : 'rgba(4,3,20,0.88)';
   ctx.fillRect(gx, gy, PW, PH);
 
   // Left border glow
   ctx.save();
-  ctx.shadowColor = 'rgba(0,200,255,0.4)'; ctx.shadowBlur = 12;
-  ctx.strokeStyle = 'rgba(0,180,255,0.25)'; ctx.lineWidth = 1;
+  ctx.shadowColor = LIGHT ? 'rgba(0,0,0,0)' : 'rgba(0,200,255,0.4)'; ctx.shadowBlur = LIGHT ? 0 : 12;
+  ctx.strokeStyle = LIGHT ? 'rgba(0,0,0,0.20)' : 'rgba(0,180,255,0.25)'; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx, gy + PH); ctx.stroke();
   ctx.restore();
 
-  const bars = [
-    { label: 'Energy in Motion', value: energyInMotion, color: '#ff2060', glow: 'rgba(255,20,80,0.9)'   },
-    { label: 'Energy in Fields', value: energyInFields, color: '#7b6fff', glow: 'rgba(120,100,255,0.9)' },
-  ];
+  const bars = LIGHT
+    ? [
+        { label: 'Energy in Motion', value: energyInMotion, color: '#222', glow: 'rgba(0,0,0,0)' },
+        { label: 'Energy in Fields', value: energyInFields, color: '#666', glow: 'rgba(0,0,0,0)' },
+      ]
+    : [
+        { label: 'Energy in Motion', value: energyInMotion, color: '#ff2060', glow: 'rgba(255,20,80,0.9)'   },
+        { label: 'Energy in Fields', value: energyInFields, color: '#7b6fff', glow: 'rgba(120,100,255,0.9)' },
+      ];
 
   const labelH  = 62;
   const titleH  = 20;
@@ -3384,8 +3470,8 @@ function drawChainBarChart() {
 
   // Baseline
   ctx.save();
-  ctx.shadowColor = 'rgba(0,200,255,0.5)'; ctx.shadowBlur = 4;
-  ctx.strokeStyle = 'rgba(0,200,255,0.35)'; ctx.lineWidth = 1;
+  ctx.shadowColor = LIGHT ? 'rgba(0,0,0,0)' : 'rgba(0,200,255,0.5)'; ctx.shadowBlur = LIGHT ? 0 : 4;
+  ctx.strokeStyle = LIGHT ? 'rgba(0,0,0,0.55)' : 'rgba(0,200,255,0.35)'; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(gx, baseline); ctx.lineTo(gx + PW, baseline); ctx.stroke();
   ctx.restore();
 
@@ -3442,8 +3528,20 @@ function drawEnergyGraph() {
 
   egCtx.clearRect(0, 0, W, H);
 
+  const LIGHT = document.body.classList.contains('screenshot-mode');
+  const _gridCol  = LIGHT ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.06)';
+  const _phaseCol = LIGHT ? 'rgba(0,0,0,0.25)' : 'rgba(255,200,50,0.25)';
+  const _axisCol  = LIGHT ? 'rgba(0,0,0,0.55)' : 'rgba(0,200,255,0.35)';
+  const _axisGlow = LIGHT ? 'rgba(0,0,0,0)'    : 'rgba(0,200,255,0.5)';
+  const _ieCol    = LIGHT ? '#222'             : '#7b6fff';
+  const _ieGlow   = LIGHT ? 'rgba(0,0,0,0)'    : 'rgba(120,100,255,0.9)';
+  const _keCol    = LIGHT ? '#888'             : '#ff3a6e';
+  const _keGlow   = LIGHT ? 'rgba(0,0,0,0)'    : 'rgba(255,45,100,0.9)';
+  const _selFill  = LIGHT ? 'rgba(0,0,0,0.08)' : 'rgba(120,100,255,0.12)';
+  const _selStk   = LIGHT ? 'rgba(0,0,0,0.4)'  : 'rgba(120,100,255,0.6)';
+
   // Faint horizontal grid at 25 / 50 / 75%
-  egCtx.strokeStyle = 'rgba(255,255,255,0.06)';
+  egCtx.strokeStyle = _gridCol;
   egCtx.lineWidth = 1;
   for (let i = 1; i <= 3; i++) {
     const y = PAD + gH * (1 - i / 4);
@@ -3454,7 +3552,7 @@ function drawEnergyGraph() {
   const ph2EndFrac = NEUTRON_FRAC +
     ((PH2_END - PH1_END) / (ANIM_T_END - PH1_END)) * (1 - NEUTRON_FRAC);
   egCtx.setLineDash([2, 4]);
-  egCtx.strokeStyle = 'rgba(255,200,50,0.25)';
+  egCtx.strokeStyle = _phaseCol;
   egCtx.lineWidth = 1;
   for (const fx of [NEUTRON_FRAC, ph2EndFrac]) {
     if (fx < zs || fx > ze) continue;
@@ -3472,9 +3570,9 @@ function drawEnergyGraph() {
 
   // Bottom axis — always visible
   egCtx.save();
-  egCtx.shadowBlur  = 6;
-  egCtx.shadowColor = 'rgba(0,200,255,0.5)';
-  egCtx.strokeStyle = 'rgba(0,200,255,0.35)';
+  egCtx.shadowBlur  = LIGHT ? 0 : 6;
+  egCtx.shadowColor = _axisGlow;
+  egCtx.strokeStyle = _axisCol;
   egCtx.lineWidth   = 1;
   egCtx.beginPath(); egCtx.moveTo(0, H - PAD); egCtx.lineTo(W, H - PAD); egCtx.stroke();
   egCtx.restore();
@@ -3507,13 +3605,13 @@ function drawEnergyGraph() {
     strokeSeg(0, revealPx, 1.5, 0, 1.00);
   }
 
-  plotLine('#7b6fff', 'rgba(120,100,255,0.9)', e => e.eie);  // Energy in Fields — neon indigo
-  plotLine('#ff3a6e', 'rgba(255,45,100,0.9)',  e => e.ke);   // Energy in Motion — neon pink-red
+  plotLine(_ieCol, _ieGlow, e => e.eie);  // Energy in Fields
+  plotLine(_keCol, _keGlow, e => e.ke);   // Energy in Motion
 
   // Legend — top of graph, side by side
   const legend = [
-    { text: 'Energy in Fields', color: '#7b6fff', glow: 'rgba(120,100,255,0.9)' },
-    { text: 'Energy in Motion', color: '#ff3a6e', glow: 'rgba(255,45,100,0.9)'  },
+    { text: 'Energy in Fields', color: _ieCol, glow: _ieGlow },
+    { text: 'Energy in Motion', color: _keCol, glow: _keGlow },
   ];
   egCtx.font = 'bold 14px "Share Tech Mono", monospace';
   const LLINE = 14, LGAP = 4;
@@ -3537,19 +3635,19 @@ function drawEnergyGraph() {
   if (egDragStartPx !== null && egDragCurPx !== null) {
     const x0 = Math.min(egDragStartPx, egDragCurPx);
     const x1 = Math.max(egDragStartPx, egDragCurPx);
-    egCtx.fillStyle   = 'rgba(120,100,255,0.12)';
+    egCtx.fillStyle   = _selFill;
     egCtx.fillRect(x0, 0, x1 - x0, H);
-    egCtx.strokeStyle = 'rgba(120,100,255,0.6)';
+    egCtx.strokeStyle = _selStk;
     egCtx.lineWidth   = 1;
     egCtx.strokeRect(x0, 0, x1 - x0, H);
   }
 
-  // Cursor — neon white with glow
+  // Cursor — neon white with glow (black in light mode)
   const cx = curPx;
   egCtx.save();
-  egCtx.shadowBlur  = 8;
-  egCtx.shadowColor = 'rgba(255,255,255,0.7)';
-  egCtx.strokeStyle = 'rgba(255,255,255,0.85)';
+  egCtx.shadowBlur  = LIGHT ? 0 : 8;
+  egCtx.shadowColor = LIGHT ? 'rgba(0,0,0,0)' : 'rgba(255,255,255,0.7)';
+  egCtx.strokeStyle = LIGHT ? 'rgba(0,0,0,0.75)' : 'rgba(255,255,255,0.85)';
   egCtx.lineWidth   = 1;
   egCtx.beginPath(); egCtx.moveTo(cx, 0); egCtx.lineTo(cx, H); egCtx.stroke();
   egCtx.restore();
@@ -3636,6 +3734,11 @@ function applyTheme(key) {
 document.getElementById('themeA').addEventListener('click', () => applyTheme('A'));
 document.getElementById('themeB').addEventListener('click', () => applyTheme('B'));
 document.getElementById('themeC').addEventListener('click', () => applyTheme('C'));
+document.getElementById('screenshotMode').addEventListener('change', e => {
+  document.body.classList.toggle('screenshot-mode', e.target.checked);
+  drawStaticFrame();
+  drawForceViz();
+});
 applyTheme('A');
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
