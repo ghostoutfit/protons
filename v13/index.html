@@ -507,36 +507,36 @@
     box-shadow: 0 -1px 0 var(--accent1-dim), 0 -4px 20px rgba(0,0,0,0.5);
   }
   #scrubBar.visible { display: flex; }
-  /* Left panel: key labels (when graph shown) + replay/clock controls */
+  /* Left panel: key labels + replay/clock controls */
   #scrubLeftPanel {
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
     flex-shrink: 0;
-    width: 160px;
+    width: 112px;
     border-right: 1px solid var(--ui-border);
   }
   #scrubGraphKey {
-    display: none;
+    display: flex;
     flex-direction: column;
     gap: 6px;
     flex: 1;
     justify-content: center;
-    padding: 0 14px;
-    font-size: 12px;
+    padding: 0 8px;
+    font-size: 14px;
     font-weight: 700;
     line-height: 1.25;
     letter-spacing: 0.02em;
   }
-  #scrubGraphKey.visible { display: flex; }
   #scrubControls {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
     height: 80px;
-    padding: 0 14px;
+    padding: 0 8px;
     flex-shrink: 0;
   }
+  #scrubReplayBtn { padding: 4px 8px; }
   /* Right panel: graph canvas (full width) + slider row */
   #scrubRightPanel {
     flex: 1;
@@ -552,10 +552,32 @@
   }
   #energyGraphBox.visible { display: flex; }
   #energyGraphToggle {
+    border: 1px solid var(--accent2);
+    border-radius: 8px;
     font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: pointer;
+    background: var(--accent2-dim);
+    color: rgba(255,255,255,0.5);
+    font-family: inherit;
     line-height: 1.25;
     padding: 6px 16px;
     text-align: center;
+    box-shadow:
+      inset 0 0 6px var(--accent2-dim),
+      0 0 2px var(--accent2), 0 0 8px var(--accent2),
+      0 0 18px var(--accent2-glow), 0 0 40px var(--accent2-dim);
+    text-shadow: 0 0 4px rgba(255,255,255,0.5), 0 0 10px var(--accent2);
+    transition: all 0.2s;
+  }
+  #energyGraphToggle:hover { background: var(--accent2-glow); }
+  #energyGraphToggle.active {
+    box-shadow:
+      inset 0 0 8px var(--accent2-dim),
+      0 0 4px var(--accent2), 0 0 14px var(--accent2),
+      0 0 28px var(--accent2-glow), 0 0 55px var(--accent2-dim);
   }
   #energyGraph {
     display: block;
@@ -878,7 +900,7 @@ let hmFrameCounter  = 0;
 function resize() {
   canvas.width   = window.innerWidth;
   canvas.height  = window.innerHeight;
-  egCanvas.width  = Math.max(1, window.innerWidth - 160);
+  egCanvas.width  = Math.max(1, window.innerWidth - 112);
   egCanvas.height = 110;
   heatmapDirty   = true;
 }
@@ -3253,7 +3275,6 @@ document.getElementById('showElectric').addEventListener('change', () => {
 document.getElementById('energyGraphToggle').addEventListener('click', function() {
   const on = document.getElementById('energyGraphBox').classList.toggle('visible');
   this.classList.toggle('active', on);
-  document.getElementById('scrubGraphKey').classList.toggle('visible', on);
 });
 
 let idleParticleRAF = null;
