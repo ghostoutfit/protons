@@ -210,7 +210,7 @@
 
   /* Mini replay in scrub bar — same red, default small size */
   #scrubReplayBtn {
-    font-size: 16px;
+    font-size: 32px;
     border-color: #ff4040;
     color: rgba(255,255,255,0.5);
     background: rgba(255,40,40,0.15);
@@ -507,18 +507,36 @@
     box-shadow: 0 -1px 0 var(--accent1-dim), 0 -4px 20px rgba(0,0,0,0.5);
   }
   #scrubBar.visible { display: flex; }
-  #energyGraph {
+  #energyGraphBox {
     display: none;
+    flex-direction: column;
+    border: 1px solid rgba(26,110,255,0.35);
+    border-radius: 8px 8px 0 0;
+    background: rgba(26,110,255,0.06);
+    overflow: hidden;
+  }
+  #energyGraphBox.visible { display: flex; }
+  #energyGraphHeader {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--accent2);
+    text-shadow: 0 0 8px var(--accent2-glow), 0 0 20px var(--accent2-dim);
+    text-transform: uppercase;
+    padding: 6px 16px;
+    border-bottom: 1px solid rgba(26,110,255,0.2);
+  }
+  #energyGraph {
+    display: block;
     width: 100%;
     height: 110px;
-    border-bottom: 1px solid var(--ui-border);
     cursor: crosshair;
   }
   #scrubRow {
     display: flex;
     align-items: center;
     gap: 12px;
-    height: 40px;
+    height: 80px;
     padding: 0 20px;
   }
   #scrubBar .scrub-label {
@@ -788,10 +806,13 @@
 </div>
 
 <div id="scrubBar">
-  <canvas id="energyGraph" width="100" height="110"></canvas>
+  <div id="energyGraphBox">
+    <div id="energyGraphHeader">Energy Graph</div>
+    <canvas id="energyGraph" width="100" height="110"></canvas>
+  </div>
   <div id="scrubRow">
     <button id="scrubReplayBtn" class="btn" disabled>&#8634;</button>
-    <span class="slider-icon" style="font-size:16px">⏱</span>
+    <span class="slider-icon" style="font-size:32px">⏱</span>
     <input type="range" id="scrubSlider" min="0" max="1000" value="0">
     <span id="scrubPct">0</span>
     <label class="toggle-label" style="margin-left:10px;white-space:nowrap"><input type="checkbox" id="energyGraphToggle"> Energy Graph</label>
@@ -3196,7 +3217,7 @@ document.getElementById('showElectric').addEventListener('change', () => {
 });
 
 document.getElementById('energyGraphToggle').addEventListener('change', function() {
-  document.getElementById('energyGraph').style.display = this.checked ? 'block' : 'none';
+  document.getElementById('energyGraphBox').classList.toggle('visible', this.checked);
 });
 
 let idleParticleRAF = null;
