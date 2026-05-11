@@ -499,7 +499,7 @@
     bottom: 0; left: 0; right: 0;
     z-index: 10;
     display: none;
-    flex-direction: column;
+    flex-direction: row;
     background: var(--ui-bg);
     backdrop-filter: blur(18px);
     -webkit-backdrop-filter: blur(18px);
@@ -507,13 +507,48 @@
     box-shadow: 0 -1px 0 var(--accent1-dim), 0 -4px 20px rgba(0,0,0,0.5);
   }
   #scrubBar.visible { display: flex; }
+  /* Left panel: key labels (when graph shown) + replay/clock controls */
+  #scrubLeftPanel {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    flex-shrink: 0;
+    width: 160px;
+    border-right: 1px solid var(--ui-border);
+  }
+  #scrubGraphKey {
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    justify-content: center;
+    padding: 0 14px;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: 0.02em;
+  }
+  #scrubGraphKey.visible { display: flex; }
+  #scrubControls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 80px;
+    padding: 0 14px;
+    flex-shrink: 0;
+  }
+  /* Right panel: graph canvas (full width) + slider row */
+  #scrubRightPanel {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
   #energyGraphBox {
     display: none;
     flex-direction: column;
-    border: 1px solid rgba(26,110,255,0.35);
-    border-radius: 8px 8px 0 0;
-    background: rgba(26,110,255,0.06);
-    overflow: hidden;
+    border-bottom: 1px solid rgba(26,110,255,0.25);
+    background: rgba(26,110,255,0.04);
   }
   #energyGraphBox.visible { display: flex; }
   #energyGraphToggle {
@@ -533,7 +568,7 @@
     align-items: center;
     gap: 12px;
     height: 80px;
-    padding: 0 20px;
+    padding: 0 20px 0 0;
   }
   #scrubBar .scrub-label {
     font-size: 10px;
@@ -795,15 +830,25 @@
 </div>
 
 <div id="scrubBar">
-  <div id="energyGraphBox">
-    <canvas id="energyGraph" width="100" height="110"></canvas>
+  <div id="scrubLeftPanel">
+    <div id="scrubGraphKey">
+      <div style="color:#ff3a6e;text-shadow:0 0 8px rgba(255,45,100,0.8)">● Energy<br>of Motion</div>
+      <div style="color:#7b6fff;text-shadow:0 0 8px rgba(120,100,255,0.8)">● Energy<br>in Fields</div>
+    </div>
+    <div id="scrubControls">
+      <button id="scrubReplayBtn" class="btn" disabled>&#8634;</button>
+      <span class="slider-icon" style="font-size:32px">⏱</span>
+    </div>
   </div>
-  <div id="scrubRow">
-    <button id="scrubReplayBtn" class="btn" disabled>&#8634;</button>
-    <span class="slider-icon" style="font-size:32px">⏱</span>
-    <input type="range" id="scrubSlider" min="0" max="1000" value="0">
-    <span id="scrubPct">0</span>
-    <button id="energyGraphToggle" class="btn" style="margin-left:10px">Energy<br>Graph</button>
+  <div id="scrubRightPanel">
+    <div id="energyGraphBox">
+      <canvas id="energyGraph" width="100" height="110"></canvas>
+    </div>
+    <div id="scrubRow">
+      <input type="range" id="scrubSlider" min="0" max="1000" value="0">
+      <span id="scrubPct">0</span>
+      <button id="energyGraphToggle" class="btn">Energy<br>Graph</button>
+    </div>
   </div>
 </div>
 
@@ -833,7 +878,7 @@ let hmFrameCounter  = 0;
 function resize() {
   canvas.width   = window.innerWidth;
   canvas.height  = window.innerHeight;
-  egCanvas.width  = window.innerWidth;
+  egCanvas.width  = Math.max(1, window.innerWidth - 160);
   egCanvas.height = 110;
   heatmapDirty   = true;
 }
@@ -3207,6 +3252,7 @@ document.getElementById('showElectric').addEventListener('change', () => {
 document.getElementById('energyGraphToggle').addEventListener('click', function() {
   const on = document.getElementById('energyGraphBox').classList.toggle('visible');
   this.classList.toggle('active', on);
+  document.getElementById('scrubGraphKey').classList.toggle('visible', on);
 });
 
 let idleParticleRAF = null;
