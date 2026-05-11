@@ -808,17 +808,10 @@
     border-color: rgba(255,255,255,0.55);
     box-shadow: 0 0 6px rgba(255,255,255,0.4), 0 0 14px rgba(255,255,255,0.15);
   }
-  #themeA { background: linear-gradient(135deg, #ff2d78 50%, #1a6eff 50%); }  /* pink / blue   */
-  #themeB { background: linear-gradient(135deg, #ff2d78 50%, #bd00ff 50%); }  /* pink / purple */
-  #themeC { background: linear-gradient(135deg, #ff2d78 50%, #00f5e0 50%); }  /* pink / teal   */
-
-  /* dev: white background for screenshots */
-  .shot-toggle {
-    display: flex; align-items: center; gap: 4px;
-    font-size: 11px; color: var(--text-dim);
-    user-select: none; cursor: pointer; margin-left: 4px;
-  }
-  .shot-toggle input { margin: 0; cursor: pointer; }
+  #themeA { background: #1a6eff; }
+  #themeB { background: #bd00ff; }
+  #themeC { background: #00f5e0; }
+  #themeLight { background: #fff; }
   body.screenshot-mode { background: #fff !important; }
   body.screenshot-mode #toolbar { background: rgba(255,255,255,0.38) !important; box-shadow: none !important; }
   body.screenshot-mode #toolbar,
@@ -941,7 +934,7 @@
       <button class="theme-btn active" id="themeA" title="Synthwave"></button>
       <button class="theme-btn" id="themeB" title="Industrial"></button>
       <button class="theme-btn" id="themeC" title="Neon Blue"></button>
-      <label class="shot-toggle" title="White background for screenshots"><input type="checkbox" id="screenshotMode">Light</label>
+      <button class="theme-btn" id="themeLight" title="Light mode"></button>
     </div>
   </div>
   <div class="toolbar-row" style="align-items:stretch;gap:12px">
@@ -3437,7 +3430,9 @@ function applyTheme(key) {
   r.setProperty('--neutron-edge',  t.neutronEdge);
   r.setProperty('--page-bg', t.bg);
   document.body.style.background = t.bg;
-  document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
+  document.body.classList.remove('screenshot-mode');
+  document.getElementById('themeLight').classList.remove('active');
+  document.querySelectorAll('.theme-btn:not(#themeLight)').forEach(b => b.classList.remove('active'));
   document.getElementById('theme'+key).classList.add('active');
   document.body.classList.toggle('theme-teal', key === 'C');
   if (!running) draw();
@@ -3445,8 +3440,9 @@ function applyTheme(key) {
 document.getElementById('themeA').addEventListener('click', () => applyTheme('A'));
 document.getElementById('themeB').addEventListener('click', () => applyTheme('B'));
 document.getElementById('themeC').addEventListener('click', () => applyTheme('C'));
-document.getElementById('screenshotMode').addEventListener('change', e => {
-  document.body.classList.toggle('screenshot-mode', e.target.checked);
+document.getElementById('themeLight').addEventListener('click', () => {
+  const on = document.body.classList.toggle('screenshot-mode');
+  document.getElementById('themeLight').classList.toggle('active', on);
   if (!running) draw();
 });
 // Per-particle jitter offsets — must be declared before applyTheme('A') calls draw()

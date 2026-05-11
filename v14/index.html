@@ -421,12 +421,19 @@
   }
 
   /* dev: white background for screenshots */
-  .shot-toggle {
-    display: flex; align-items: center; gap: 4px;
-    font-size: 11px; color: var(--text-dim);
-    user-select: none; cursor: pointer; margin-left: auto;
+  .theme-btn {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.12);
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    flex-shrink: 0;
+    box-shadow: none;
+    padding: 0;
   }
-  .shot-toggle input { margin: 0; cursor: pointer; }
+  .theme-btn:hover { transform: scale(1.2); box-shadow: 0 0 8px rgba(255,255,255,0.3); }
+  .theme-btn.active { border-color: rgba(255,255,255,0.55); box-shadow: 0 0 6px rgba(255,255,255,0.4), 0 0 14px rgba(255,255,255,0.15); }
+  #themeLight { background: #fff; }
   body.screenshot-mode,
   body.screenshot-mode #canvasWrap { background: #fff !important; }
   body.screenshot-mode #toolbar { background: rgba(255,255,255,0.72) !important; box-shadow: none !important; border-bottom-color: rgba(0,0,0,0.1) !important; }
@@ -490,7 +497,7 @@
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
     <button class="tab-btn active" id="fusionTabBtn" style="cursor:pointer" onclick="switchTab('fusion')">FUSION</button>
     <button class="tab-btn" id="tempTabBtn" style="cursor:pointer" onclick="switchTab('temp')">TEMPERATURE</button>
-    <label class="shot-toggle" title="White background for screenshots"><input type="checkbox" id="screenshotMode">Light</label>
+    <button class="theme-btn" id="themeLight" title="Light mode"></button>
   </div>
   <div style="display:flex;align-items:stretch;gap:12px;">
   <div style="display:flex;flex-direction:column;justify-content:flex-end;align-self:stretch;gap:6px;padding-bottom:10px;margin-right:4px;">
@@ -3792,8 +3799,9 @@ document.getElementById('tempCoulombSlider').addEventListener('input', function 
 });
 updateCoulombLabel();
 
-document.getElementById('screenshotMode').addEventListener('change', e => {
-  document.body.classList.toggle('screenshot-mode', e.target.checked);
+document.getElementById('themeLight').addEventListener('click', () => {
+  const on = document.body.classList.toggle('screenshot-mode');
+  document.getElementById('themeLight').classList.toggle('active', on);
   if (currentTab === 'temp') drawTemp(); else draw();
 });
 
