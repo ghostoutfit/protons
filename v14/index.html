@@ -264,6 +264,8 @@
     background: var(--accent2-dim);
     color: rgba(255,255,255,0.5);
     font-family: inherit;
+    min-width: 185px;
+    white-space: nowrap;
     box-shadow:
       inset 0 0 6px var(--accent2-dim),
       0 0 2px var(--accent2), 0 0 8px var(--accent2),
@@ -363,15 +365,19 @@
   #scrubLeft {
     flex: 1; min-width: 0;
     display: flex; flex-direction: column;
-    padding-bottom: 4px; gap: 0;
+    justify-content: center;
+    gap: 4px;
+    padding: 6px 0;
   }
 
   #energyGraphBox {
+    display: none;
     border: 1px solid rgba(26,110,255,0.35);
     border-radius: 8px 8px 0 0;
     background: rgba(26,110,255,0.06);
     overflow: hidden;
   }
+  #energyGraphBox.visible { display: block; }
   #energyGraph {
     display: block; width: 100%; height: 150px;
     border-bottom: 1px solid var(--ui-border);
@@ -391,33 +397,45 @@
 
   #timeSlider { display: block; width: 100%; margin: 0; padding: 0; box-sizing: border-box; height: 8px; }
 
+  #scrubLeftPanel {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    flex-shrink: 0;
+    width: 112px;
+    border-right: 1px solid var(--ui-border);
+  }
+  #scrubGraphKey {
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    justify-content: center;
+    padding: 0 8px;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: 0.02em;
+  }
+  #scrubGraphKey.visible { display: flex; }
+  #scrubControls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 80px;
+    padding: 0 8px;
+    flex-shrink: 0;
+  }
+  #scrubReplayBtn { padding: 4px 8px; }
   #scrubRight {
-    width: 280px; flex-shrink: 0;
+    width: 230px; flex-shrink: 0;
     border-left: 1px solid var(--ui-border);
     display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 8px;
     padding: 12px;
   }
-  #scrubGraphKey {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    justify-content: center;
-    font-size: 14px;
-    font-weight: 700;
-    line-height: 1.25;
-    letter-spacing: 0.02em;
-    text-align: center;
-  }
-  #scrubControls {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-  }
-  #scrubReplayBtn { padding: 4px 8px; }
   #energyPctDisplay {
-    display: flex;
+    display: none;
     gap: 10px;
     justify-content: center;
     font-size: 22px;
@@ -426,11 +444,20 @@
     margin-bottom: 2px;
   }
   #energyPctNote {
-    font-size: 9px;
-    color: rgba(220,215,255,0.45);
+    display: none;
+    font-size: 12px;
+    color: #ff3a6e;
     text-align: center;
     letter-spacing: 0.02em;
     margin-bottom: 6px;
+  }
+  #egZoomHint {
+    display: none;
+    font-size: 12px;
+    color: var(--text-dim);
+    text-align: center;
+    line-height: 1.4;
+    max-width: 140px;
   }
 
   /* ── Portrait overlay ──────────────────────────────────────────────────── */
@@ -585,14 +612,13 @@
       <input type="range" id="simSpeedSlider" min="1" max="10" step="1" value="7" style="flex:1;">
       <span class="slider-icon" title="Fast">🐇</span>
     </div>
+    <div style="border-top:1px solid rgba(255,255,255,0.08);margin-top:6px;padding-top:6px;width:100%;">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-bottom:5px;">Development Values</div>
+      <label style="font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:6px;">SIE offset: <input type="number" id="sieOffsetInput" value="0" step="1" style="width:56px;background:rgba(10,8,30,0.8);color:var(--accent2);border:1px solid rgba(26,110,255,0.35);border-radius:6px;padding:2px 4px;font-size:11px;font-family:inherit;outline:none;"></label>
+      <label class="toggle-label" style="margin-top:4px;"><input type="checkbox" id="scaledEnergyToggle"> Scale</label>
+      <div id="frameCounter" style="margin-top:5px;font-size:10px;color:var(--text-dim);letter-spacing:0.05em;">frame: 0</div>
+    </div>
   </div>
-
-<div style="padding:6px 10px 8px;border-top:1px solid rgba(255,255,255,0.08);">
-  <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-bottom:5px;">Development Values</div>
-  <label style="font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:6px;">SIE offset: <input type="number" id="sieOffsetInput" value="0" step="1" style="width:56px;background:rgba(10,8,30,0.8);color:var(--accent2);border:1px solid rgba(26,110,255,0.35);border-radius:6px;padding:2px 4px;font-size:11px;font-family:inherit;outline:none;"></label>
-  <label class="toggle-label" style="margin-top:4px;"><input type="checkbox" id="scaledEnergyToggle"> Scale</label>
-  <div id="frameCounter" style="margin-top:5px;font-size:10px;color:var(--text-dim);letter-spacing:0.05em;">frame: 0</div>
-</div>
   </div><!-- /fusionControls -->
 
   <!-- Temperature tab controls -->
@@ -632,6 +658,16 @@
 </div>
 
 <div id="scrubBar" style="display:none">
+  <div id="scrubLeftPanel">
+    <div id="scrubGraphKey">
+      <div style="color:#ff3a6e;text-shadow:0 0 8px rgba(255,45,100,0.8)">● Energy<br>of Motion</div>
+      <div style="color:#7b6fff;text-shadow:0 0 8px rgba(120,100,255,0.8)">● Energy<br>in Fields</div>
+    </div>
+    <div id="scrubControls">
+      <button id="scrubReplayBtn" class="btn" disabled>&#8634;</button>
+      <span class="slider-icon" style="font-size:32px">⏱</span>
+    </div>
+  </div>
   <div id="scrubLeft">
     <div id="energyGraphBox">
       <canvas id="energyGraph" height="150"></canvas>
@@ -644,26 +680,23 @@
     <input type="range" id="timeSlider" min="0" max="0" value="0" disabled>
   </div>
   <div id="scrubRight">
-    <div id="scrubGraphKey">
-      <div style="color:#ff3a6e;text-shadow:0 0 8px rgba(255,45,100,0.8)">● Energy<br>of Motion</div>
-      <div style="color:#7b6fff;text-shadow:0 0 8px rgba(120,100,255,0.8)">● Energy<br>in Fields</div>
-    </div>
-    <div id="scrubControls">
-      <button id="scrubReplayBtn" class="btn" disabled>&#8634;</button>
-      <span class="slider-icon" style="font-size:32px">⏱</span>
-    </div>
     <div id="energyPctDisplay">
       <span id="energyPctKE" style="color:#ff2060;text-shadow:0 0 8px rgba(255,20,80,0.7);">—%</span>
       <span id="energyPctIE" style="color:#7b6fff;text-shadow:0 0 8px rgba(120,100,255,0.7);">—%</span>
     </div>
     <div id="energyPctNote">Energy changes are not to scale</div>
-    <div style="font-size:14px;color:var(--text-dim);text-align:center;line-height:1.4;max-width:140px;">Click and drag on the line graph to zoom in</div>
-    <button id="fullTimelineBtn" style="font-size:15px;padding:6px 18px;">Full Timeline</button>
+    <div id="egZoomHint">Click and drag on the line graph to zoom in</div>
+    <button id="fullTimelineBtn" style="font-size:15px;padding:6px 18px;">SHOW LINE GRAPH</button>
   </div>
 </div>
 
+<!-- Bar chart overlay — fixed over full height including toolbar -->
+<div id="barChartOverlay" style="position:fixed;top:0;right:0;bottom:0;width:320px;z-index:20;overflow:hidden;pointer-events:none;">
+  <canvas id="barChartCanvas"></canvas>
+</div>
+
 <!-- Separate Fields toggle — floats over top of bar chart panel -->
-<label id="separateFieldsLabel" class="toggle-label" style="position:fixed;top:0;right:0;width:320px;display:none;justify-content:center;align-items:center;font-size:22px;padding:8px 0;background:rgba(4,3,20,0.88);border-bottom:1px solid rgba(0,180,255,0.25);border-left:1px solid rgba(0,180,255,0.25);z-index:10;box-sizing:border-box;">
+<label id="separateFieldsLabel" class="toggle-label" style="position:fixed;top:0;right:0;width:320px;display:none;justify-content:center;align-items:center;font-size:22px;padding:8px 0;background:rgba(4,3,20,0.88);border-bottom:1px solid rgba(0,180,255,0.25);border-left:1px solid rgba(0,180,255,0.25);z-index:25;box-sizing:border-box;">
   <input type="checkbox" id="splitIEToggle"> Separate Fields
 </label>
 
@@ -674,8 +707,10 @@ let currentTab = 'fusion';
 // ============================================================
 //  DOM REFERENCES
 // ============================================================
-const canvas      = document.getElementById('canvas');
-const ctx         = canvas.getContext('2d');
+const canvas         = document.getElementById('canvas');
+const ctx            = canvas.getContext('2d');
+const barChartCanvas = document.getElementById('barChartCanvas');
+const barCtx         = barChartCanvas.getContext('2d');
 const goBtn       = document.getElementById('goBtn');
 const replayBtn   = document.getElementById('replayBtn');
 const timeSlider  = document.getElementById('timeSlider');
@@ -1980,11 +2015,13 @@ function niceTickStep(range) {
 }
 
 function drawBarChart() {
+  const ctx = barCtx;          // draw on overlay canvas, not the main sim canvas
   const W  = 320;
-  const H  = canvas.height;
-  const gx = canvas.width - W;
+  const H  = barChartCanvas.height;
+  const gx = 0;
   const gy = 0;
 
+  ctx.clearRect(0, 0, W, H);
   const LIGHT = document.body.classList.contains('screenshot-mode');
 
   ctx.save();
@@ -2458,12 +2495,23 @@ function renderFrame(idx) {
 // ============================================================
 //  LAYOUT / RESIZE
 // ============================================================
+function resizeBarChart() {
+  const scrubH  = document.getElementById('scrubBar').offsetHeight;
+  const graphOn = document.getElementById('energyGraphBox').classList.contains('visible');
+  const bottomPad = scrubH + (graphOn ? 200 : 0);
+  const overlay = document.getElementById('barChartOverlay');
+  overlay.style.bottom = bottomPad + 'px';
+  barChartCanvas.width  = 320;
+  barChartCanvas.height = Math.max(1, window.innerHeight - bottomPad);
+}
+
 function resize() {
   const toolbarH = document.getElementById('toolbar').offsetHeight;
   const scrubH   = document.getElementById('scrubBar').offsetHeight;
   canvas.width        = window.innerWidth;
   canvas.height       = window.innerHeight - toolbarH - scrubH;
-  energyGraph.width   = Math.max(1, window.innerWidth - 320);
+  energyGraph.width   = Math.max(1, window.innerWidth - 230 - 112);
+  resizeBarChart();
   if (currentTab === 'temp') {
     if (!tempRunning) { initTempProtons(); drawTemp(); }
   } else if (currentTab === 'fusion') {
@@ -2678,6 +2726,7 @@ function applyGraphZoom(start, end) {
   }
   updatePhaseTimeline();
   if (!running) draw();
+  updateGraphBtn();
 }
 
 function resetGraphZoom() {
@@ -2689,6 +2738,7 @@ function resetGraphZoom() {
   timeSlider.value = scrubFrame >= 0 ? scrubFrame : Math.max(0, n - 1);
   updatePhaseTimeline();
   if (!running) draw();
+  updateGraphBtn();
 }
 
 // Drag-to-zoom events on energyGraph
@@ -2794,8 +2844,39 @@ document.getElementById('splitIEToggle').addEventListener('change', function() {
   splitIE = this.checked;
   if (!running) draw();
 });
+function updateGraphBtn() {
+  const btn = document.getElementById('fullTimelineBtn');
+  const graphOn = document.getElementById('energyGraphBox').classList.contains('visible');
+  if (!graphOn) {
+    btn.textContent = 'SHOW LINE GRAPH';
+  } else if (graphZoomEnd === null) {
+    btn.textContent = 'HIDE LINE GRAPH';
+  } else {
+    btn.textContent = 'FULL TIMELINE';
+  }
+}
+
 document.getElementById('fullTimelineBtn').addEventListener('click', () => {
-  resetGraphZoom();
+  const box = document.getElementById('energyGraphBox');
+  const graphOn = box.classList.contains('visible');
+  if (!graphOn) {
+    box.classList.add('visible');
+    document.getElementById('scrubGraphKey').classList.add('visible');
+    document.getElementById('energyPctDisplay').style.display = 'flex';
+    document.getElementById('energyPctNote').style.display = 'block';
+    document.getElementById('egZoomHint').style.display = 'block';
+  } else if (graphZoomEnd === null) {
+    box.classList.remove('visible');
+    document.getElementById('scrubGraphKey').classList.remove('visible');
+    document.getElementById('energyPctDisplay').style.display = 'none';
+    document.getElementById('energyPctNote').style.display = 'none';
+    document.getElementById('egZoomHint').style.display = 'none';
+  } else {
+    resetGraphZoom();
+  }
+  updateGraphBtn();
+  resizeBarChart();
+  if (!running) draw();
 });
 function speedToKeV(speed) {
   return Math.round(10 + (speed - 0.1) / (2.1 - 0.1) * (120 - 10));
@@ -3438,7 +3519,8 @@ function switchTab(name) {
   sfLabel.style.top = toolbarH + 'px';
   canvas.width        = window.innerWidth;
   canvas.height       = window.innerHeight - toolbarH - scrubH;
-  energyGraph.width   = Math.max(1, window.innerWidth - 320);
+  energyGraph.width   = Math.max(1, window.innerWidth - 230 - 112);
+  resizeBarChart();
   if (name === 'temp') {
     tempFlashes = [];
     initTempProtons();

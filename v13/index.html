@@ -442,7 +442,7 @@
   .ctrl-box-blue input[type="range"] { width: 150px; }
   .ctrl-box-blue .slider-icon { font-size: 28px; }
   .ctrl-box-blue .toggle-label { font-size: 13px; gap: 6px; }
-  .ctrl-box-blue .field-label-electric { font-size: 11px; }
+  .ctrl-box-blue .field-label-electric { font-size: 13px; }
   .ctrl-box-blue .awheel-item { font-size: 14px; padding: 5px 14px; }
   .slider-group label {
     font-size: 10px;
@@ -550,19 +550,40 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    padding: 6px 0;
+  }
+  #phaseTimeline {
+    display: flex; align-items: stretch;
+    height: 18px; margin: 0;
+    border-radius: 0; overflow: hidden; gap: 0;
+  }
+  #phaseTimeline .phase-seg {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.05em;
+    overflow: hidden; white-space: nowrap; min-width: 0; transition: opacity 0.15s;
+  }
+  #egZoomHint {
+    font-size: 12px;
+    color: rgba(220,215,255,0.45);
+    text-align: center;
+    letter-spacing: 0.02em;
+    margin-top: 4px;
   }
   #scrubRowRight {
     display: flex;
     flex-direction: column;
-    justify-content: flex-end;
     flex-shrink: 0;
+    width: 230px;
   }
   #scrubRowRightInner {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
     height: 80px;
-    padding: 0 20px 0 12px;
+    padding: 0 12px;
+    flex-shrink: 0;
   }
   #energyGraphBox {
     display: none;
@@ -573,20 +594,26 @@
   #energyGraphBox.visible { display: flex; }
   #energyPctDisplay {
     display: none;
-    gap: 10px;
-    justify-content: center;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    padding: 0 12px 8px 12px;
     font-size: 22px;
     font-weight: 700;
     line-height: 1;
-    margin-bottom: 2px;
+  }
+  #energyPctNums {
+    display: flex;
+    gap: 10px;
   }
   #energyPctNote {
-    display: none;
-    font-size: 9px;
-    color: rgba(220,215,255,0.45);
+    font-size: 12px;
+    color: #ff3a6e;
     text-align: center;
     letter-spacing: 0.02em;
-    margin-bottom: 6px;
+    line-height: 1.3;
   }
   #energyGraphToggle {
     border: 1px solid var(--accent2);
@@ -602,6 +629,8 @@
     line-height: 1.25;
     padding: 6px 16px;
     text-align: center;
+    min-width: 180px;
+    white-space: nowrap;
     box-shadow:
       inset 0 0 6px var(--accent2-dim),
       0 0 2px var(--accent2), 0 0 8px var(--accent2),
@@ -903,19 +932,27 @@
       <div id="energyGraphBox">
         <canvas id="energyGraph" width="100" height="110"></canvas>
       </div>
+      <div id="phaseTimeline">
+        <div class="phase-seg" id="phaseSeg-before" style="flex:20;background:rgba(255,255,255,0.05);color:var(--text-dim);">Before</div>
+        <div class="phase-seg" id="phaseSeg-during" style="flex:27;background:rgba(255,45,120,0.08);color:var(--accent1);opacity:0.5;">During</div>
+        <div class="phase-seg" id="phaseSeg-after"  style="flex:53;background:rgba(26,110,255,0.08);color:var(--accent2);opacity:0.5;">After</div>
+      </div>
       <div id="scrubRow">
         <input type="range" id="scrubSlider" min="0" max="1000" value="0">
       </div>
     </div>
     <div id="scrubRowRight">
-      <div id="scrubRowRightInner">
-        <span id="scrubPct">0</span>
-        <div id="energyPctDisplay">
+      <div id="energyPctDisplay">
+        <div id="energyPctNums">
           <span id="energyPctKE" style="color:#ff2060;text-shadow:0 0 8px rgba(255,20,80,0.7);">62%</span>
           <span id="energyPctIE" style="color:#7b6fff;text-shadow:0 0 8px rgba(120,100,255,0.7);">38%</span>
         </div>
         <div id="energyPctNote">Energy changes are not to scale</div>
-        <button id="energyGraphToggle" class="btn">Energy<br>Graph</button>
+        <div id="egZoomHint">Click and drag on the line graph to zoom in</div>
+      </div>
+      <div id="scrubRowRightInner">
+        <span id="scrubPct">0</span>
+        <button id="energyGraphToggle" class="btn">SHOW LINE GRAPH</button>
       </div>
     </div>
   </div>
@@ -962,7 +999,7 @@ window.addEventListener('resize', () => {
   mainNeutronsEmitted = false; mainEnergyTransferred = false; mainDaughters = null;
   document.getElementById('goBtn').textContent = '▶ GO';
   document.getElementById('goBtn').classList.remove('running');
-  document.getElementById('scrubBar').classList.remove('visible');
+  document.getElementById('scrubBar').classList.toggle('visible', currentTab !== 'chain');
   initNuclei();
   heatmapDirty = true;
   drawStaticFrame();
@@ -1564,7 +1601,7 @@ function applyTab(tab) {
   document.getElementById('goBtn').classList.remove('running');
   document.getElementById('replayBtn').disabled = true;
   document.getElementById('scrubReplayBtn').disabled = true;
-  document.getElementById('scrubBar').classList.remove('visible');
+  document.getElementById('scrubBar').classList.toggle('visible', tab !== 'chain');
   document.getElementById('scrubSlider').value = 0;
   document.getElementById('scrubPct').textContent = '0';
 
@@ -2540,12 +2577,25 @@ function updateEnergyPct() {
   document.getElementById('energyPctIE').textContent = Math.round(eie * 100) + '%';
 }
 
+function updatePhaseTimeline() {
+  const f = currentScrubFrac;
+  const before = document.getElementById('phaseSeg-before');
+  const during = document.getElementById('phaseSeg-during');
+  const after  = document.getElementById('phaseSeg-after');
+  if (!before) return;
+  const phase = f < NEUTRON_FRAC ? 'before' : f < ANIM_T_END ? 'during' : 'after';
+  before.style.opacity = phase === 'before' ? '1' : '0.4';
+  during.style.opacity = phase === 'during' ? '1' : '0.4';
+  after.style.opacity  = phase === 'after'  ? '1' : '0.4';
+}
+
 function drawStaticFrame() {
   syncForceVizVisibility();   // set display before renderAtFrac reads offsetWidth
   syncForceVizVisibility();
   renderAtFrac(currentScrubFrac);
   drawForceViz();
   updateEnergyPct();
+  updatePhaseTimeline();
 }
 
 function scrubVal(frac) { return Math.round(frac * 1000); }
@@ -3228,6 +3278,8 @@ document.getElementById('scrubSlider').addEventListener('input', function () {
   syncForceVizVisibility();
   renderAtFrac(currentScrubFrac);
   drawForceViz();
+  updateEnergyPct();
+  updatePhaseTimeline();
 });
 
 document.getElementById('newBtn').addEventListener('click', () => {
@@ -3257,7 +3309,7 @@ document.getElementById('newBtn').addEventListener('click', () => {
   btn.classList.remove('running');
   document.getElementById('replayBtn').disabled = true;
   document.getElementById('scrubReplayBtn').disabled = true;
-  document.getElementById('scrubBar').classList.remove('visible');
+  document.getElementById('scrubBar').classList.toggle('visible', currentTab !== 'chain');
   heatmapDirty = true;
   drawStaticFrame();
 });
@@ -3287,7 +3339,7 @@ document.getElementById('clearBtn').addEventListener('click', () => {
   document.getElementById('goBtn').classList.remove('running');
   document.getElementById('replayBtn').disabled = true;
   document.getElementById('scrubReplayBtn').disabled = true;
-  document.getElementById('scrubBar').classList.remove('visible');
+  document.getElementById('scrubBar').classList.toggle('visible', currentTab !== 'chain');
   document.getElementById('scrubSlider').value = 0;
   document.getElementById('scrubPct').textContent = '0';
   drawStaticFrame();
@@ -3326,12 +3378,36 @@ document.getElementById('showElectric').addEventListener('change', () => {
   drawStaticFrame();
 });
 
+function updateGraphBtn() {
+  const btn = document.getElementById('energyGraphToggle');
+  const graphOn = document.getElementById('energyGraphBox').classList.contains('visible');
+  if (!graphOn) {
+    btn.textContent = 'SHOW LINE GRAPH';
+  } else if (egZoomStart === 0 && egZoomEnd === 1) {
+    btn.textContent = 'HIDE LINE GRAPH';
+  } else {
+    btn.textContent = 'FULL TIMELINE';
+  }
+}
+
 document.getElementById('energyGraphToggle').addEventListener('click', function() {
-  const on = document.getElementById('energyGraphBox').classList.toggle('visible');
-  this.classList.toggle('active', on);
-  document.getElementById('scrubGraphKey').classList.toggle('visible', on);
-  document.getElementById('energyPctDisplay').style.display = on ? 'flex' : 'none';
-  document.getElementById('energyPctNote').style.display    = on ? 'block' : 'none';
+  const box = document.getElementById('energyGraphBox');
+  const graphOn = box.classList.contains('visible');
+  if (!graphOn) {
+    box.classList.add('visible');
+    this.classList.add('active');
+    document.getElementById('scrubGraphKey').classList.add('visible');
+    document.getElementById('energyPctDisplay').style.display = 'flex';
+  } else if (egZoomStart === 0 && egZoomEnd === 1) {
+    box.classList.remove('visible');
+    this.classList.remove('active');
+    document.getElementById('scrubGraphKey').classList.remove('visible');
+    document.getElementById('energyPctDisplay').style.display = 'none';
+  } else {
+    egZoomStart = 0; egZoomEnd = 1;
+    drawEnergyGraph();
+  }
+  updateGraphBtn();
 });
 
 let idleParticleRAF = null;
@@ -3558,8 +3634,8 @@ function computeEnergy(frac) {
   // Fission: Coulomb energy converts to KE.  exp(−k·ph3²) starts with zero slope
   // (rounds the bottom of the dip), peaks rate around ph3≈0.18 (≈9 time units),
   // then decelerates.  k=15 → ~74 % done by ph3=0.30 (≈15 time units), ~95 % by ph3=0.45.
-  const s  = 1 - Math.exp(-ph3 * ph3 * 15);
-  const ke = 0.15 + 0.57 * s;       // 0.15 → 0.72
+  const s  = 1 - Math.exp(-ph3 * ph3 * 12.5);
+  const ke = 0.15 + 0.78 * s;       // 0.15 → 0.93; reaches 0.91 by frac≈0.796
   return { ke, eie: Math.max(0.05, 1 - ke) };
 }
 
@@ -3787,6 +3863,7 @@ egCanvas.addEventListener('mouseup', e => {
   egZoomStart = prevStart + (x0 / W) * zLen;
   egZoomEnd   = prevStart + (x1 / W) * zLen;
   drawEnergyGraph();
+  updateGraphBtn();
 });
 egCanvas.addEventListener('mouseleave', e => {
   if (egDragStartPx !== null) { egDragStartPx = null; egDragCurPx = null; drawEnergyGraph(); }
@@ -3794,6 +3871,7 @@ egCanvas.addEventListener('mouseleave', e => {
 egCanvas.addEventListener('dblclick', () => {
   egZoomStart = 0; egZoomEnd = 1;
   drawEnergyGraph();
+  updateGraphBtn();
 });
 
 // ─── Tab switching ────────────────────────────────────────────────────────────
