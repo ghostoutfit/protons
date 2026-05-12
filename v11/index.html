@@ -2648,8 +2648,8 @@ function drawArrowOnCtx(c, fromX, fromY, nx, ny, len, color, lw = 2) {
   c.stroke();
   c.beginPath();
   c.moveTo(tipX, tipY);
-  c.lineTo(baseX + perpX * 3.5, baseY + perpY * 3.5);
-  c.lineTo(baseX - perpX * 3.5, baseY - perpY * 3.5);
+  c.lineTo(baseX + perpX * 8, baseY + perpY * 8);
+  c.lineTo(baseX - perpX * 8, baseY - perpY * 8);
   c.closePath(); c.fill();
   c.restore();
   c.globalAlpha = 1; c.lineCap = 'butt';
