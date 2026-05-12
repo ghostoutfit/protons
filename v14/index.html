@@ -252,7 +252,7 @@
     background: rgba(255,45,120,0.15);
   }
 
-  #fullTimelineBtn {
+  #fullTimelineBtn, #separateFieldsBtn {
     padding: 4px 12px;
     border: 1px solid var(--accent2);
     border-radius: 8px;
@@ -263,7 +263,7 @@
     cursor: pointer;
     background: var(--accent2-dim);
     color: rgba(255,255,255,0.5);
-    font-family: inherit;
+    font-family: 'Lexend', sans-serif;
     min-width: 185px;
     white-space: nowrap;
     box-shadow:
@@ -273,7 +273,7 @@
     text-shadow: 0 0 4px rgba(255,255,255,0.5), 0 0 10px var(--accent2);
     transition: all 0.2s;
   }
-  #fullTimelineBtn:hover { background: var(--accent2-glow); }
+  #fullTimelineBtn:hover, #separateFieldsBtn:hover { background: var(--accent2-glow); }
 
   /* ── Selects ───────────────────────────────────────────────────────────── */
   select {
@@ -695,8 +695,10 @@
   <canvas id="barChartCanvas"></canvas>
 </div>
 
-<!-- Separate Fields button — floats just above the scrubBar on the right side -->
-<button id="separateFieldsBtn" style="position:fixed;right:0;bottom:0;width:320px;display:none;z-index:22;border-left:1px solid var(--ui-border);border-top:1px solid var(--ui-border);border-right:none;border-bottom:none;border-radius:0;background:rgba(4,3,20,0.92);font-family:inherit;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;color:rgba(255,255,255,0.5);padding:7px 0;text-align:center;box-shadow:inset 0 0 6px var(--accent2-dim),0 0 2px var(--accent2),0 0 8px var(--accent2),0 0 18px var(--accent2-glow),0 0 40px var(--accent2-dim);text-shadow:0 0 4px rgba(255,255,255,0.5),0 0 10px var(--accent2);">SEPARATE FIELDS</button>
+<!-- Separate Fields panel — floats just above the scrubBar on the right side -->
+<div id="separateFieldsPanel" style="position:fixed;right:0;bottom:0;width:320px;display:none;z-index:22;background:rgba(4,3,20,0.92);border-left:1px solid var(--ui-border);box-sizing:border-box;height:35px;align-items:center;justify-content:center;">
+  <button id="separateFieldsBtn" style="font-size:15px;padding:6px 18px;">SEPARATE FIELDS</button>
+</div>
 
 <script>
 // Active tab — declared first so every function can read it safely.
@@ -2492,12 +2494,13 @@ function renderFrame(idx) {
 //  LAYOUT / RESIZE
 // ============================================================
 function resizeBarChart() {
-  const scrubH = document.getElementById('scrubBar').offsetHeight;
+  const scrubH  = document.getElementById('scrubBar').offsetHeight;
+  const panelH  = 35;
   const overlay = document.getElementById('barChartOverlay');
-  overlay.style.bottom = scrubH + 'px';
+  overlay.style.bottom = (scrubH + panelH) + 'px';
   barChartCanvas.width  = 320;
-  barChartCanvas.height = Math.max(1, window.innerHeight - scrubH);
-  document.getElementById('separateFieldsBtn').style.bottom = scrubH + 'px';
+  barChartCanvas.height = Math.max(1, window.innerHeight - scrubH - panelH);
+  document.getElementById('separateFieldsPanel').style.bottom = scrubH + 'px';
 }
 
 function resize() {
@@ -3509,8 +3512,8 @@ function switchTab(name) {
   // Size canvas first so getTempContainer() gets correct dimensions
   const toolbarH = document.getElementById('toolbar').offsetHeight;
   const scrubH   = document.getElementById('scrubBar').offsetHeight;
-  // Show/hide the Separate Fields button (only on fusion tab)
-  document.getElementById('separateFieldsBtn').style.display = name === 'fusion' ? 'block' : 'none';
+  // Show/hide the Separate Fields panel (only on fusion tab)
+  document.getElementById('separateFieldsPanel').style.display = name === 'fusion' ? 'flex' : 'none';
   canvas.width        = window.innerWidth;
   canvas.height       = window.innerHeight - toolbarH - scrubH;
   energyGraph.width   = Math.max(1, window.innerWidth - 230 - 112);
