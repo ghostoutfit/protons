@@ -6,7 +6,7 @@
 <title>Nuclear Fusion — v14</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   /* ── Variables ─────────────────────────────────────────────────────────── */
   :root {
@@ -27,13 +27,13 @@
   body {
     background: #05040f;
     color: var(--text-bright);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'Lexend', sans-serif;
     overflow: hidden;
     height: 100vh;
     display: flex;
     flex-direction: column;
   }
-  button, input, select { font-family: 'JetBrains Mono', monospace; }
+  button, input, select { font-family: 'Lexend', sans-serif; }
 
   /* ── Toolbar ───────────────────────────────────────────────────────────── */
   #toolbar {
@@ -536,7 +536,7 @@
         <input type="range" id="v9SpeedSlider" min="0.1" max="2.1" step="0.05" value="1.05" style="width:100%;">
         <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--text-dim);padding:0 2px;margin-top:8px;">
           <span>Slower</span>
-          <span id="speedKeV" style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent2);margin-top:5px;"></span>
+          <span id="speedKeV" style="font-size:11px;font-family:'Lexend', sans-serif;color:var(--accent2);margin-top:5px;"></span>
           <span>Faster</span>
         </div>
       </div>
@@ -600,7 +600,7 @@
 <div id="scrubBar" style="display:none">
   <div id="scrubLeft">
     <div id="energyGraphBox">
-      <div id="energyGraphLabels" style="display:flex;gap:24px;padding:8px 12px;font-size:24px;font-weight:bold;font-family:'JetBrains Mono',monospace;">
+      <div id="energyGraphLabels" style="display:flex;gap:24px;padding:8px 12px;font-size:24px;font-weight:bold;font-family:'Lexend', sans-serif;">
         <span style="color:#ff3a6e;text-shadow:0 0 10px rgba(255,45,100,0.9);">Energy of Motion</span>
         <span style="color:#7b6fff;text-shadow:0 0 10px rgba(120,100,255,0.9);">Energy in Fields</span>
       </div>
@@ -2025,7 +2025,7 @@ function drawBarChart() {
     ctx.fillStyle = LIGHT
       ? (barScaleDrag ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.4)')
       : (barScaleDrag ? 'rgba(0,200,255,0.7)' : 'rgba(0,200,255,0.28)');
-    ctx.font      = '10px "JetBrains Mono", monospace';
+    ctx.font      = '10px Lexend, sans-serif';
     ctx.textAlign = 'left';
     ctx.fillText('⇕ drag scale', gx + 4, chartTop + 13);
     ctx.restore();
@@ -2074,7 +2074,7 @@ function drawBarChart() {
         ctx.save();
         ctx.shadowColor = bar.glow; ctx.shadowBlur = 6;
         ctx.fillStyle   = bar.color;
-        ctx.font        = 'bold 13px "JetBrains Mono", monospace';
+        ctx.font        = 'bold 13px Lexend, sans-serif';
         ctx.textAlign   = 'center';
         if (clipped) {
           // Draw value inside the bar near the top
@@ -2090,13 +2090,13 @@ function drawBarChart() {
     ctx.save();
     ctx.shadowColor = bar.glow; ctx.shadowBlur = 6;
     ctx.fillStyle   = bar.color;
-    ctx.font        = 'bold 14px "JetBrains Mono", monospace';
+    ctx.font        = 'bold 14px Lexend, sans-serif';
     const words = bar.label.split(' ');
     // For negative bars: show value just above the label
     if (scaledEnergy && bar.value < 0) {
-      ctx.font = 'bold 13px "JetBrains Mono", monospace';
+      ctx.font = 'bold 13px Lexend, sans-serif';
       ctx.fillText(fmtMeV(bar.value) + ' MeV', x + bw / 2, baseline + 3);
-      ctx.font = 'bold 14px "JetBrains Mono", monospace';
+      ctx.font = 'bold 14px Lexend, sans-serif';
     }
     ctx.fillText(words.slice(0, 2).join(' '), x + bw / 2, baseline + 16);
     ctx.fillText(words[2] || '',              x + bw / 2, baseline + 33);
@@ -2112,7 +2112,7 @@ function drawBarChart() {
     ctx.save();
     ctx.shadowColor = LIGHT ? 'rgba(0,0,0,0)' : 'rgba(180,140,255,0.7)'; ctx.shadowBlur = LIGHT ? 0 : 8;
     ctx.fillStyle   = LIGHT ? '#000' : 'rgba(180,140,255,0.85)';
-    ctx.font        = 'bold 14px "JetBrains Mono", monospace';
+    ctx.font        = 'bold 14px Lexend, sans-serif';
     ctx.textAlign   = 'center';
     ctx.fillText('Energy in Fields', centerX, baseline + 50);
     ctx.restore();
@@ -2133,7 +2133,7 @@ function drawBarChart() {
   ctx.save();
   ctx.shadowColor = LIGHT ? 'rgba(0,0,0,0)' : pCol; ctx.shadowBlur = LIGHT ? 0 : 16;
   ctx.fillStyle   = pCol;
-  ctx.font        = 'bold 15px "JetBrains Mono", monospace';
+  ctx.font        = 'bold 15px Lexend, sans-serif';
   ctx.textAlign   = 'center';
   ctx.fillText(phaseLabel, gx + W / 2, gy + checkboxH + 22);
   ctx.restore();
@@ -2350,7 +2350,7 @@ function draw() {
     // + label on protons only
     if (isProton) {
       ctx.fillStyle      = 'rgba(255,255,255,0.88)';
-      ctx.font           = 'bold 11px "JetBrains Mono", monospace';
+      ctx.font           = 'bold 11px Lexend, sans-serif';
       ctx.textAlign      = 'center';
       ctx.textBaseline   = 'middle';
       ctx.fillText('+', jx, jy + 1);
@@ -2844,7 +2844,7 @@ function drawClusterIcon(canvas) {
 
     if (isProton) {
       ic.fillStyle    = 'rgba(255,255,255,0.88)';
-      ic.font         = `bold ${Math.round(R * 1.1)}px "JetBrains Mono", monospace`;
+      ic.font         = `bold ${Math.round(R * 1.1)}px Lexend, sans-serif`;
       ic.textAlign    = 'center';
       ic.textBaseline = 'middle';
       ic.fillText('+', jx, jy + 0.5);
@@ -2855,7 +2855,7 @@ function drawClusterIcon(canvas) {
   if (!isSlider && CLUSTER_LABEL[key]) {
     const label = CLUSTER_LABEL[key];
     const fontSize = 17;
-    ic.font = `bold ${fontSize}px "JetBrains Mono", monospace`;
+    ic.font = `bold ${fontSize}px Lexend, sans-serif`;
     ic.fillStyle    = 'rgba(255,255,255,0.82)';
     ic.textAlign    = 'center';
     ic.textBaseline = 'middle';

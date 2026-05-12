@@ -6,7 +6,7 @@
 <title>Nuclear Fission — v13</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   /* ── Variables ─────────────────────────────────────────────────────────── */
   :root {
@@ -28,13 +28,13 @@
   body {
     background: #05040f;
     color: var(--text-bright);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'Lexend', sans-serif;
     overflow: hidden;
     width: 100vw;
     height: 100vh;
   }
   button, input, select {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'Lexend', sans-serif;
   }
 
   /* ── Full-viewport canvas ──────────────────────────────────────────────── */
@@ -1439,7 +1439,7 @@ function drawParticles(particles, jitterScale = 1) {
     // + label on protons
     if (isProton) {
       ctx.fillStyle = 'rgba(255,255,255,0.88)';
-      ctx.font = 'bold 11px "JetBrains Mono", monospace';
+      ctx.font = 'bold 11px Lexend, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('+', px, py + 1);
@@ -2268,7 +2268,7 @@ function fvDrawParticle(c, px, py, r, type) {
   c.globalAlpha = 1;
   if (isP) {
     c.fillStyle = 'rgba(255,255,255,0.88)';
-    c.font = `bold ${Math.max(8, r * 1.1)}px "JetBrains Mono", monospace`;
+    c.font = `bold ${Math.max(8, r * 1.1)}px Lexend, sans-serif`;
     c.textAlign = 'center'; c.textBaseline = 'middle';
     c.fillText('+', px, py + 1);
   }
@@ -3581,7 +3581,7 @@ function drawChainBarChart() {
 
   const barW = chartW / bars.length;
   ctx.textAlign = 'center';
-  ctx.font = 'bold 13px "Share Tech Mono", monospace';
+  ctx.font = 'bold 13px Lexend, sans-serif';
 
   bars.forEach((bar, i) => {
     const frac  = bar.value / CHAIN_ENERGY_MAX;
@@ -3717,7 +3717,7 @@ function drawEnergyGraph() {
     { text: 'Energy in Fields', color: _ieCol, glow: _ieGlow },
     { text: 'Energy in Motion', color: _keCol, glow: _keGlow },
   ];
-  egCtx.font = 'bold 14px "Share Tech Mono", monospace';
+  egCtx.font = 'bold 14px Lexend, sans-serif';
   const LLINE = 14, LGAP = 4;
   const ty = PAD + 11;   // just below top edge
   let lx = 10;
