@@ -572,7 +572,7 @@
   }
   #energyGraphBox.visible { display: flex; }
   #energyPctDisplay {
-    display: flex;
+    display: none;
     gap: 10px;
     justify-content: center;
     font-size: 22px;
@@ -581,6 +581,7 @@
     margin-bottom: 2px;
   }
   #energyPctNote {
+    display: none;
     font-size: 9px;
     color: rgba(220,215,255,0.45);
     text-align: center;
@@ -3329,6 +3330,8 @@ document.getElementById('energyGraphToggle').addEventListener('click', function(
   const on = document.getElementById('energyGraphBox').classList.toggle('visible');
   this.classList.toggle('active', on);
   document.getElementById('scrubGraphKey').classList.toggle('visible', on);
+  document.getElementById('energyPctDisplay').style.display = on ? 'flex' : 'none';
+  document.getElementById('energyPctNote').style.display    = on ? 'block' : 'none';
 });
 
 let idleParticleRAF = null;
