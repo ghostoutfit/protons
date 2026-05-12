@@ -686,9 +686,6 @@
     </div>
     <div id="energyPctNote">Energy changes are not to scale</div>
     <div id="egZoomHint">Click and drag on the line graph to zoom in</div>
-    <label id="separateFieldsLabel" class="toggle-label" style="display:none;justify-content:center;align-items:center;font-size:14px;padding:6px 0;border-top:1px solid rgba(0,180,255,0.25);width:100%;margin-top:auto;">
-      <input type="checkbox" id="splitIEToggle"> Separate Fields
-    </label>
     <button id="fullTimelineBtn" style="font-size:15px;padding:6px 18px;">SHOW LINE GRAPH</button>
   </div>
 </div>
@@ -697,6 +694,9 @@
 <div id="barChartOverlay" style="position:fixed;top:0;right:0;bottom:0;width:320px;z-index:20;overflow:hidden;pointer-events:none;">
   <canvas id="barChartCanvas"></canvas>
 </div>
+
+<!-- Separate Fields button — floats just above the scrubBar on the right side -->
+<button id="separateFieldsBtn" style="position:fixed;right:0;bottom:0;width:320px;display:none;z-index:22;border-left:1px solid var(--ui-border);border-top:1px solid var(--ui-border);border-right:none;border-bottom:none;border-radius:0;background:rgba(4,3,20,0.92);font-family:inherit;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;color:rgba(255,255,255,0.5);padding:7px 0;text-align:center;box-shadow:inset 0 0 6px var(--accent2-dim),0 0 2px var(--accent2),0 0 8px var(--accent2),0 0 18px var(--accent2-glow),0 0 40px var(--accent2-dim);text-shadow:0 0 4px rgba(255,255,255,0.5),0 0 10px var(--accent2);">SEPARATE FIELDS</button>
 
 <script>
 // Active tab — declared first so every function can read it safely.
@@ -2497,6 +2497,7 @@ function resizeBarChart() {
   overlay.style.bottom = scrubH + 'px';
   barChartCanvas.width  = 320;
   barChartCanvas.height = Math.max(1, window.innerHeight - scrubH);
+  document.getElementById('separateFieldsBtn').style.bottom = scrubH + 'px';
 }
 
 function resize() {
@@ -2834,8 +2835,9 @@ timeSlider.addEventListener('input', () => {
 // ============================================================
 //  CONTROLS
 // ============================================================
-document.getElementById('splitIEToggle').addEventListener('change', function() {
-  splitIE = this.checked;
+document.getElementById('separateFieldsBtn').addEventListener('click', function() {
+  splitIE = !splitIE;
+  this.textContent = splitIE ? 'COMBINED FIELDS' : 'SEPARATE FIELDS';
   if (!running) draw();
 });
 function updateGraphBtn() {
@@ -3507,8 +3509,8 @@ function switchTab(name) {
   // Size canvas first so getTempContainer() gets correct dimensions
   const toolbarH = document.getElementById('toolbar').offsetHeight;
   const scrubH   = document.getElementById('scrubBar').offsetHeight;
-  // Show/hide the Separate Fields toggle (only on fusion tab)
-  document.getElementById('separateFieldsLabel').style.display = name === 'fusion' ? 'flex' : 'none';
+  // Show/hide the Separate Fields button (only on fusion tab)
+  document.getElementById('separateFieldsBtn').style.display = name === 'fusion' ? 'block' : 'none';
   canvas.width        = window.innerWidth;
   canvas.height       = window.innerHeight - toolbarH - scrubH;
   energyGraph.width   = Math.max(1, window.innerWidth - 230 - 112);
