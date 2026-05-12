@@ -631,8 +631,10 @@
         <input type="range" id="tempSlider" min="0" max="100" value="40" style="flex:1;min-width:80px;">
         <canvas id="tempProtonR" width="52" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;"></canvas>
       </div>
-      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim);padding:0 2px;">
-        <span>Cool</span><span>Hot</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--text-dim);padding:0 2px;">
+        <span>1 M°C</span>
+        <span id="tempTempVal" style="color:var(--accent1);font-size:11px;"></span>
+        <span>15 M°C</span>
       </div>
     </div>
     <div class="ctrl-box-blue" style="align-items:flex-start;gap:8px;min-width:180px;">
@@ -2882,16 +2884,27 @@ document.getElementById('fullTimelineBtn').addEventListener('click', () => {
 function speedToKeV(speed) {
   return Math.round(10 + (speed - 0.1) / (2.1 - 0.1) * (120 - 10));
 }
+function speedToMillionC(speed) {
+  return Math.round(1 + (speed - 0.1) / (2.1 - 0.1) * 14);
+}
+function tempSliderToMillionC(val) {
+  return Math.round(1 + val / 100 * 14);
+}
 function updateSpeedKeV() {
   const el = document.getElementById('speedKeV');
-  if (el) el.textContent = speedToKeV(approachSpeed) + ' keV';
+  if (el) el.textContent = speedToMillionC(approachSpeed) + ' M°C';
+}
+function updateTempTempVal() {
+  const el = document.getElementById('tempTempVal');
+  if (el) el.textContent = tempSliderToMillionC(parseFloat(document.getElementById('tempSlider').value)) + ' M°C';
 }
 document.getElementById('v9SpeedSlider').addEventListener('input', function() {
   approachSpeed = parseFloat(this.value);
   drawSpeedLines();
   updateSpeedKeV();
 });
-updateSpeedKeV(); // seed on load
+updateSpeedKeV();    // seed on load
+updateTempTempVal(); // seed on load
 document.getElementById('simSpeedSlider').addEventListener('input', function() {
   simSpeed = parseInt(this.value);
 });
@@ -3915,6 +3928,7 @@ document.getElementById('showForceBtn').addEventListener('click', () => {
 // ─── Temperature slider ──────────────────────────────────────────────────────
 document.getElementById('tempSlider').addEventListener('input', function () {
   tempSpeed = tempSliderToSpeed(parseFloat(this.value));
+  updateTempTempVal();
   rescaleTempVelocities();
   if (!tempRunning) drawTemp();
 });
