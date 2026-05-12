@@ -686,6 +686,9 @@
     </div>
     <div id="energyPctNote">Energy changes are not to scale</div>
     <div id="egZoomHint">Click and drag on the line graph to zoom in</div>
+    <label id="separateFieldsLabel" class="toggle-label" style="display:none;justify-content:center;align-items:center;font-size:14px;padding:6px 0;border-top:1px solid rgba(0,180,255,0.25);width:100%;margin-top:auto;">
+      <input type="checkbox" id="splitIEToggle"> Separate Fields
+    </label>
     <button id="fullTimelineBtn" style="font-size:15px;padding:6px 18px;">SHOW LINE GRAPH</button>
   </div>
 </div>
@@ -694,11 +697,6 @@
 <div id="barChartOverlay" style="position:fixed;top:0;right:0;bottom:0;width:320px;z-index:20;overflow:hidden;pointer-events:none;">
   <canvas id="barChartCanvas"></canvas>
 </div>
-
-<!-- Separate Fields toggle — floats over top of bar chart panel -->
-<label id="separateFieldsLabel" class="toggle-label" style="position:fixed;top:0;right:0;width:320px;display:none;justify-content:center;align-items:center;font-size:22px;padding:8px 0;background:rgba(4,3,20,0.88);border-bottom:1px solid rgba(0,180,255,0.25);border-left:1px solid rgba(0,180,255,0.25);z-index:25;box-sizing:border-box;">
-  <input type="checkbox" id="splitIEToggle"> Separate Fields
-</label>
 
 <script>
 // Active tab — declared first so every function can read it safely.
@@ -2062,17 +2060,15 @@ function drawBarChart() {
     });
   }
 
-  // Reserve space at top for the Separate Fields toggle overlay
-  const checkboxH = document.getElementById('separateFieldsLabel').offsetHeight || 44;
   // Layout — no Y-axis margin needed when not showing to scale
   const yAxisW   = scaledEnergy ? 42 : 10;
   const padR     = 10;    // right padding
   const labelH   = 62;    // height of bar text labels below baseline
   const controlH = 8;
   const titleH   = 36;    // room for phase title at top
-  const chartH   = H - labelH - controlH - titleH - checkboxH;
+  const chartH   = H - labelH - controlH - titleH;
   const baseline = gy + H - labelH - controlH;
-  const chartTop = gy + titleH + checkboxH;
+  const chartTop = gy + titleH;
   const chartX   = gx + yAxisW;
   const chartW   = W - yAxisW - padR;
   const comboEntry = getComboEntry();
@@ -2215,7 +2211,7 @@ function drawBarChart() {
   ctx.fillStyle   = pCol;
   ctx.font        = 'bold 15px Lexend, sans-serif';
   ctx.textAlign   = 'center';
-  ctx.fillText(phaseLabel, gx + W / 2, gy + checkboxH + 22);
+  ctx.fillText(phaseLabel, gx + W / 2, gy + 22);
   ctx.restore();
 
   ctx.restore();
@@ -2496,13 +2492,11 @@ function renderFrame(idx) {
 //  LAYOUT / RESIZE
 // ============================================================
 function resizeBarChart() {
-  const scrubH  = document.getElementById('scrubBar').offsetHeight;
-  const graphOn = document.getElementById('energyGraphBox').classList.contains('visible');
-  const bottomPad = scrubH + (graphOn ? 200 : 0);
+  const scrubH = document.getElementById('scrubBar').offsetHeight;
   const overlay = document.getElementById('barChartOverlay');
-  overlay.style.bottom = bottomPad + 'px';
+  overlay.style.bottom = scrubH + 'px';
   barChartCanvas.width  = 320;
-  barChartCanvas.height = Math.max(1, window.innerHeight - bottomPad);
+  barChartCanvas.height = Math.max(1, window.innerHeight - scrubH);
 }
 
 function resize() {
@@ -3513,10 +3507,8 @@ function switchTab(name) {
   // Size canvas first so getTempContainer() gets correct dimensions
   const toolbarH = document.getElementById('toolbar').offsetHeight;
   const scrubH   = document.getElementById('scrubBar').offsetHeight;
-  // Position and show/hide the Separate Fields toggle over the bar chart
-  const sfLabel = document.getElementById('separateFieldsLabel');
-  sfLabel.style.display = name === 'fusion' ? 'flex' : 'none';
-  sfLabel.style.top = toolbarH + 'px';
+  // Show/hide the Separate Fields toggle (only on fusion tab)
+  document.getElementById('separateFieldsLabel').style.display = name === 'fusion' ? 'flex' : 'none';
   canvas.width        = window.innerWidth;
   canvas.height       = window.innerHeight - toolbarH - scrubH;
   energyGraph.width   = Math.max(1, window.innerWidth - 230 - 112);
