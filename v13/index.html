@@ -517,7 +517,7 @@
     border-right: 1px solid var(--ui-border);
   }
   #scrubGraphKey {
-    display: flex;
+    display: none;
     flex-direction: column;
     gap: 6px;
     flex: 1;
@@ -528,6 +528,7 @@
     line-height: 1.25;
     letter-spacing: 0.02em;
   }
+  #scrubGraphKey.visible { display: flex; }
   #scrubControls {
     display: flex;
     align-items: center;
@@ -537,12 +538,31 @@
     flex-shrink: 0;
   }
   #scrubReplayBtn { padding: 4px 8px; }
-  /* Right panel: graph canvas (full width) + slider row */
+  /* Right panel: energyMain (graph+slider) + scrubRowRight (pct+toggle) */
   #scrubRightPanel {
     flex: 1;
     min-width: 0;
     display: flex;
+    flex-direction: row;
+  }
+  #energyMain {
+    flex: 1;
+    min-width: 0;
+    display: flex;
     flex-direction: column;
+  }
+  #scrubRowRight {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    flex-shrink: 0;
+  }
+  #scrubRowRightInner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 80px;
+    padding: 0 20px 0 12px;
   }
   #energyGraphBox {
     display: none;
@@ -588,9 +608,8 @@
   #scrubRow {
     display: flex;
     align-items: center;
-    gap: 12px;
     height: 80px;
-    padding: 0 20px 0 0;
+    padding: 0;
   }
   #scrubBar .scrub-label {
     font-size: 10px;
@@ -863,13 +882,19 @@
     </div>
   </div>
   <div id="scrubRightPanel">
-    <div id="energyGraphBox">
-      <canvas id="energyGraph" width="100" height="110"></canvas>
+    <div id="energyMain">
+      <div id="energyGraphBox">
+        <canvas id="energyGraph" width="100" height="110"></canvas>
+      </div>
+      <div id="scrubRow">
+        <input type="range" id="scrubSlider" min="0" max="1000" value="0">
+      </div>
     </div>
-    <div id="scrubRow">
-      <input type="range" id="scrubSlider" min="0" max="1000" value="0">
-      <span id="scrubPct">0</span>
-      <button id="energyGraphToggle" class="btn">Energy<br>Graph</button>
+    <div id="scrubRowRight">
+      <div id="scrubRowRightInner">
+        <span id="scrubPct">0</span>
+        <button id="energyGraphToggle" class="btn">Energy<br>Graph</button>
+      </div>
     </div>
   </div>
 </div>
@@ -900,7 +925,7 @@ let hmFrameCounter  = 0;
 function resize() {
   canvas.width   = window.innerWidth;
   canvas.height  = window.innerHeight;
-  egCanvas.width  = Math.max(1, window.innerWidth - 112);
+  egCanvas.width  = Math.max(1, egCanvas.offsetWidth || (window.innerWidth - 112));
   egCanvas.height = 110;
   heatmapDirty   = true;
 }
@@ -3275,6 +3300,7 @@ document.getElementById('showElectric').addEventListener('change', () => {
 document.getElementById('energyGraphToggle').addEventListener('click', function() {
   const on = document.getElementById('energyGraphBox').classList.toggle('visible');
   this.classList.toggle('active', on);
+  document.getElementById('scrubGraphKey').classList.toggle('visible', on);
 });
 
 let idleParticleRAF = null;
