@@ -273,6 +273,7 @@
     text-shadow: 0 0 4px rgba(255,255,255,0.5), 0 0 10px var(--accent2);
     transition: all 0.2s;
   }
+  #separateFieldsBtn { width: 185px; }
   #fullTimelineBtn:hover, #separateFieldsBtn:hover { background: var(--accent2-glow); }
 
   /* ── Selects ───────────────────────────────────────────────────────────── */
@@ -696,7 +697,7 @@
 </div>
 
 <!-- Separate Fields panel — floats just above the scrubBar on the right side -->
-<div id="separateFieldsPanel" style="position:fixed;right:0;bottom:0;width:320px;display:none;z-index:22;background:rgba(4,3,20,0.92);border-left:1px solid var(--ui-border);box-sizing:border-box;height:35px;align-items:center;justify-content:center;">
+<div id="separateFieldsPanel" style="position:fixed;right:16px;bottom:0;display:none;z-index:22;height:35px;align-items:center;justify-content:center;">
   <button id="separateFieldsBtn" style="font-size:15px;padding:6px 18px;">SEPARATE FIELDS</button>
 </div>
 
@@ -2496,11 +2497,12 @@ function renderFrame(idx) {
 function resizeBarChart() {
   const scrubH  = document.getElementById('scrubBar').offsetHeight;
   const panelH  = 35;
+  const gap     = 4;
   const overlay = document.getElementById('barChartOverlay');
-  overlay.style.bottom = (scrubH + panelH) + 'px';
+  overlay.style.bottom = (scrubH + panelH + gap) + 'px';
   barChartCanvas.width  = 320;
-  barChartCanvas.height = Math.max(1, window.innerHeight - scrubH - panelH);
-  document.getElementById('separateFieldsPanel').style.bottom = scrubH + 'px';
+  barChartCanvas.height = Math.max(1, window.innerHeight - scrubH - panelH - gap);
+  document.getElementById('separateFieldsPanel').style.bottom = (scrubH + gap) + 'px';
 }
 
 function resize() {
