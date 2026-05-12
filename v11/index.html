@@ -701,7 +701,7 @@
     right: 0;
     top: 200px;
     border-radius: 12px 0 0 12px;
-    width: 220px;
+    width: 440px;
     background: rgba(8,6,24,0.90);
     border: 1px solid var(--accent2);
     border-radius: 12px;
@@ -712,8 +712,8 @@
     box-shadow: 0 0 24px var(--accent2-dim);
     cursor: grab;
     user-select: none;
-    min-width: 140px;
-    min-height: 140px;
+    min-width: 280px;
+    min-height: 280px;
     overflow: visible;
   }
   #forcePanel:active { cursor: grabbing; }
@@ -1037,7 +1037,7 @@
     <span><span style="color:#46a5ff">■</span><span style="color:#46a5ff;text-shadow:0 0 4px #46a5ff,0 0 10px rgba(70,165,255,0.5)">Electric force</span></span>
     <span id="forcePanelKeyStrong"><span style="color:#ffb946">■</span><span style="color:#ffb946;text-shadow:0 0 4px #ffb946,0 0 10px rgba(255,185,70,0.5)">Strong force</span></span>
   </div>
-  <canvas id="forcePanelCanvas" width="200" height="200"></canvas>
+  <canvas id="forcePanelCanvas" width="400" height="400"></canvas>
 </div>
 
 
@@ -2609,10 +2609,7 @@ function getParticleLabels() {
 const PROTON_LABEL_COLOR  = '#ffb6c1';
 const NEUTRON_LABEL_COLOR = 'rgba(255,255,255,0.95)';
 function isProtonLabel(label) { return /^[A-Z]/.test(label); }
-function drawArrowLabel(c, fromX, fromY, nx, ny, len, label) {
-  if (!label || len < 6) return;
-  const lx = fromX + nx * (len + 9);
-  const ly = fromY + ny * (len + 9);
+function drawLabelAt(c, lx, ly, label) {
   const LIGHT = document.body.classList.contains('screenshot-mode');
   c.save();
   c.font = 'bold 14px Lexend, sans-serif';
@@ -2629,6 +2626,10 @@ function drawArrowLabel(c, fromX, fromY, nx, ny, len, label) {
     c.fillText(label, lx, ly);
   }
   c.restore();
+}
+function drawArrowLabel(c, fromX, fromY, nx, ny, len, label) {
+  if (!label || len < 6) return;
+  drawLabelAt(c, fromX + nx * len * 0.5 + (-ny) * 9, fromY + ny * len * 0.5 + nx * 9, label);
 }
 
 function drawArrowOnCtx(c, fromX, fromY, nx, ny, len, color, lw = 2) {
@@ -2973,16 +2974,54 @@ function drawForcePanel() {
   }
 
   if (arrowMode === 1) {
+    const labelItems = [];
     coulombVecs.forEach(v => {
       const drawnLen = v.len * zoom * vizScaleS;
-      drawArrowOnCtx(forcePanelCtx, sppx + v.nx * sPR, sppy + v.ny * sPR, v.nx, v.ny, drawnLen, ELEC_ARROW_COLOR, 3);
-      drawArrowLabel(forcePanelCtx, sppx + v.nx * sPR, sppy + v.ny * sPR, v.nx, v.ny, drawnLen, __spLabels[v.srcIdx]);
+      if (drawnLen < 5) return;
+      const fx = sppx + v.nx * sPR, fy = sppy + v.ny * sPR;
+      drawArrowOnCtx(forcePanelCtx, fx, fy, v.nx, v.ny, drawnLen, ELEC_ARROW_COLOR, 3);
+      const lbl = __spLabels[v.srcIdx];
+      if (lbl && drawnLen >= 6) labelItems.push({
+        bx: fx + v.nx * drawnLen * 0.5 + (-v.ny) * 9,
+        by: fy + v.ny * drawnLen * 0.5 + v.nx * 9,
+        nx: v.nx, ny: v.ny, label: lbl, shift: 0
+      });
     });
     if (!currentTabIsProton) strongVecs.forEach(v => {
       const drawnLen = v.len * zoom * vizScaleS;
-      drawArrowOnCtx(forcePanelCtx, sppx + v.nx * sPR, sppy + v.ny * sPR, v.nx, v.ny, drawnLen, STRONG_ARROW_COLOR, 3);
-      drawArrowLabel(forcePanelCtx, sppx + v.nx * sPR, sppy + v.ny * sPR, v.nx, v.ny, drawnLen, __spLabels[v.srcIdx]);
+      const fx = sppx + v.nx * sPR, fy = sppy + v.ny * sPR;
+      drawArrowOnCtx(forcePanelCtx, fx, fy, v.nx, v.ny, drawnLen, STRONG_ARROW_COLOR, 3);
+      const lbl = __spLabels[v.srcIdx];
+      if (lbl && drawnLen >= 6) labelItems.push({
+        bx: fx + v.nx * drawnLen * 0.5 + (-v.ny) * 9,
+        by: fy + v.ny * drawnLen * 0.5 + v.nx * 9,
+        nx: v.nx, ny: v.ny, label: lbl, shift: 0
+      });
     });
+    // Push overlapping labels apart along their own arrow direction
+    const R = 9;
+    for (let iter = 0; iter < 12; iter++) {
+      for (let i = 0; i < labelItems.length; i++) {
+        for (let j = i + 1; j < labelItems.length; j++) {
+          const a = labelItems[i], b = labelItems[j];
+          const ax = a.bx + a.nx * a.shift, ay = a.by + a.ny * a.shift;
+          const bx = b.bx + b.nx * b.shift, by = b.by + b.ny * b.shift;
+          const dx = ax - bx, dy = ay - by;
+          const dist2 = dx*dx + dy*dy;
+          if (dist2 < (R*2)*(R*2) && dist2 > 0) {
+            const dist = Math.sqrt(dist2);
+            const push = (R * 2 - dist) * 0.5;
+            const dotA =   dx/dist * a.nx + dy/dist * a.ny;
+            const dotB = (-dx)/dist * b.nx + (-dy)/dist * b.ny;
+            a.shift += push * (dotA >= 0 ? 1 : -1);
+            b.shift += push * (dotB >= 0 ? 1 : -1);
+          }
+        }
+      }
+    }
+    labelItems.forEach(item =>
+      drawLabelAt(forcePanelCtx, item.bx + item.nx * item.shift, item.by + item.ny * item.shift, item.label)
+    );
   } else {
     const sum = (vecs) => vecs.reduce((a, v) => ({ x: a.x + v.nx * v.len, y: a.y + v.ny * v.len }), { x: 0, y: 0 });
     const drawNet = (vec, color, scale = x => x) => {
@@ -3047,16 +3086,6 @@ function draw() {
     const jy = jitter[i] ? jitter[i].y : 0;
     const px = p.x + jx, py = p.y + jy;
 
-    // Selection ring — single particle (normal mode) or group member
-    const inGroup = groupSelectMode && selectedGroup.includes(i);
-    if (inGroup || (!groupSelectMode && i === selectedParticle && arrowMode > 0)) {
-      ctx.beginPath();
-      ctx.arc(px, py, PARTICLE_RADIUS + 6, 0, Math.PI * 2);
-      ctx.strokeStyle = inGroup ? 'rgba(100,220,255,0.7)' : 'rgba(250,204,21,0.6)';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-    }
-
     // Unstable neutron: pulsing red glow
     if (p.unstable && currentTab === 'nucleus') {
       const now = performance.now();
@@ -3119,6 +3148,22 @@ function draw() {
     } else if (isProton) {
       ctx.fillStyle = 'rgba(255,255,255,0.88)';
       ctx.fillText('+', px, py + 1);
+    }
+  }
+
+  // Selection rings — drawn after all particles so they're never covered
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    const jx = jitter[i] ? jitter[i].x : 0;
+    const jy = jitter[i] ? jitter[i].y : 0;
+    const px = p.x + jx, py = p.y + jy;
+    const inGroup = groupSelectMode && selectedGroup.includes(i);
+    if (inGroup || (!groupSelectMode && i === selectedParticle && arrowMode > 0)) {
+      ctx.beginPath();
+      ctx.arc(px, py, PARTICLE_RADIUS + 6, 0, Math.PI * 2);
+      ctx.strokeStyle = inGroup ? 'rgba(100,220,255,0.7)' : currentTheme.accent2;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
     }
   }
 
