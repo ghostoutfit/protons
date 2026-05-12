@@ -3712,29 +3712,6 @@ function drawEnergyGraph() {
   plotLine(_ieCol, _ieGlow, e => e.eie);  // Energy in Fields
   plotLine(_keCol, _keGlow, e => e.ke);   // Energy in Motion
 
-  // Legend — top of graph, side by side
-  const legend = [
-    { text: 'Energy in Fields', color: _ieCol, glow: _ieGlow },
-    { text: 'Energy in Motion', color: _keCol, glow: _keGlow },
-  ];
-  egCtx.font = 'bold 14px Lexend, sans-serif';
-  const LLINE = 14, LGAP = 4;
-  const ty = PAD + 11;   // just below top edge
-  let lx = 10;
-  legend.forEach(lbl => {
-    egCtx.save();
-    egCtx.shadowBlur  = 10;
-    egCtx.shadowColor = lbl.glow;
-    egCtx.strokeStyle = lbl.color;
-    egCtx.lineWidth   = 2;
-    egCtx.beginPath(); egCtx.moveTo(lx, ty - 4); egCtx.lineTo(lx + LLINE, ty - 4); egCtx.stroke();
-    egCtx.fillStyle  = lbl.color;
-    egCtx.shadowBlur = 7;
-    egCtx.fillText(lbl.text, lx + LLINE + LGAP, ty);
-    egCtx.restore();
-    lx += LLINE + LGAP + egCtx.measureText(lbl.text).width + 20;
-  });
-
   // Drag-to-zoom selection overlay
   if (egDragStartPx !== null && egDragCurPx !== null) {
     const x0 = Math.min(egDragStartPx, egDragCurPx);
