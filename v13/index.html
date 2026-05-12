@@ -571,6 +571,22 @@
     background: rgba(26,110,255,0.04);
   }
   #energyGraphBox.visible { display: flex; }
+  #energyPctDisplay {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 2px;
+  }
+  #energyPctNote {
+    font-size: 9px;
+    color: rgba(220,215,255,0.45);
+    text-align: center;
+    letter-spacing: 0.02em;
+    margin-bottom: 6px;
+  }
   #energyGraphToggle {
     border: 1px solid var(--accent2);
     border-radius: 8px;
@@ -893,6 +909,11 @@
     <div id="scrubRowRight">
       <div id="scrubRowRightInner">
         <span id="scrubPct">0</span>
+        <div id="energyPctDisplay">
+          <span id="energyPctKE" style="color:#ff2060;text-shadow:0 0 8px rgba(255,20,80,0.7);">62%</span>
+          <span id="energyPctIE" style="color:#7b6fff;text-shadow:0 0 8px rgba(120,100,255,0.7);">38%</span>
+        </div>
+        <div id="energyPctNote">Energy changes are not to scale</div>
         <button id="energyGraphToggle" class="btn">Energy<br>Graph</button>
       </div>
     </div>
@@ -2512,11 +2533,18 @@ function syncForceVizVisibility() {
   devTimecodeEl.style.display   = show ? 'block' : 'none';
 }
 
+function updateEnergyPct() {
+  const { ke, eie } = computeEnergy(currentScrubFrac);
+  document.getElementById('energyPctKE').textContent = Math.round(ke  * 100) + '%';
+  document.getElementById('energyPctIE').textContent = Math.round(eie * 100) + '%';
+}
+
 function drawStaticFrame() {
   syncForceVizVisibility();   // set display before renderAtFrac reads offsetWidth
   syncForceVizVisibility();
   renderAtFrac(currentScrubFrac);
   drawForceViz();
+  updateEnergyPct();
 }
 
 function scrubVal(frac) { return Math.round(frac * 1000); }
