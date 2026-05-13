@@ -624,10 +624,12 @@
   <div id="tempControls" style="display:flex;align-items:stretch;gap:12px;">
     <div class="ctrl-box-pink">
       <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">Temperature</div>
-      <div style="display:flex;align-items:center;gap:6px;">
+      <div style="display:flex;align-items:center;gap:0;">
+        <canvas id="tempSpeedLinesL" width="36" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;margin-right:-11px;"></canvas>
         <canvas id="tempProtonL" width="52" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;"></canvas>
         <input type="range" id="tempSlider" min="0" max="100" value="40" style="flex:1;min-width:80px;">
         <canvas id="tempProtonR" width="52" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;"></canvas>
+        <canvas id="tempSpeedLinesR" width="36" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;transform:scaleX(-1);margin-left:-11px;"></canvas>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--text-dim);padding:0 2px;">
         <span>1 Million °C</span>
@@ -3085,6 +3087,35 @@ function drawSpeedLines() {
 }
 drawSpeedLines();
 
+function drawTempSpeedLines() {
+  ['tempSpeedLinesL', 'tempSpeedLinesR'].forEach(id => {
+    const canvas = document.getElementById(id);
+    if (!canvas) return;
+    const c = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    const slider = document.getElementById('tempSlider');
+    const t = (parseFloat(slider.value) - parseFloat(slider.min))
+            / (parseFloat(slider.max) - parseFloat(slider.min));
+    c.clearRect(0, 0, w, h);
+    const maxLen = w - 2;
+    const scales = [0.65, 1.0, 0.80];
+    const ys     = [h * 0.28, h * 0.5, h * 0.72];
+    scales.forEach((scale, i) => {
+      const len = (0.18 + 0.82 * t) * maxLen * scale;
+      const x = w - len, y = Math.round(ys[i]);
+      c.save();
+      c.strokeStyle = 'rgba(180,180,210,0.25)';
+      c.lineWidth = 4;
+      c.beginPath(); c.moveTo(x, y); c.lineTo(w, y); c.stroke();
+      c.strokeStyle = 'rgba(210,210,230,0.85)';
+      c.lineWidth = 1.5;
+      c.beginPath(); c.moveTo(x, y); c.lineTo(w, y); c.stroke();
+      c.restore();
+    });
+  });
+}
+drawTempSpeedLines();
+
 (function animateIcons() {
   pselIcons.forEach(c => drawClusterIcon(c));
   requestAnimationFrame(animateIcons);
@@ -3927,6 +3958,7 @@ document.getElementById('showForceBtn').addEventListener('click', () => {
 document.getElementById('tempSlider').addEventListener('input', function () {
   tempSpeed = tempSliderToSpeed(parseFloat(this.value));
   updateTempTempVal();
+  drawTempSpeedLines();
   rescaleTempVelocities();
   if (!tempRunning) drawTemp();
 });
