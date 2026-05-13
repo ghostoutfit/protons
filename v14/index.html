@@ -543,6 +543,8 @@
   }
   body.screenshot-mode #scrubBar,
   body.screenshot-mode #scrubBar * { color: #000 !important; text-shadow: none !important; }
+  body.screenshot-mode #ieKeyLabel,
+  body.screenshot-mode #energyPctIE { color: #aaa !important; }
   body.screenshot-mode #scrubBar button { border-color: #000 !important; box-shadow: none !important; }
   body.screenshot-mode #timeSlider { accent-color: #000 !important; }
   body.screenshot-mode #energyGraph { background: var(--bg-color, #fff) !important; }
@@ -664,8 +666,8 @@
 <div id="scrubBar" style="display:none">
   <div id="scrubLeftPanel">
     <div id="scrubGraphKey">
-      <div style="color:#ff3a6e;text-shadow:0 0 8px rgba(255,45,100,0.8)">● Energy<br>of Motion</div>
-      <div style="color:#7b6fff;text-shadow:0 0 8px rgba(120,100,255,0.8)">● Energy<br>in Fields</div>
+      <div id="keKeyLabel" style="color:#ff3a6e;text-shadow:0 0 8px rgba(255,45,100,0.8)">● Energy<br>of Motion</div>
+      <div id="ieKeyLabel" style="color:#7b6fff;text-shadow:0 0 8px rgba(120,100,255,0.8)">● Energy<br>in Fields</div>
     </div>
     <div id="scrubControls">
       <button id="scrubReplayBtn" class="btn" disabled>&#8634;</button>
@@ -2267,7 +2269,7 @@ function drawEnergyGraph() {
   const _gridCol     = LIGHT ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.05)';
   const _ieCol       = LIGHT ? '#aaa'             : '#7b6fff';
   const _ieGlow      = LIGHT ? 'rgba(0,0,0,0)'    : 'rgba(120,100,255,0.9)';
-  const _keCol       = LIGHT ? '#888'             : '#ff3a6e';
+  const _keCol       = LIGHT ? '#000'             : '#ff3a6e';
   const _keGlow      = LIGHT ? 'rgba(0,0,0,0)'    : 'rgba(255,45,100,0.9)';
   const _cursorCol   = LIGHT ? 'rgba(0,0,0,0.75)' : 'rgba(255,255,255,0.55)';
   const _cursorGlow  = LIGHT ? 'rgba(0,0,0,0)'    : 'rgba(255,255,255,0.6)';
