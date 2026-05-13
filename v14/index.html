@@ -787,7 +787,7 @@ const COMBO_TABLE = {
   'p+he':  { sieOffset: 250 }, 'he+p':  { sieOffset: 250 },
   'd+he':  { sieOffset: 300 }, 'he+d':  { sieOffset: 300 },
   't+he':  { sieOffset: 350 }, 'he+t':  { sieOffset: 350 },
-  'he+he': { sieOffset: 425 },
+  'he+he': { sieOffset: 450 },
 };
 
 function getComboEntry() {
@@ -1155,7 +1155,7 @@ function step(dt) {
         const a = particles[i], b = particles[j];
         const dx = b.x - a.x, dy = b.y - a.y;
         const distSq = dx * dx + dy * dy;
-        if (distSq > COULOMB_CUTOFF_SQ) continue;
+        if (!coulombScatterEscape && distSq > COULOMB_CUTOFF_SQ) continue;
         const dist   = Math.sqrt(distSq);
         if (dist < 0.01) continue;
         const force = pairForce(dist, distSq, a.type, b.type);

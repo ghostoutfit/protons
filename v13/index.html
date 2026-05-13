@@ -2217,27 +2217,53 @@ function drawChainOverlay() {
   }
 
   // ── BACKGROUND LAYER: stable (failed) sites, bounced daughters, bounced neutrons ──
-  ctx.save();
-  ctx.globalAlpha = 0.3;
+  // Outline mode: fade with globalAlpha. Particle mode: draw full-bright then overlay a grey circle.
+  const _PART = showParticles;
+  const _LIGHT = document.body.classList.contains('screenshot-mode');
+  const dimCol = _LIGHT ? getBgColor() : '#05040f';
+  if (!_PART) { ctx.save(); ctx.globalAlpha = 0.3; }
   for (const site of enrichSites) {
-    // Stable failed fission: stays visible but in background
     if (site.state === 'done' && site.wobbleMode === 'stable') {
       drawChainNucleus(site.cx, site.cy, sphereR, site.viewAngle);
     }
-    // Daughters of fissioned sites: in background once any has bounced (or site is done)
     if (site.daughters) {
       const inBg = site.state === 'done' || site.daughters.some(d => d.bounced);
-      if (inBg) {
-        drawChainDaughters(site.daughters[0], site.daughters[1]);
-      }
+      if (inBg) drawChainDaughters(site.daughters[0], site.daughters[1]);
     }
   }
-  // Main fission daughters: in background once any has bounced
   if (mainDaughters && mainDaughters.some(d => d.bounced)) {
     drawChainDaughters(mainDaughters[0], mainDaughters[1]);
   }
   for (const n of chainNeutrons) { if (n.bounced) drawNeutron(n.x, n.y); }
-  ctx.restore();
+  if (!_PART) { ctx.restore(); }
+  // Particle mode: overlay grey circles on dimmed items (background color at 0.4 alpha)
+  if (_PART) {
+    ctx.save();
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = dimCol;
+    for (const site of enrichSites) {
+      if (site.state === 'done' && site.wobbleMode === 'stable') {
+        ctx.beginPath(); ctx.arc(site.cx, site.cy, sphereR + PARTICLE_RADIUS, 0, Math.PI * 2); ctx.fill();
+      }
+      if (site.daughters) {
+        const inBg = site.state === 'done' || site.daughters.some(d => d.bounced);
+        if (inBg) {
+          const d0 = site.daughters[0], d1 = site.daughters[1];
+          ctx.beginPath(); ctx.arc(d0.x, d0.y, d0.r + PARTICLE_RADIUS, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(d1.x, d1.y, d1.r + PARTICLE_RADIUS, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+    }
+    if (mainDaughters && mainDaughters.some(d => d.bounced)) {
+      const d0 = mainDaughters[0], d1 = mainDaughters[1];
+      ctx.beginPath(); ctx.arc(d0.x, d0.y, d0.r + PARTICLE_RADIUS, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(d1.x, d1.y, d1.r + PARTICLE_RADIUS, 0, Math.PI * 2); ctx.fill();
+    }
+    for (const n of chainNeutrons) {
+      if (n.bounced) { ctx.beginPath(); ctx.arc(n.x, n.y, PARTICLE_RADIUS * 1.3, 0, Math.PI * 2); ctx.fill(); }
+    }
+    ctx.restore();
+  }
 
   // ── FOREGROUND LAYER: idle fuel, actively fissioning sites, fresh neutrons ──
   for (const site of enrichSites) {
