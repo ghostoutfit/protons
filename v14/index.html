@@ -2232,20 +2232,24 @@ function drawBarChart() {
 // ============================================================
 //  DISPLAY ENERGY  (same values shown in bar chart)
 // ============================================================
+const HE_EIE_OFFSET = 15;  // subtract from displayed EIE when helium is involved
+
 function getDisplayEnergy() {
   const ds  = scaledEnergy ? 1 : 0.2;
   const e   = computeEnergy();
   // During approach (no collision table values yet), scale sim units → keV for display.
   // During collision phases, collisionDisplayKE is already in display units.
   const kv  = scaledEnergy ? keVPerSimUnit : 1;
+  const heOffset = (leftChoice === 'he' || rightChoice === 'he') ? HE_EIE_OFFSET : 0;
   const ke  = collisionDisplayKE !== null
     ? (chargedNuclearEscape ? collisionDisplayKE : collisionDisplayKE * ds)
     : e.ke * kv;
-  const eie = chargedNuclearEscape
+  const eieRaw = chargedNuclearEscape
     ? Math.max(0, chargedEscapeEIEBase - (collisionDisplayKE - 11 * speedScale()))
     : (collisionPhase !== 'approach' && collisionDisplayEIE !== null)
       ? collisionDisplayEIE : e.eie * kv;
-  const tot = initialTotal + sieOffset - gammaCarriedEnergy * ds;
+  const eie = Math.max(0, eieRaw - heOffset);
+  const tot = initialTotal + sieOffset - gammaCarriedEnergy * ds - heOffset;
   const sie = tot - Math.max(0, ke) - eie;
   const ie  = eie + sie;
   return { ke: Math.max(0, ke), eie: Math.max(0, eie), sie, ie, tot };
