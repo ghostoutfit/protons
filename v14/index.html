@@ -2049,8 +2049,8 @@ function drawBarChart() {
   const bars = splitIE
     ? [
         { label: 'Energy in Motion', value: displayKE,  color: '#ff2060', glow: 'rgba(255,20,80,0.9)'   },
-        { label: 'Electric',         value: displayEIE, color: '#00e5ff', glow: 'rgba(0,220,255,0.9)'   },
-        { label: 'Strong',           value: displaySIE, color: '#ff8040', glow: 'rgba(255,128,64,0.9)'  },
+        { label: 'Electric',         value: displayEIE, color: '#00e5ff', glow: 'rgba(0,220,255,0.9)',   dashed: true },
+        { label: 'Strong',           value: displaySIE, color: '#ff8040', glow: 'rgba(255,128,64,0.9)',  dashed: true },
       ]
     : [
         { label: 'Energy in Motion', value: displayKE,  color: '#ff2060', glow: 'rgba(255,20,80,0.9)'   },
@@ -2138,6 +2138,7 @@ function drawBarChart() {
 
       // Outer glow
       ctx.save();
+      if (bar.dashed) ctx.setLineDash([5, 3]);
       ctx.shadowColor = bar.glow; ctx.shadowBlur = 22;
       ctx.strokeStyle = bar.color; ctx.lineWidth = 3; ctx.globalAlpha = 0.5;
       ctx.beginPath(); ctx.roundRect(x, rectY, bw, rectH, [r, r, 2, 2]); ctx.stroke();
@@ -2145,6 +2146,7 @@ function drawBarChart() {
 
       // Crisp neon outline
       ctx.save();
+      if (bar.dashed) ctx.setLineDash([5, 3]);
       ctx.shadowColor = bar.glow; ctx.shadowBlur = 6;
       ctx.strokeStyle = bar.color; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.roundRect(x, rectY, bw, rectH, [r, r, 2, 2]); ctx.stroke();
@@ -2263,7 +2265,7 @@ function drawEnergyGraph() {
 
   const LIGHT = document.body.classList.contains('screenshot-mode');
   const _gridCol     = LIGHT ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.05)';
-  const _ieCol       = LIGHT ? '#222'             : '#7b6fff';
+  const _ieCol       = LIGHT ? '#aaa'             : '#7b6fff';
   const _ieGlow      = LIGHT ? 'rgba(0,0,0,0)'    : 'rgba(120,100,255,0.9)';
   const _keCol       = LIGHT ? '#888'             : '#ff3a6e';
   const _keGlow      = LIGHT ? 'rgba(0,0,0,0)'    : 'rgba(255,45,100,0.9)';
@@ -2317,11 +2319,12 @@ function drawEnergyGraph() {
     return path;
   }
 
-  function plotNeonLine(color, glowColor, getValue) {
+  function plotNeonLine(color, glowColor, getValue, dash = []) {
     const path = buildPath(getValue);
 
     // Wide halo
     egCtx.save();
+    egCtx.setLineDash(dash);
     egCtx.strokeStyle = glowColor;
     egCtx.lineWidth = 7;
     egCtx.globalAlpha = 0.18;
@@ -2330,6 +2333,7 @@ function drawEnergyGraph() {
 
     // Mid glow
     egCtx.save();
+    egCtx.setLineDash(dash);
     egCtx.shadowColor  = glowColor;
     egCtx.shadowBlur   = 8;
     egCtx.strokeStyle  = color;
@@ -2340,6 +2344,7 @@ function drawEnergyGraph() {
 
     // Crisp bright line — past (full brightness) vs future (dimmed)
     egCtx.save();
+    egCtx.setLineDash(dash);
     egCtx.rect(0, 0, splitX, H);
     egCtx.clip();
     egCtx.shadowColor = glowColor; egCtx.shadowBlur = 6;
@@ -2348,6 +2353,7 @@ function drawEnergyGraph() {
     egCtx.restore();
 
     egCtx.save();
+    egCtx.setLineDash(dash);
     egCtx.rect(splitX, 0, W - splitX, H);
     egCtx.clip();
     egCtx.strokeStyle = color; egCtx.lineWidth = 1.8; egCtx.globalAlpha = 0.35;
@@ -2356,7 +2362,7 @@ function drawEnergyGraph() {
   }
 
   // Line graph always shows combined IE (splitIE only affects bar charts)
-  plotNeonLine(_ieCol, _ieGlow, f => (f.edisp || {}).ie || 0);
+  plotNeonLine(_ieCol, _ieGlow, f => (f.edisp || {}).ie || 0, [5, 4]);
   plotNeonLine(_keCol, _keGlow, f => (f.edisp || {}).ke || 0);
 
   // Drag-to-zoom selection overlay
