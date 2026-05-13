@@ -2045,20 +2045,20 @@ function drawBarChart() {
 
   const bars = splitIE
     ? [
-        { label: 'Motion', value: displayKE,  color: '#ff2060', glow: 'rgba(255,20,80,0.9)'   },
+        { label: 'Energy in Motion', value: displayKE,  color: '#ff2060', glow: 'rgba(255,20,80,0.9)'   },
         { label: 'Electric',         value: displayEIE, color: '#00e5ff', glow: 'rgba(0,220,255,0.9)'   },
         { label: 'Strong',           value: displaySIE, color: '#ff8040', glow: 'rgba(255,128,64,0.9)'  },
       ]
     : [
-        { label: 'Motion', value: displayKE,  color: '#ff2060', glow: 'rgba(255,20,80,0.9)'   },
-        { label: 'Fields', value: displayIE,  color: '#7b6fff', glow: 'rgba(120,100,255,0.9)' },
+        { label: 'Energy in Motion', value: displayKE,  color: '#ff2060', glow: 'rgba(255,20,80,0.9)'   },
+        { label: 'Energy in Fields', value: displayIE,  color: '#7b6fff', glow: 'rgba(120,100,255,0.9)' },
       ];
 
   if (LIGHT) {
     // Greyscale for KE and combined IE; keep Electric/Strong colored (educational codes)
     bars.forEach(b => {
-      if (b.label === 'Motion') { b.color = '#222'; b.glow = 'rgba(0,0,0,0)'; }
-      else if (b.label === 'Fields') { b.color = '#666'; b.glow = 'rgba(0,0,0,0)'; }
+      if (b.label === 'Energy in Motion') { b.color = '#222'; b.glow = 'rgba(0,0,0,0)'; }
+      else if (b.label === 'Energy in Fields') { b.color = '#666'; b.glow = 'rgba(0,0,0,0)'; }
       else { b.glow = 'rgba(0,0,0,0)'; }  // Electric / Strong: keep color, kill glow
     });
   }
