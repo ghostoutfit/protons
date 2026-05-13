@@ -3007,8 +3007,9 @@ function drawClusterIcon(canvas) {
   if (!isSlider && CLUSTER_LABEL[key]) {
     const label = CLUSTER_LABEL[key];
     const fontSize = 17;
+    const LIGHT = document.body.classList.contains('screenshot-mode');
     ic.font = `bold ${fontSize}px Lexend, sans-serif`;
-    ic.fillStyle    = 'rgba(255,255,255,0.82)';
+    ic.fillStyle    = LIGHT ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.82)';
     ic.textAlign    = 'center';
     ic.textBaseline = 'middle';
     ic.fillText(label, imgW + (W - imgW) / 2, H / 2);
