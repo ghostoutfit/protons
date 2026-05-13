@@ -625,11 +625,11 @@
     <div class="ctrl-box-pink">
       <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">Temperature</div>
       <div style="display:flex;align-items:center;gap:0;">
-        <canvas id="tempSpeedLinesL" width="36" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;margin-right:-11px;"></canvas>
         <canvas id="tempProtonL" width="52" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;"></canvas>
+        <canvas id="tempSpeedLinesL" width="36" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;margin-right:-4px;"></canvas>
         <input type="range" id="tempSlider" min="0" max="100" value="40" style="flex:1;min-width:80px;">
+        <canvas id="tempSpeedLinesR" width="36" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;transform:scaleX(-1);margin-left:-4px;"></canvas>
         <canvas id="tempProtonR" width="52" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;"></canvas>
-        <canvas id="tempSpeedLinesR" width="36" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;transform:scaleX(-1);margin-left:-11px;"></canvas>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--text-dim);padding:0 2px;">
         <span>1 Million °C</span>
@@ -3877,30 +3877,15 @@ function tempLoop() {
 
 // ─── Temperature slider icon canvases ────────────────────────────────────────
 function drawTempIcons() {
-  function drawIcon(id, lineLen, protonOnRight) {
+  function drawIcon(id, side) {
     const ic = document.getElementById(id);
     if (!ic) return;
     const c = ic.getContext('2d');
     const w = ic.width, h = ic.height;
     const R = 9;
-    const pcx = protonOnRight ? w - R - 4 : R + 4;
+    const pcx = side === 'right' ? w - R - 4 : R + 4;
     const pcy = h / 2;
     c.clearRect(0, 0, w, h);
-    // Speed lines
-    const ys     = [h * 0.27, h * 0.5, h * 0.73];
-    const scales = [0.65, 1.0, 0.80];
-    ys.forEach((y, i) => {
-      const len = lineLen * scales[i];
-      const x0  = protonOnRight ? pcx - R - len : pcx + R;
-      const x1  = protonOnRight ? pcx - R       : pcx + R + len;
-      c.save();
-      c.strokeStyle = 'rgba(180,180,210,0.25)'; c.lineWidth = 4;
-      c.beginPath(); c.moveTo(x0, y); c.lineTo(x1, y); c.stroke();
-      c.strokeStyle = 'rgba(210,210,230,0.85)';  c.lineWidth = 1.5;
-      c.beginPath(); c.moveTo(x0, y); c.lineTo(x1, y); c.stroke();
-      c.restore();
-    });
-    // Proton
     const g = c.createRadialGradient(pcx, pcy, 0, pcx, pcy, R * 1.1);
     g.addColorStop(0, '#ff80b0'); g.addColorStop(0.55, '#ff1a65'); g.addColorStop(1, 'rgba(0,0,0,0)');
     c.fillStyle = g;
@@ -3912,8 +3897,8 @@ function drawTempIcons() {
     c.beginPath(); c.arc(pcx, pcy, R * 0.5, 0, Math.PI * 2); c.fill();
     c.restore();
   }
-  drawIcon('tempProtonL', 8,  true);   // cool: short lines, proton on right
-  drawIcon('tempProtonR', 26, false);  // hot: long lines, proton on left
+  drawIcon('tempProtonL', 'right');
+  drawIcon('tempProtonR', 'left');
 }
 drawTempIcons();
 
