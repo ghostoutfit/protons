@@ -692,7 +692,9 @@
   #themeB { background: #bd00ff; }
   #themeC { background: #00f5e0; }
   #themeLight { background: #fff; }
-  body.screenshot-mode { background: #fff !important; }
+  #bgColorPicker { display:none; width:22px; height:22px; padding:2px; border-radius:4px; border:1px solid rgba(0,0,0,0.25); cursor:pointer; vertical-align:middle; margin-left:4px; }
+  body.screenshot-mode #bgColorPicker { display:inline-block; }
+  body.screenshot-mode { background: var(--bg-color, #fff) !important; }
   body.screenshot-mode #toolbar { background: rgba(255,255,255,0.42) !important; box-shadow: none !important; }
   body.screenshot-mode #toolbar,
   body.screenshot-mode #toolbar * {
@@ -856,6 +858,7 @@
       <button class="theme-btn" id="themeB" title="Industrial"></button>
       <button class="theme-btn" id="themeC" title="Neon Blue"></button>
       <button class="theme-btn" id="themeLight" title="Light mode"></button>
+      <input type="color" id="bgColorPicker" value="#ffffff" title="Background color">
     </div>
   </div>
   <div class="toolbar-row">
@@ -1911,7 +1914,7 @@ function drawAnimContent(t) {
 
 // ─── Canonical renderer — single source of truth for any scrub position ───────
 function renderAtFrac(frac) {
-  ctx.fillStyle = document.body.classList.contains('screenshot-mode') ? '#fff' : '#05040f';
+  ctx.fillStyle = document.body.classList.contains('screenshot-mode') ? getBgColor() : '#05040f';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   if (!animParent) { if (currentTab === 'chain') drawChainBarChart(); drawEnergyGraph(); return; }
 
@@ -3928,6 +3931,11 @@ function applyTheme(key) {
 document.getElementById('themeA').addEventListener('click', () => applyTheme('A'));
 document.getElementById('themeB').addEventListener('click', () => applyTheme('B'));
 document.getElementById('themeC').addEventListener('click', () => applyTheme('C'));
+function getBgColor() { return document.getElementById('bgColorPicker').value; }
+document.getElementById('bgColorPicker').addEventListener('input', function() {
+  document.documentElement.style.setProperty('--bg-color', this.value);
+  drawStaticFrame(); drawForceViz();
+});
 document.getElementById('themeLight').addEventListener('click', () => {
   const on = document.body.classList.toggle('screenshot-mode');
   document.getElementById('themeLight').classList.toggle('active', on);
