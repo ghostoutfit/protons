@@ -562,8 +562,8 @@
 
 <div id="toolbar">
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
-    <button class="tab-btn active" id="fusionTabBtn" style="cursor:pointer" onclick="switchTab('fusion')">FUSION</button>
     <button class="tab-btn" id="tempTabBtn" style="cursor:pointer" onclick="switchTab('temp')">TEMPERATURE</button>
+    <button class="tab-btn active" id="fusionTabBtn" style="cursor:pointer" onclick="switchTab('fusion')">FUSION</button>
     <button class="theme-btn" id="themeLight" title="Light mode"></button>
     <input type="color" id="bgColorPicker" value="#ffffff" title="Background color">
   </div>
@@ -639,6 +639,9 @@
         <span>1 Million °C</span>
         <span id="tempTempVal" style="color:var(--accent1);font-size:11px;"></span>
         <span>15 Million °C</span>
+      </div>
+      <div style="text-align:center;font-size:11px;color:var(--accent1);margin-top:2px;font-family:'Lexend',sans-serif;">
+        <span id="tempKeVVal"></span>
       </div>
     </div>
     <div class="ctrl-box-blue" style="align-items:flex-start;gap:8px;min-width:180px;">
@@ -785,9 +788,9 @@ const COMBO_TABLE = {
   // KE display uses actual physics (collisionDisplayKE never set for these).
   'p+p':   { sieOffset:   0 },
   'p+he':  { sieOffset: 250 }, 'he+p':  { sieOffset: 250 },
-  'd+he':  { sieOffset: 300 }, 'he+d':  { sieOffset: 300 },
+  'd+he':  { sieOffset: 270 }, 'he+d':  { sieOffset: 270 },
   't+he':  { sieOffset: 350 }, 'he+t':  { sieOffset: 350 },
-  'he+he': { sieOffset: 450 },
+  'he+he': { sieOffset: 460 },
 };
 
 function getComboEntry() {
@@ -2233,7 +2236,7 @@ function getDisplayEnergy() {
   // During collision phases, collisionDisplayKE is already in display units.
   const kv  = scaledEnergy ? keVPerSimUnit : 1;
   const heCount  = (leftChoice === 'he' ? 1 : 0) + (rightChoice === 'he' ? 1 : 0);
-  const heOffset = heCount === 2 ? 20 : heCount === 1 ? 10 : 0;
+  const heOffset = heCount === 2 ? 25 : heCount === 1 ? 10 : 0;
   const ke  = collisionDisplayKE !== null
     ? (chargedNuclearEscape ? collisionDisplayKE : collisionDisplayKE * ds)
     : e.ke * kv;
@@ -2904,13 +2907,21 @@ function speedToMillionC(speed) {
 function tempSliderToMillionC(val) {
   return Math.round(1 + val / 100 * 14);
 }
+function speedToKeVDisplay(speed) {
+  return (0.1 + (speed - 0.1) / (2.1 - 0.1) * 1.2).toFixed(1);
+}
+function tempSliderToKeV(val) {
+  return (0.1 + (val / 100) * 1.2).toFixed(1);
+}
 function updateSpeedKeV() {
   const el = document.getElementById('speedKeV');
-  if (el) el.textContent = speedToMillionC(approachSpeed) + ' Million °C';
+  if (el) el.textContent = speedToKeVDisplay(approachSpeed) + ' keV';
 }
 function updateTempTempVal() {
   const el = document.getElementById('tempTempVal');
   if (el) el.textContent = tempSliderToMillionC(parseFloat(document.getElementById('tempSlider').value)) + ' Million °C';
+  const el2 = document.getElementById('tempKeVVal');
+  if (el2) el2.textContent = tempSliderToKeV(parseFloat(document.getElementById('tempSlider').value)) + ' keV';
 }
 document.getElementById('v9SpeedSlider').addEventListener('input', function() {
   approachSpeed = parseFloat(this.value);
