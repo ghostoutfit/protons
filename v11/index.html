@@ -3068,7 +3068,13 @@ function updateCam() {
 }
 
 function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const LIGHT = document.body.classList.contains('screenshot-mode');
+  if (LIGHT) {
+    ctx.fillStyle = document.getElementById('bgColorPicker').value || '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  } else {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
 
   // Heatmaps render in screen space before the zoom transform.
   if ((showElectricField || showStrongField) && particles.length >= 2) drawCombinedHeatmap();

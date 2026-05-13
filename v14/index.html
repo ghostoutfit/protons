@@ -2386,7 +2386,13 @@ function drawEnergyGraph() {
 //  DRAW
 // ============================================================
 function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const LIGHT = document.body.classList.contains('screenshot-mode');
+  if (LIGHT) {
+    ctx.fillStyle = getBgColor();
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  } else {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
 
   const midX      = cameraSiteX || canvas.width  / 2;
   const midY      = cameraSiteY || canvas.height / 2;
