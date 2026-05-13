@@ -3155,6 +3155,13 @@ function updateJitter() {
 })();
 
 function frameSpeed() { return FRAME_SPEED * (0.1 + (simSpeed - 1) * (1.4 / 9)); }
+// Scale a base frame count so that collision/escape phases stay proportional
+// to the approach phase as simSpeed changes.  At the default simSpeed=7 the
+// ratio is 1 (no change).
+function effectiveFrames(base) {
+  const defaultFs = FRAME_SPEED * (0.1 + (7 - 1) * (1.4 / 9));
+  return Math.max(1, Math.round(base * defaultFs / frameSpeed()));
+}
 
 function loop() {
   if (!running) return;
@@ -3169,16 +3176,17 @@ function loop() {
 
   // ── ESCAPE ANIMATION  (lerp positions + cluster velocities) ───
   if (collisionPhase === 'escapeAnim') {
+    const escFrames = effectiveFrames(ESCAPE_ANIM_FRAMES);
     // Cat2 physics assist: boost Coulomb + shrink strong range for first 8 frames of AFTER
     if (isCategory2()) {
-      const assist = cat2EscapeFrame < 8;
+      const assist = cat2EscapeFrame < effectiveFrames(8);
       strongRangeMult = assist ? 0.8 : 1.0;
       coulombMult     = assist ? 2.0 : 1.0;
     }
     cat2EscapeFrame++;
     escapeAnimFrame++;
-    if (chargedNuclearEscape) escapeAnimFrame = ESCAPE_ANIM_FRAMES; // snap immediately, skip type-swap lerp
-    const t    = escapeAnimFrame / ESCAPE_ANIM_FRAMES;
+    if (chargedNuclearEscape) escapeAnimFrame = escFrames; // snap immediately, skip type-swap lerp
+    const t    = escapeAnimFrame / escFrames;
     const ease = t * t * (3 - 2 * t); // smoothstep
     const n    = particles.length;
     const lSz  = leftClusterSize;
@@ -3211,7 +3219,7 @@ function loop() {
     }
 
     updateCamera();
-    if (escapeAnimFrame >= ESCAPE_ANIM_FRAMES) {
+    if (escapeAnimFrame >= escFrames) {
       // Snap to exact final state
       for (let i = 0; i < n; i++) {
         particles[i].x = escapeAnimTargetPos[i].x;
@@ -3233,7 +3241,7 @@ function loop() {
   } else if (collisionPhase === 'escape') {
     // Continue Cat2 physics assist into escape phase until 8 AFTER frames elapsed
     if (isCategory2()) {
-      const assist = cat2EscapeFrame < 8;
+      const assist = cat2EscapeFrame < effectiveFrames(8);
       strongRangeMult = assist ? 0.8 : 1.0;
       coulombMult     = assist ? 2.0 : 1.0;
       cat2EscapeFrame++;
@@ -3284,8 +3292,9 @@ function loop() {
 
     // Cat2: ramp collisionDisplayKE from approach value → peak over CAT2_KE_RAMP_FRAMES.
     // This makes the Strong→KE transfer visible during normal playback (not just scrubbing).
-    if (isCategory2() && collisionOnsetKE > 0 && collisionFrames <= CAT2_KE_RAMP_FRAMES) {
-      const t = collisionFrames / CAT2_KE_RAMP_FRAMES;
+    const rampFrames = effectiveFrames(CAT2_KE_RAMP_FRAMES);
+    if (isCategory2() && collisionOnsetKE > 0 && collisionFrames <= rampFrames) {
+      const t = collisionFrames / rampFrames;
       collisionDisplayKE  = collisionOnsetKE  + (collisionPeakKE  - collisionOnsetKE)  * t;
       collisionDisplayEIE = collisionOnsetEIE + (collisionPeakEIE - collisionOnsetEIE) * t;
     }
@@ -3295,7 +3304,7 @@ function loop() {
     // for COLLISION_FRAMES — fire escape as soon as they start separating.
     // (Only applies to Category 1 single-particle pairs.)
     const n2 = particles.length, lSz2 = leftClusterSize;
-    let fireEscape = (collisionFrames >= COLLISION_FRAMES);
+    let fireEscape = (collisionFrames >= effectiveFrames(COLLISION_FRAMES));
     if (!fireEscape && isCategory1() && lSz2 === 1 && n2 - lSz2 === 1) {
       const dx = particles[1].x - particles[0].x;
       const dy = particles[1].y - particles[0].y;
@@ -3309,7 +3318,7 @@ function loop() {
     // Category 2 early escape: fire as soon as cluster CMs separate (min 5 frames).
     // Prevents D+D (and other Cat2) from visually "hanging" as a fused nucleus
     // while the strong force temporarily traps all particles in a common well.
-    if (!fireEscape && isCategory2() && collisionFrames >= CAT2_KE_RAMP_FRAMES + 5) {
+    if (!fireEscape && isCategory2() && collisionFrames >= effectiveFrames(CAT2_KE_RAMP_FRAMES + 5)) {
       const lSz3 = lSz2, rSz3 = n2 - lSz3;
       let lcx3=0,lcy3=0,rcx3=0,rcy3=0,lvx3=0,lvy3=0,rvx3=0,rvy3=0;
       for (let i=0;     i<lSz3; i++) { lcx3+=particles[i].x; lcy3+=particles[i].y; lvx3+=particles[i].vx; lvy3+=particles[i].vy; }
@@ -3342,7 +3351,7 @@ function loop() {
       particles[nIdx].x = cmx + ax * halfSep;  particles[nIdx].y = cmy + ay * halfSep;
       particles[0].vx = cmvx2; particles[0].vy = cmvy2;
       particles[1].vx = cmvx2; particles[1].vy = cmvy2;
-      if (pnJiggleFrame >= PN_JIGGLE_FRAMES) {
+      if (pnJiggleFrame >= effectiveFrames(PN_JIGGLE_FRAMES)) {
         firePhotonCapture();
         collisionPhase  = 'escape';
         escapeStartFrame = particleHistory.length;
