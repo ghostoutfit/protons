@@ -273,7 +273,7 @@
     text-shadow: 0 0 4px rgba(255,255,255,0.5), 0 0 10px var(--accent2);
     transition: all 0.2s;
   }
-  #separateFieldsBtn { width: 185px; text-align: center; font-size: 15px; padding: 6px 0; }
+  #separateFieldsBtn { font-size: 15px; padding: 6px 18px; }
   #fullTimelineBtn:hover, #separateFieldsBtn:hover { background: var(--accent2-glow); }
 
   /* ── Selects ───────────────────────────────────────────────────────────── */
@@ -2058,11 +2058,12 @@ function drawBarChart() {
       ];
 
   if (LIGHT) {
-    // Greyscale for KE and combined IE; keep Electric/Strong colored (educational codes)
     bars.forEach(b => {
-      if (b.label === 'Energy in Motion') { b.color = '#222'; b.glow = 'rgba(0,0,0,0)'; }
-      else if (b.label === 'Energy in Fields') { b.color = '#666'; b.glow = 'rgba(0,0,0,0)'; }
-      else { b.glow = 'rgba(0,0,0,0)'; }  // Electric / Strong: keep color, kill glow
+      b.glow = 'rgba(0,0,0,0)';
+      if      (b.label === 'Energy in Motion') b.color = '#222';
+      else if (b.label === 'Energy in Fields') b.color = '#666';
+      else if (b.label === 'Electric')         b.color = '#555';
+      else if (b.label === 'Strong')           b.color = '#999';
     });
   }
 
