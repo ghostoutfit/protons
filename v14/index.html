@@ -632,9 +632,9 @@
         <canvas id="tempProtonR" width="52" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;"></canvas>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--text-dim);padding:0 2px;">
-        <span style="text-align:center;line-height:1.3;">1<br>Million °C</span>
-        <span id="tempTempVal" style="color:var(--accent1);font-size:11px;text-align:center;line-height:1.3;"></span>
-        <span style="text-align:center;line-height:1.3;">15<br>Million °C</span>
+        <span>1 Million °C</span>
+        <span id="tempTempVal" style="color:var(--accent1);font-size:11px;"></span>
+        <span>15 Million °C</span>
       </div>
     </div>
     <div class="ctrl-box-blue" style="align-items:flex-start;gap:8px;min-width:180px;">
@@ -2892,11 +2892,11 @@ function tempSliderToMillionC(val) {
 }
 function updateSpeedKeV() {
   const el = document.getElementById('speedKeV');
-  if (el) el.innerHTML = speedToMillionC(approachSpeed) + '<br>Million °C';
+  if (el) el.textContent = speedToMillionC(approachSpeed) + ' Million °C';
 }
 function updateTempTempVal() {
   const el = document.getElementById('tempTempVal');
-  if (el) el.innerHTML = tempSliderToMillionC(parseFloat(document.getElementById('tempSlider').value)) + '<br>Million °C';
+  if (el) el.textContent = tempSliderToMillionC(parseFloat(document.getElementById('tempSlider').value)) + ' Million °C';
 }
 document.getElementById('v9SpeedSlider').addEventListener('input', function() {
   approachSpeed = parseFloat(this.value);
