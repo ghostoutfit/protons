@@ -3958,8 +3958,6 @@ if (showParticles && !idleParticleRAF) idleParticleLoop();
   menu.style.cssText = 'position:fixed;display:none;z-index:9999;background:#1a1a2e;border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:4px 0;min-width:160px;box-shadow:0 4px 16px rgba(0,0,0,0.6);font-family:Lexend,sans-serif;font-size:13px;';
   document.body.appendChild(menu);
 
-  let recorder = null, chunks = [];
-
   function menuItem(label) {
     const el = document.createElement('div');
     el.textContent = label;
@@ -3970,26 +3968,27 @@ if (showParticles && !idleParticleRAF) idleParticleLoop();
     return el;
   }
 
-  const recItem = menuItem('⏺  Start Recording');
+  const recItem = menuItem('⏺  Export Replay');
 
   recItem.addEventListener('click', () => {
     menu.style.display = 'none';
-    if (!recorder || recorder.state === 'inactive') {
-      chunks = [];
-      const stream = canvas.captureStream(30);
-      recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-      recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
-      recorder.onstop = () => {
-        const url = URL.createObjectURL(new Blob(chunks, { type: 'video/webm' }));
-        const a = document.createElement('a'); a.href = url; a.download = 'recording.webm'; a.click();
-        URL.revokeObjectURL(url);
-        recItem.textContent = '⏺  Start Recording';
-      };
-      recorder.start();
-      recItem.textContent = '⏹  Stop Recording';
-    } else {
-      recorder.stop();
-    }
+    if (!prerenderFrames.length) return;
+    const chunks = [];
+    const stream = canvas.captureStream(30);
+    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+    recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    recorder.onstop = () => {
+      const url = URL.createObjectURL(new Blob(chunks, { type: 'video/webm' }));
+      const a = document.createElement('a'); a.href = url; a.download = 'replay.webm'; a.click();
+      URL.revokeObjectURL(url);
+    };
+    recorder.start();
+    doReplay();
+    // Poll until playbackRAF goes null (replay ended)
+    requestAnimationFrame(function poll() {
+      if (playbackRAF !== null) { requestAnimationFrame(poll); return; }
+      setTimeout(() => recorder.stop(), 200);
+    });
   });
 
   document.getElementById('replayBtn').addEventListener('contextmenu', e => {
