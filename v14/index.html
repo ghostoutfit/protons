@@ -1585,16 +1585,10 @@ function fireDDtoTP(targetKE = null) {
   escapeAnimTargetPos = particles.map(p => ({ x: p.x, y: p.y }));
   for (let i = 0; i < 4; i++) { particles[i].x = escapeAnimStartPos[i].x; particles[i].y = escapeAnimStartPos[i].y; }
   applyCategory2Velocities(3, 1, targetKE);
-  // T and P are both charged — unfreeze EIE
-  chargedEscapeEIEBase = collisionDisplayEIE ?? 0; // save before clearing
-  collisionDisplayEIE = null;
-  if (!scaledEnergy) {
-    // Not-to-scale: hard-code KE display (collision peak = 11, escape cap = 13)
-    const scale = speedScale();
-    collisionDisplayKE  = 11 * scale;
-    escapeKECap         = 13 * scale;
-    chargedNuclearEscape = true;
-  }
+  // T and P are both charged — run live Coulomb physics, no artificial KE cap
+  collisionDisplayEIE  = null;
+  collisionDisplayKE   = null;
+  coulombScatterEscape = true;
 }
 
 // T+T → He4 + 2N  (3-body, full 2D momentum conservation)
