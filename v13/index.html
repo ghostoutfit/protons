@@ -3951,6 +3951,55 @@ applyTab(location.hash === '#chain' ? 'chain' : 'fission');
 initNuclei();
 drawStaticFrame();
 if (showParticles && !idleParticleRAF) idleParticleLoop();
+
+// ── Dev recording menu (right-click replay button) ───────────────────────────
+(function() {
+  const menu = document.createElement('div');
+  menu.style.cssText = 'position:fixed;display:none;z-index:9999;background:#1a1a2e;border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:4px 0;min-width:160px;box-shadow:0 4px 16px rgba(0,0,0,0.6);font-family:Lexend,sans-serif;font-size:13px;';
+  document.body.appendChild(menu);
+
+  let recorder = null, chunks = [];
+
+  function menuItem(label) {
+    const el = document.createElement('div');
+    el.textContent = label;
+    el.style.cssText = 'padding:8px 16px;cursor:pointer;color:rgba(255,255,255,0.85);white-space:nowrap;';
+    el.addEventListener('mouseenter', () => el.style.background = 'rgba(255,255,255,0.08)');
+    el.addEventListener('mouseleave', () => el.style.background = '');
+    menu.appendChild(el);
+    return el;
+  }
+
+  const recItem = menuItem('⏺  Start Recording');
+
+  recItem.addEventListener('click', () => {
+    menu.style.display = 'none';
+    if (!recorder || recorder.state === 'inactive') {
+      chunks = [];
+      const stream = canvas.captureStream(30);
+      recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+      recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+      recorder.onstop = () => {
+        const url = URL.createObjectURL(new Blob(chunks, { type: 'video/webm' }));
+        const a = document.createElement('a'); a.href = url; a.download = 'recording.webm'; a.click();
+        URL.revokeObjectURL(url);
+        recItem.textContent = '⏺  Start Recording';
+      };
+      recorder.start();
+      recItem.textContent = '⏹  Stop Recording';
+    } else {
+      recorder.stop();
+    }
+  });
+
+  document.getElementById('replayBtn').addEventListener('contextmenu', e => {
+    e.preventDefault();
+    menu.style.display = 'block';
+    menu.style.left = e.clientX + 'px';
+    menu.style.top  = e.clientY + 'px';
+  });
+  document.addEventListener('click', () => menu.style.display = 'none');
+})();
 </script>
 
 </body>
