@@ -873,8 +873,9 @@
 
     <!-- Pink box: New button + neutron speed + particle counters + Add more fuel -->
     <div class="ctrl-box-pink">
-      <button id="newBtn" class="btn" style="display:flex;align-items:center;justify-content:center;gap:8px;align-self:stretch;">
-        <canvas id="newBtnNucleus" width="68" height="42" style="display:block;flex-shrink:0;image-rendering:pixelated"></canvas>New
+      <button id="newBtn" class="btn" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;align-self:stretch;padding:6px 8px;">
+        <canvas id="newBtnNucleus" width="48" height="42" style="display:block;flex-shrink:0;image-rendering:pixelated"></canvas>
+        <span style="font-size:11px;">New</span>
       </button>
       <div style="display:flex;flex-direction:column;gap:5px;align-items:stretch;">
         <div class="slider-group">
@@ -884,14 +885,12 @@
           </div>
           <div id="neutronSpeedWrap"><input type="range" id="neutronSpeed" min="0.2" max="8.0" step="0.1" value="4.0"></div>
         </div>
-        <div id="particleCounters" style="display:flex;gap:14px;font-size:10px;color:var(--text-dim);padding-left:2px;line-height:1.7;">
-          <div>
-            <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.06em;">Particle 1</div>
-            <div>P: <span id="p1Protons" style="color:var(--accent1)">92</span>&nbsp; N: <span id="p1Neutrons">143</span></div>
+        <div id="particleCounters" style="display:flex;gap:5px;justify-content:center;">
+          <div style="flex:1;background:rgba(255,255,255,0.05);border-radius:6px;padding:3px 5px;text-align:center;font-size:11px;color:var(--text-dim);line-height:1.5;white-space:nowrap;">
+            <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.05em;opacity:0.6;">Particle 1&nbsp;</span>P: <span id="p1Protons" style="color:var(--accent1)">92</span>&nbsp;N: <span id="p1Neutrons">143</span>
           </div>
-          <div id="p2Counter">
-            <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.06em;">Particle 2</div>
-            <div>P: <span id="p2Protons" style="color:var(--accent1)">0</span>&nbsp; N: <span id="p2Neutrons">1</span></div>
+          <div id="p2Counter" style="flex:1;background:rgba(255,255,255,0.05);border-radius:6px;padding:3px 5px;text-align:center;font-size:11px;color:var(--text-dim);line-height:1.5;white-space:nowrap;">
+            <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.05em;opacity:0.6;">Particle 2&nbsp;</span>P: <span id="p2Protons" style="color:var(--accent1)">0</span>&nbsp;N: <span id="p2Neutrons">1</span>
           </div>
         </div>
         <button id="enrichBtn" class="btn" style="display:none;">Add more fuel</button>
@@ -1014,7 +1013,7 @@ window.addEventListener('resize', () => {
   if (chainRAF)   { cancelAnimationFrame(chainRAF);   chainRAF = null; }
   neutronState        = 'idle';
   chainNeutrons       = []; lastChainTime = null;
-  enrichSites         = [];
+  enrichSites         = []; isFirstChainFission = true;
   mainNeutronsEmitted = false; mainEnergyTransferred = false; mainDaughters = null;
   document.getElementById('goBtn').textContent = '▶ GO';
   document.getElementById('goBtn').classList.remove('running');
@@ -1613,7 +1612,7 @@ function applyTab(tab) {
   maxRevealedFrac     = 0;
   mainNeutronsEmitted = false; mainEnergyTransferred = false; mainDaughters = null;
   chainNeutrons       = []; lastChainTime = null;
-  enrichSites         = [];
+  enrichSites         = []; isFirstChainFission = true;
   chainParticleOffsets = null;
   chainPaused         = false;
   document.getElementById('goBtn').textContent = '▶ GO';
@@ -1981,24 +1980,25 @@ function renderAtFrac(frac) {
 // ─── Particle counter ─────────────────────────────────────────────────────────
 function updateParticleCounters() {
   if (currentTab !== 'fission') return;
-  const p1P  = document.getElementById('p1Protons');
-  const p1N  = document.getElementById('p1Neutrons');
-  const p2El = document.getElementById('p2Counter');
-  const p2P  = document.getElementById('p2Protons');
-  const p2N  = document.getElementById('p2Neutrons');
+  const p1P   = document.getElementById('p1Protons');
+  const p1N   = document.getElementById('p1Neutrons');
+  const p2El  = document.getElementById('p2Counter');
+  const p2P   = document.getElementById('p2Protons');
+  const p2N   = document.getElementById('p2Neutrons');
   if (!p1P) return;
+  const showP2 = d => { p2El.style.display = d; };
   const f = currentScrubFrac;
   if (f < NEUTRON_FRAC) {
     // Before impact: U-235 + free neutron
     p1P.textContent = 92; p1N.textContent = 143;
-    p2El.style.display = ''; p2P.textContent = 0; p2N.textContent = 1;
+    showP2(''); p2P.textContent = 0; p2N.textContent = 1;
   } else if (wobbleMode === 'stable' || f < ANIM_T_END) {
     // Absorbed but not yet split (or failed fission): U-236
     p1P.textContent = 92; p1N.textContent = 144;
-    p2El.style.display = 'none';
+    showP2('none');
   } else {
     // Daughters ejected
-    p2El.style.display = '';
+    showP2('');
     if (fissionBranch === 0) {
       // Xe-140 (54p, 86n) + Sr-94 (38p, 56n)
       p1P.textContent = 54; p1N.textContent = 86;
@@ -2050,6 +2050,7 @@ let chainNeutrons = [];    // [{x,y,vx,vy}]
 let chainRAF      = null;
 let lastChainTime = null;
 let daughterFuelCollide    = true;   // dev toggle: daughters bounce off fuel sites
+let isFirstChainFission   = true;   // first chain trigger always uses dip1 (guaranteed fission)
 let mainNeutronsEmitted    = false;
 let mainEnergyTransferred  = false;
 let mainDaughters          = null;   // [{x,y,vx,vy,r,bounced}] — main fission products (chain tab)
@@ -2092,7 +2093,8 @@ function triggerEnrichSite(site) {
   site.state          = 'fission';
   site.fissStart      = performance.now();
   site.angle          = Math.random() * Math.PI * 2;
-  site.wobbleMode      = pickWobbleMode();
+  site.wobbleMode     = isFirstChainFission ? 'dip1' : pickWobbleMode();
+  isFirstChainFission = false;
   site.shakeDur        = (5 + Math.random() * 10) * 100;
   site.fissT           = PH1_END;
   site.neutronsEmitted = false;
@@ -2191,6 +2193,18 @@ function updateChain(now) {
     }
   }
 
+  // Advance failed (done+stable) site positions + bounce off container walls
+  for (const site of enrichSites) {
+    if (!(site.state === 'done' && site.wobbleMode === 'stable')) continue;
+    if (site.vx === undefined) { site.vx = 0; site.vy = 0; }
+    site.cx += site.vx * dt;
+    site.cy += site.vy * dt;
+    if (site.cx - sphereR < b.x)       { site.cx = b.x + sphereR;       site.vx =  Math.abs(site.vx); }
+    if (site.cx + sphereR > b.x + b.w) { site.cx = b.x + b.w - sphereR; site.vx = -Math.abs(site.vx); }
+    if (site.cy - sphereR < b.y)       { site.cy = b.y + sphereR;       site.vy =  Math.abs(site.vy); }
+    if (site.cy + sphereR > b.y + b.h) { site.cy = b.y + b.h - sphereR; site.vy = -Math.abs(site.vy); }
+  }
+
   // ── KMT elastic collisions ────────────────────────────────────────────────────
   // Collect all moving particles; mass 1 for neutrons, area-proportional for daughters.
   const movables = [];
@@ -2201,11 +2215,23 @@ function updateChain(now) {
   if (mainDaughters) for (const d of mainDaughters) allDaughters.push(d);
   for (const site of enrichSites) if (site.daughters) for (const d of site.daughters) allDaughters.push(d);
   for (const d of allDaughters) movables.push({ p: d, r: d.r, m: 120 }); // ~120 nucleons vs 1 for neutron
+  // Failed (done+stable) nuclei join KMT as heavy movable objects (m=235 nucleons)
+  for (const site of enrichSites) {
+    if (!(site.state === 'done' && site.wobbleMode === 'stable')) continue;
+    if (site.vx === undefined) { site.vx = 0; site.vy = 0; }
+    const proxy = { x: site.cx, y: site.cy, vx: site.vx, vy: site.vy };
+    movables.push({ p: proxy, r: sphereR, m: 235, _site: site });
+  }
 
   // Pairwise elastic collisions between all movables (neutron–neutron, neutron–daughter, daughter–daughter)
   for (let i = 0; i < movables.length; i++) {
     for (let j = i + 1; j < movables.length; j++) {
       const a = movables[i], b2 = movables[j];
+      // When toggle is off, a daughter must have wall-bounced before it interacts with anything
+      if (!daughterFuelCollide) {
+        const aDaughter = a.m === 120, bDaughter = b2.m === 120;
+        if ((aDaughter && !a.p.bounced) || (bDaughter && !b2.p.bounced)) continue;
+      }
       const dx = b2.p.x - a.p.x, dy = b2.p.y - a.p.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
       const minD = a.r + b2.r;
@@ -2226,13 +2252,21 @@ function updateChain(now) {
       }
     }
   }
+  // Sync failed-site proxies back
+  for (const mv of movables) {
+    if (!mv._site) continue;
+    mv._site.cx = mv.p.x; mv._site.cy = mv.p.y;
+    mv._site.vx = mv.p.vx; mv._site.vy = mv.p.vy;
+  }
 
-  // Daughters bounce off fuel sites.
-  // Failed (done+stable) sites always block; active fuel sites only when toggle is on.
+  // Daughters bounce off active fuel sites (immovable wall).
+  // Failed sites are handled by KMT above.
+  // Toggle on = all daughters interact freely. Toggle off = only wall-bounced daughters interact.
   for (const site of enrichSites) {
-    const isFailed = site.state === 'done' && site.wobbleMode === 'stable';
-    if (!isFailed && !daughterFuelCollide) continue;
+    if (site.state === 'done') continue; // failed sites handled by KMT
+    if (!daughterFuelCollide) continue;
     for (const d of allDaughters) {
+      if (!daughterFuelCollide && !d.bounced) continue;
       const dx = d.x - site.cx, dy = d.y - site.cy;
       const dist = Math.sqrt(dx * dx + dy * dy);
       const minD = d.r + sphereR;
@@ -2244,9 +2278,10 @@ function updateChain(now) {
     }
   }
 
-  // Neutrons bounce off non-idle fuel sites (idle sites absorb them, handled above)
+  // Neutrons bounce off non-idle, non-failed fuel sites (failed sites handled by KMT)
   for (const site of enrichSites) {
     if (site.state === 'idle') continue;
+    if (site.state === 'done' && site.wobbleMode === 'stable') continue;
     for (const n of chainNeutrons) {
       const dx = n.x - site.cx, dy = n.y - site.cy;
       const dist = Math.sqrt(dx * dx + dy * dy);
@@ -2337,6 +2372,13 @@ function drawChainOverlay() {
       drawFissionOutline(d0.x, d0.y, d0.r, d1.x, d1.y, d1.r);
     }
   }
+  function drawChainDaughter(d) {
+    if (showParticles) {
+      drawChainSiteParticles(d.x, d.y, d.r, d.viewAngle || 0);
+    } else {
+      drawCloudOutline(d.x, d.y, d.r);
+    }
+  }
 
   // ── BACKGROUND LAYER: stable (failed) sites, bounced daughters, bounced neutrons ──
   // Outline mode: fade with globalAlpha. Particle mode: draw full-bright then overlay a grey circle.
@@ -2349,12 +2391,15 @@ function drawChainOverlay() {
       drawChainNucleus(site.cx, site.cy, sphereR, site.viewAngle);
     }
     if (site.daughters) {
-      const inBg = site.state === 'done' || site.daughters.some(d => d.bounced);
-      if (inBg) drawChainDaughters(site.daughters[0], site.daughters[1]);
+      if (site.state === 'done') {
+        drawChainDaughters(site.daughters[0], site.daughters[1]);
+      } else {
+        for (const d of site.daughters) { if (d.bounced) drawChainDaughter(d); }
+      }
     }
   }
-  if (mainDaughters && mainDaughters.some(d => d.bounced)) {
-    drawChainDaughters(mainDaughters[0], mainDaughters[1]);
+  if (mainDaughters) {
+    for (const d of mainDaughters) { if (d.bounced) drawChainDaughter(d); }
   }
   for (const n of chainNeutrons) { if (n.bounced) drawNeutron(n.x, n.y); }
   if (!_PART) { ctx.restore(); }
@@ -2368,18 +2413,14 @@ function drawChainOverlay() {
         ctx.beginPath(); ctx.arc(site.cx, site.cy, sphereR + PARTICLE_RADIUS, 0, Math.PI * 2); ctx.fill();
       }
       if (site.daughters) {
-        const inBg = site.state === 'done' || site.daughters.some(d => d.bounced);
-        if (inBg) {
-          const d0 = site.daughters[0], d1 = site.daughters[1];
-          ctx.beginPath(); ctx.arc(d0.x, d0.y, d0.r + PARTICLE_RADIUS, 0, Math.PI * 2); ctx.fill();
-          ctx.beginPath(); ctx.arc(d1.x, d1.y, d1.r + PARTICLE_RADIUS, 0, Math.PI * 2); ctx.fill();
-        }
+        const ds = site.state === 'done' ? site.daughters : site.daughters.filter(d => d.bounced);
+        for (const d of ds) { ctx.beginPath(); ctx.arc(d.x, d.y, d.r + PARTICLE_RADIUS, 0, Math.PI * 2); ctx.fill(); }
       }
     }
-    if (mainDaughters && mainDaughters.some(d => d.bounced)) {
-      const d0 = mainDaughters[0], d1 = mainDaughters[1];
-      ctx.beginPath(); ctx.arc(d0.x, d0.y, d0.r + PARTICLE_RADIUS, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(d1.x, d1.y, d1.r + PARTICLE_RADIUS, 0, Math.PI * 2); ctx.fill();
+    if (mainDaughters) {
+      for (const d of mainDaughters) {
+        if (d.bounced) { ctx.beginPath(); ctx.arc(d.x, d.y, d.r + PARTICLE_RADIUS, 0, Math.PI * 2); ctx.fill(); }
+      }
     }
     for (const n of chainNeutrons) {
       if (n.bounced) { ctx.beginPath(); ctx.arc(n.x, n.y, PARTICLE_RADIUS * 1.3, 0, Math.PI * 2); ctx.fill(); }
@@ -2396,17 +2437,16 @@ function drawChainOverlay() {
       if (t <= PH2_END) {
         drawFissionWobble(site);
       } else if (site.wobbleMode === 'stable') {
-        // Still in fission state but settling — stays in foreground until done
         drawChainNucleus(site.cx, site.cy, sphereR, site.viewAngle);
-      } else if (site.daughters && !site.daughters.some(d => d.bounced)) {
-        // Daughters just launched, haven't bounced yet — draw in foreground
-        drawChainDaughters(site.daughters[0], site.daughters[1]);
+      } else if (site.daughters) {
+        // Draw each daughter in foreground only until it bounces
+        for (const d of site.daughters) { if (!d.bounced) drawChainDaughter(d); }
       }
     }
   }
-  // Main fission daughters: in foreground until first bounce
-  if (mainDaughters && !mainDaughters.some(d => d.bounced)) {
-    drawChainDaughters(mainDaughters[0], mainDaughters[1]);
+  // Main fission daughters: each stays in foreground until its own first bounce
+  if (mainDaughters) {
+    for (const d of mainDaughters) { if (!d.bounced) drawChainDaughter(d); }
   }
   for (const n of chainNeutrons) { if (!n.bounced) drawNeutron(n.x, n.y); }
 }
@@ -3371,6 +3411,7 @@ document.getElementById('goBtn').addEventListener('click', () => {
 
   mainNeutronsEmitted = false; mainEnergyTransferred = false; mainDaughters = null;
   chainNeutrons       = []; lastChainTime = null;
+  if (currentTab === 'chain') { isFirstFission = true; isFirstChainFission = true; }
   for (const s of enrichSites) s.state = 'idle';
   heatmapDirty    = true;
   // Reset the fission axis so the force viz panel shows a neutral horizontal
@@ -3448,7 +3489,7 @@ document.getElementById('newBtn').addEventListener('click', () => {
   currentScrubFrac    = 0;
   staticFissAngle     = 0;   // force viz returns to horizontal until impact
   mainNeutronsEmitted = false; mainEnergyTransferred = false; mainDaughters = null;
-  chainNeutrons       = []; lastChainTime = null;
+  chainNeutrons       = []; lastChainTime = null; isFirstChainFission = true;
   for (const s of enrichSites) { s.state = 'idle'; delete s.daughters; }
   // Recalculate energy: 1 for animParent + remaining fuel nuclei
   if (currentTab === 'chain') {
@@ -3486,7 +3527,7 @@ document.getElementById('clearBtn').addEventListener('click', () => {
   staticFissAngle     = 0;   // force viz returns to horizontal until impact
   mainNeutronsEmitted = false; mainEnergyTransferred = false; mainDaughters = null;
   chainNeutrons       = []; lastChainTime = null;
-  enrichSites         = [];
+  enrichSites         = []; isFirstChainFission = true;
   totalFuelAdded = 0; energyInFields = 0; energyInMotion = 0;
   heatmapDirty        = true;
   document.getElementById('goBtn').textContent = '▶ GO';
@@ -3521,7 +3562,7 @@ document.getElementById('enrichBtn').addEventListener('click', () => {
       enrichSites.some(s => Math.hypot(cx - s.cx, cy - s.cy) < minDist)
     ));
     if (attempts < 60) {
-      enrichSites.push({ cx, cy, state: 'idle', fissStart: 0, fissT: PH1_END,
+      enrichSites.push({ cx, cy, vx: 0, vy: 0, state: 'idle', fissStart: 0, fissT: PH1_END,
                          angle: 0, shakeDur: 600, neutronsEmitted: false,
                          viewAngle: Math.random() * Math.PI * 2 });
       totalFuelAdded++;
