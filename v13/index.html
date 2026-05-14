@@ -3989,7 +3989,7 @@ function computeEnergy(frac) {
     //         rounding the bottom of the dip.
     const keHigh = 0.626 - 0.06 * ph2;
     const keLow  = wobbleMode === 'stable'
-                   ? 0.626 - 0.35 * Math.sqrt(ph2)                   // stable: shallower dip
+                   ? 0.626 - 0.40 * Math.sin(Math.PI * ph2)          // stable: bell curve — cycle 2 deepest, cycles 1&3 half depth
                    : 0.626 - 0.476 * (2 * ph2 - ph2 * ph2);          // fission: → 0.15, zero slope at ph2=1
     const t01 = (1 - Math.cos(normWobble * Math.PI)) / 2;
     const ke  = keHigh - (keHigh - keLow) * t01;
