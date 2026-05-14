@@ -428,6 +428,45 @@
   }
   .ctrl-box-pink input[type="range"] { width: 120px; }
 
+  /* ── NEW button nucleus dropdown ───────────────────────────────────────────── */
+  .new-btn-wrap { position: relative; display: flex; flex-direction: column; align-self: stretch; }
+  .nucleus-drop {
+    position: absolute;
+    top: calc(100% + 5px);
+    left: 0;
+    z-index: 200;
+    background: rgba(8,6,24,0.97);
+    border: 1px solid rgba(255,45,120,0.28);
+    border-radius: 10px;
+    padding: 5px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 100%;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s, transform 0.15s;
+    transform: translateY(-4px);
+  }
+  .nucleus-drop.open { opacity: 1; pointer-events: auto; transform: translateY(0); }
+  .nucleus-opt {
+    padding: 5px 12px;
+    border-radius: 7px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: rgba(255,255,255,0.7);
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-align: left;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color 0.1s, background 0.1s;
+  }
+  .nucleus-opt:hover { border-color: rgba(255,45,120,0.35); background: rgba(255,45,120,0.08); }
+  .nucleus-opt.selected { border-color: rgba(255,45,120,0.65); background: rgba(255,45,120,0.15); color: rgba(255,255,255,0.95); }
+
   .ctrl-box-blue {
     display: flex;
     align-items: center;
@@ -869,10 +908,19 @@
 
     <!-- Pink box: New button + neutron speed + particle counters + Add more fuel -->
     <div class="ctrl-box-pink">
-      <button id="newBtn" class="btn" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;align-self:stretch;padding:6px 12px;">
-        <canvas id="newBtnNucleus" width="96" height="42" style="display:block;flex-shrink:0;image-rendering:pixelated"></canvas>
-        <span style="font-size:11px;">New</span>
-      </button>
+      <div class="new-btn-wrap">
+        <button id="newBtn" class="btn" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;align-self:stretch;padding:6px 12px;">
+          <canvas id="newBtnNucleus" width="96" height="42" style="display:block;flex-shrink:0;image-rendering:pixelated"></canvas>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <span id="newBtnLabel" style="font-size:11px;">U-235</span>
+            <span id="newBtnChevron" style="font-size:9px;opacity:0.5;line-height:1;">▾</span>
+          </div>
+        </button>
+        <div id="nucleusDrop" class="nucleus-drop">
+          <button class="nucleus-opt selected" data-key="u235">U-235</button>
+          <button class="nucleus-opt" data-key="ag107">Ag-107 (Silver)</button>
+        </div>
+      </div>
       <div style="display:flex;flex-direction:column;gap:5px;align-items:stretch;">
         <div class="slider-group">
           <div style="display:flex;align-items:center;gap:1px">
@@ -1581,6 +1629,25 @@ function drawExcitedGlow(cx, cy, sphereR, intensity) {
   ctx.restore();
 }
 
+// ─── Nucleus definitions (for NEW button dropdown) ────────────────────────────
+const NUCLEUS_DEFS = {
+  u235: {
+    label: 'U-235',
+    Z: 92, N: 143,           // particle counter physics label
+    animZ: 78, animN: 172,   // generateNucleus args (visual sphere packing)
+    prod1: { Z: 47, N: 103 }, prod2: { Z: 31, N: 69 },  // fission daughters (Xe/Sr branch)
+    iconNP: 20, iconNN: 42, iconSeed: 0x9e3779b9,
+  },
+  ag107: {
+    label: 'Ag-107',
+    Z: 47, N: 60,
+    animZ: 78, animN: 172,   // same visual sphere as U-235 for now — fission TBD
+    prod1: { Z: 47, N: 103 }, prod2: { Z: 31, N: 69 },  // placeholder — fission TBD
+    iconNP: 10, iconNN: 13, iconSeed: 0x1a2b3c4d,
+  },
+};
+let selectedNucleusKey = 'u235';
+
 // ─── Animation state ──────────────────────────────────────────────────────────
 let currentSeed = Math.floor(Math.random() * 1e9);
 let viewZoom = 1.0;
@@ -1719,9 +1786,10 @@ function initNuclei() {
   const W = canvas.width, H = canvas.height;
   const cx = W / 2, cy = H / 2;
 
-  animParent = generateNucleus(78, 172, cx, cy, currentSeed);
-  animProd1  = generateNucleus(47, 103, cx, cy, currentSeed * 1001 + 7);
-  animProd2  = generateNucleus(31,  69, cx, cy, currentSeed * 1003 + 13);
+  const nd = NUCLEUS_DEFS[selectedNucleusKey];
+  animParent = generateNucleus(nd.animZ, nd.animN, cx, cy, currentSeed);
+  animProd1  = generateNucleus(nd.prod1.Z, nd.prod1.N, cx, cy, currentSeed * 1001 + 7);
+  animProd2  = generateNucleus(nd.prod2.Z, nd.prod2.N, cx, cy, currentSeed * 1003 + 13);
 
   // Daughter radii are fixed — no shrinking as they fly
   prod1R = animProd1.sphereR * 0.7;
@@ -1983,14 +2051,15 @@ function updateParticleCounters() {
   const p2N   = document.getElementById('p2Neutrons');
   if (!p1P) return;
   const showP2 = v => { p2El.style.visibility = v ? '' : 'hidden'; };
+  const nd = NUCLEUS_DEFS[selectedNucleusKey];
   const f = currentScrubFrac;
   if (f < NEUTRON_FRAC) {
-    // Before impact: U-235 + free neutron
-    p1P.textContent = 92; p1N.textContent = 143;
+    // Before impact: parent nucleus + free neutron
+    p1P.textContent = nd.Z; p1N.textContent = nd.N;
     showP2(true); p2P.textContent = 0; p2N.textContent = 1;
   } else if (wobbleMode === 'stable' || f < 0.742) {
-    // Absorbed but not yet split (or failed fission, or still During): U-236
-    p1P.textContent = 92; p1N.textContent = 144;
+    // Absorbed but not yet split (or failed fission, or still During): Z, N+1
+    p1P.textContent = nd.Z; p1N.textContent = nd.N + 1;
     showP2(false);
   } else {
     // Daughters ejected
@@ -3061,17 +3130,17 @@ function neutronIconLoop() {
 neutronIconLoop();
 
 // ─── Nucleus button icon (New button) ─────────────────────────────────────────
-// ~62 particles (25% of main 250-nucleon nucleus), sphere-packed, fixed seed.
+// Sphere-packed particles for the NEW button icon canvas.
 // Same gradient+shadowBlur style as drawParticles().
-const nucleusIconParticles = (() => {
-  const ICON_R = 4;   // particle radius in icon px
-  const nP = 20, nN = 42, nTotal = nP + nN;
+function buildNucleusIconParticles(nP, nN, seed) {
+  const ICON_R  = 4;   // particle radius in icon px
+  const nTotal  = nP + nN;
   const packFrac = 0.62;
   const vol    = nTotal * (4/3 * Math.PI * ICON_R ** 3) / packFrac;
   const sphR   = Math.cbrt(vol * 3 / (4 * Math.PI)) * 1.05;
   const minD2  = (ICON_R * 2.05) ** 2;
 
-  let s = 0x9e3779b9;
+  let s = seed >>> 0;
   const rand = () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; };
 
   const pts = [];
@@ -3090,7 +3159,10 @@ const nucleusIconParticles = (() => {
     if (ok) pts.push({ ox, oy, oz, type: pts.length < nP ? 'proton' : 'neutron', jx: 0, jy: 0 });
   }
   return pts.sort((a, b) => a.oz - b.oz);  // back-to-front
-})();
+}
+let nucleusIconParticles = buildNucleusIconParticles(
+  NUCLEUS_DEFS.u235.iconNP, NUCLEUS_DEFS.u235.iconNN, NUCLEUS_DEFS.u235.iconSeed
+);
 
 function drawNucleusIcon(canvas) {
   if (!canvas) return;
@@ -3480,7 +3552,43 @@ document.getElementById('scrubSlider').addEventListener('input', function () {
   updatePhaseTimeline();
 });
 
-document.getElementById('newBtn').addEventListener('click', () => {
+// ─── Nucleus dropdown ─────────────────────────────────────────────────────────
+function selectNucleus(key) {
+  selectedNucleusKey = key;
+  const nd = NUCLEUS_DEFS[key];
+  // Update label
+  document.getElementById('newBtnLabel').textContent = nd.label;
+  // Rebuild icon
+  nucleusIconParticles = buildNucleusIconParticles(nd.iconNP, nd.iconNN, nd.iconSeed);
+  // Highlight selected option
+  document.querySelectorAll('.nucleus-opt').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.key === key);
+  });
+  // Close dropdown
+  document.getElementById('nucleusDrop').classList.remove('open');
+}
+
+document.querySelectorAll('.nucleus-opt').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    selectNucleus(btn.dataset.key);
+    // Trigger a new sim for the newly selected nucleus
+    document.getElementById('newBtn').click();
+  });
+});
+
+// Close dropdown when clicking outside
+document.addEventListener('click', (e) => {
+  const drop = document.getElementById('nucleusDrop');
+  if (!e.target.closest('.new-btn-wrap')) drop.classList.remove('open');
+});
+
+document.getElementById('newBtn').addEventListener('click', (e) => {
+  // If the chevron was clicked, toggle dropdown instead of doing a new sim
+  if (e.target.id === 'newBtnChevron') {
+    document.getElementById('nucleusDrop').classList.toggle('open');
+    return;
+  }
   // Stage a fresh neutron — same as Stop but always available, does not require
   // the animation to currently be running.
   resetPrerender();
