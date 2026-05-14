@@ -871,12 +871,12 @@
       <button id="clearBtn" class="btn" style="flex:1">Clear</button>
     </div>
 
-    <!-- Pink box: New button + neutron speed + Add more fuel -->
+    <!-- Pink box: New button + neutron speed + particle counters + Add more fuel -->
     <div class="ctrl-box-pink">
       <button id="newBtn" class="btn" style="display:flex;align-items:center;justify-content:center;gap:8px;align-self:stretch;">
-        <canvas id="newBtnNucleus" width="68" height="84" style="display:block;flex-shrink:0;image-rendering:pixelated"></canvas>New
+        <canvas id="newBtnNucleus" width="68" height="42" style="display:block;flex-shrink:0;image-rendering:pixelated"></canvas>New
       </button>
-      <div style="display:flex;flex-direction:column;gap:8px;align-items:stretch">
+      <div style="display:flex;flex-direction:column;gap:5px;align-items:stretch;">
         <div class="slider-group">
           <div style="display:flex;align-items:center;gap:1px">
             <canvas id="speedLinesCanvas" width="50" height="46" style="display:block;flex-shrink:0;image-rendering:pixelated"></canvas>
@@ -884,7 +884,17 @@
           </div>
           <div id="neutronSpeedWrap"><input type="range" id="neutronSpeed" min="0.2" max="8.0" step="0.1" value="4.0"></div>
         </div>
-        <button id="enrichBtn" class="btn" style="display:none">Add more fuel</button>
+        <div id="particleCounters" style="display:flex;gap:14px;font-size:10px;color:var(--text-dim);padding-left:2px;line-height:1.7;">
+          <div>
+            <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.06em;">Particle 1</div>
+            <div>P: <span id="p1Protons" style="color:var(--accent1)">92</span>&nbsp; N: <span id="p1Neutrons">143</span></div>
+          </div>
+          <div id="p2Counter">
+            <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.06em;">Particle 2</div>
+            <div>P: <span id="p2Protons" style="color:var(--accent1)">0</span>&nbsp; N: <span id="p2Neutrons">1</span></div>
+          </div>
+        </div>
+        <button id="enrichBtn" class="btn" style="display:none;">Add more fuel</button>
       </div>
     </div>
 
@@ -904,6 +914,10 @@
         <label class="toggle-label" id="showElectricRow">
           <input type="checkbox" id="showElectric">
           <span class="field-label-electric">Show electric field</span>
+        </label>
+        <label class="toggle-label" id="daughterFuelRow" style="display:none;">
+          <input type="checkbox" id="daughterFuelChk" checked>
+          <span style="font-size:11px;">Daughters hit fuel</span>
         </label>
       </div>
       <div style="display:flex;gap:10px;align-self:stretch;align-items:center">
@@ -1623,6 +1637,8 @@ function applyTab(tab) {
   document.getElementById('playbackSpeedRow').style.display  = isChain ? 'none' : '';
   document.getElementById('zoomSliderRow').style.display     = isChain ? 'none' : '';
   document.getElementById('showElectricRow').style.display   = isChain ? 'none' : '';
+  document.getElementById('daughterFuelRow').style.display   = isChain ? '' : 'none';
+  document.getElementById('particleCounters').style.display  = isChain ? 'none' : '';
   document.getElementById('forceModeRow').style.display      = isChain ? 'none' : 'flex';
   if (tab === 'chain') {
     fixedContainerBounds = computeContainerBounds();
@@ -1663,6 +1679,7 @@ let SHAKE_DURATION  = 1000;  // ms — randomised on each hit (500–1500)
 //   'dip3'   15% — 3 KE dips : two full wobbles, then elongates and fissions
 //   'stable' 15% — 3 KE dips : three full wobbles, nucleus returns to circular (no fission)
 let wobbleMode = 'dip1';
+let fissionBranch = 0;   // 0 = Xe-140 + Sr-94, 1 = Ba-144 + Kr-90
 
 function pickWobbleMode() {
   const r = Math.random();
@@ -1938,7 +1955,9 @@ function renderAtFrac(frac) {
     if (!showParticles) drawCloudOutline(animParent.cx, animParent.cy, animParent.sphereR);
     if (neutronState === 'bouncing') {
       drawNeutron(neutronX, neutronY);
-    } else if (neutronState !== 'idle') {
+    } else if (neutronState === 'idle') {
+      drawNeutron(-PARTICLE_RADIUS - 5, animParent.cy);
+    } else {
       const nf = frac / NEUTRON_FRAC;
       const nx = (-PARTICLE_RADIUS - 5) + nf * (neutronImpactX() - (-PARTICLE_RADIUS - 5));
       drawNeutron(nx, animParent.cy);
@@ -1955,7 +1974,41 @@ function renderAtFrac(frac) {
   ctx.restore();
   if (currentTab === 'chain') drawChainBarChart();
   drawEnergyGraph();
+  updateParticleCounters();
   captureFrame();
+}
+
+// ─── Particle counter ─────────────────────────────────────────────────────────
+function updateParticleCounters() {
+  if (currentTab !== 'fission') return;
+  const p1P  = document.getElementById('p1Protons');
+  const p1N  = document.getElementById('p1Neutrons');
+  const p2El = document.getElementById('p2Counter');
+  const p2P  = document.getElementById('p2Protons');
+  const p2N  = document.getElementById('p2Neutrons');
+  if (!p1P) return;
+  const f = currentScrubFrac;
+  if (f < NEUTRON_FRAC) {
+    // Before impact: U-235 + free neutron
+    p1P.textContent = 92; p1N.textContent = 143;
+    p2El.style.display = ''; p2P.textContent = 0; p2N.textContent = 1;
+  } else if (wobbleMode === 'stable' || f < ANIM_T_END) {
+    // Absorbed but not yet split (or failed fission): U-236
+    p1P.textContent = 92; p1N.textContent = 144;
+    p2El.style.display = 'none';
+  } else {
+    // Daughters ejected
+    p2El.style.display = '';
+    if (fissionBranch === 0) {
+      // Xe-140 (54p, 86n) + Sr-94 (38p, 56n)
+      p1P.textContent = 54; p1N.textContent = 86;
+      p2P.textContent = 38; p2N.textContent = 56;
+    } else {
+      // Ba-144 (56p, 88n) + Kr-90 (36p, 54n)
+      p1P.textContent = 56; p1N.textContent = 88;
+      p2P.textContent = 36; p2N.textContent = 54;
+    }
+  }
 }
 
 // ─── Prompt fission neutrons ──────────────────────────────────────────────────
@@ -1996,6 +2049,7 @@ let enrichSites   = [];    // [{cx,cy,state,fissStart,fissT,angle,shakeDur,neutr
 let chainNeutrons = [];    // [{x,y,vx,vy}]
 let chainRAF      = null;
 let lastChainTime = null;
+let daughterFuelCollide    = true;   // dev toggle: daughters bounce off fuel sites
 let mainNeutronsEmitted    = false;
 let mainEnergyTransferred  = false;
 let mainDaughters          = null;   // [{x,y,vx,vy,r,bounced}] — main fission products (chain tab)
@@ -2134,6 +2188,74 @@ function updateChain(now) {
       if (d.x + d.r > b.x + b.w) { d.x = b.x + b.w - d.r; d.vx = -Math.abs(d.vx); d.bounced = true; }
       if (d.y - d.r < b.y)       { d.y = b.y + d.r;        d.vy =  Math.abs(d.vy); d.bounced = true; }
       if (d.y + d.r > b.y + b.h) { d.y = b.y + b.h - d.r;  d.vy = -Math.abs(d.vy); d.bounced = true; }
+    }
+  }
+
+  // ── KMT elastic collisions ────────────────────────────────────────────────────
+  // Collect all moving particles; mass 1 for neutrons, area-proportional for daughters.
+  const movables = [];
+  for (const n of chainNeutrons) {
+    movables.push({ p: n, r: PARTICLE_RADIUS, m: 1 });
+  }
+  const allDaughters = [];
+  if (mainDaughters) for (const d of mainDaughters) allDaughters.push(d);
+  for (const site of enrichSites) if (site.daughters) for (const d of site.daughters) allDaughters.push(d);
+  for (const d of allDaughters) movables.push({ p: d, r: d.r, m: 120 }); // ~120 nucleons vs 1 for neutron
+
+  // Pairwise elastic collisions between all movables (neutron–neutron, neutron–daughter, daughter–daughter)
+  for (let i = 0; i < movables.length; i++) {
+    for (let j = i + 1; j < movables.length; j++) {
+      const a = movables[i], b2 = movables[j];
+      const dx = b2.p.x - a.p.x, dy = b2.p.y - a.p.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const minD = a.r + b2.r;
+      if (dist >= minD || dist < 0.001) continue;
+      const nx = dx / dist, ny = dy / dist;
+      const totalM = a.m + b2.m;
+      // Push apart proportional to mass
+      const overlap = minD - dist;
+      a.p.x -= nx * overlap * b2.m / totalM;  a.p.y -= ny * overlap * b2.m / totalM;
+      b2.p.x += nx * overlap * a.m  / totalM;  b2.p.y += ny * overlap * a.m  / totalM;
+      // Elastic velocity exchange along normal
+      const dvx = b2.p.vx - a.p.vx, dvy = b2.p.vy - a.p.vy;
+      const dot = dvx * nx + dvy * ny;
+      if (dot < 0) {
+        const imp = 2 * dot / totalM;
+        a.p.vx  += imp * b2.m * nx;  a.p.vy  += imp * b2.m * ny;
+        b2.p.vx -= imp * a.m  * nx;  b2.p.vy -= imp * a.m  * ny;
+      }
+    }
+  }
+
+  // Daughters bounce off fuel sites.
+  // Failed (done+stable) sites always block; active fuel sites only when toggle is on.
+  for (const site of enrichSites) {
+    const isFailed = site.state === 'done' && site.wobbleMode === 'stable';
+    if (!isFailed && !daughterFuelCollide) continue;
+    for (const d of allDaughters) {
+      const dx = d.x - site.cx, dy = d.y - site.cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const minD = d.r + sphereR;
+      if (dist >= minD || dist < 0.001) continue;
+      const nx = dx / dist, ny = dy / dist;
+      d.x = site.cx + nx * minD;  d.y = site.cy + ny * minD;
+      const dot = d.vx * nx + d.vy * ny;
+      if (dot < 0) { d.vx -= 2 * dot * nx;  d.vy -= 2 * dot * ny; }
+    }
+  }
+
+  // Neutrons bounce off non-idle fuel sites (idle sites absorb them, handled above)
+  for (const site of enrichSites) {
+    if (site.state === 'idle') continue;
+    for (const n of chainNeutrons) {
+      const dx = n.x - site.cx, dy = n.y - site.cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const minD = PARTICLE_RADIUS + sphereR;
+      if (dist >= minD || dist < 0.001) continue;
+      const nx = dx / dist, ny = dy / dist;
+      n.x = site.cx + nx * minD;  n.y = site.cy + ny * minD;
+      const dot = n.vx * nx + n.vy * ny;
+      if (dot < 0) { n.vx -= 2 * dot * nx;  n.vy -= 2 * dot * ny; }
     }
   }
 }
@@ -2673,6 +2795,7 @@ function neutronTick(now) {
     // Pick the fission axis here — at impact — so the force viz panel doesn't
     // reveal the chosen direction during the neutron's flight.
     staticFissAngle  = (Math.random() - 0.5) * Math.PI;
+    fissionBranch    = Math.floor(Math.random() * 2);
     consecutiveBounces = 0;
     document.getElementById('neutronSpeedWrap').classList.remove('bounce-warn');
     neutronState     = 'fission';
@@ -3374,6 +3497,10 @@ document.getElementById('clearBtn').addEventListener('click', () => {
   document.getElementById('scrubSlider').value = 0;
   document.getElementById('scrubPct').textContent = '0';
   drawStaticFrame();
+});
+
+document.getElementById('daughterFuelChk').addEventListener('change', function() {
+  daughterFuelCollide = this.checked;
 });
 
 document.getElementById('enrichBtn').addEventListener('click', () => {
