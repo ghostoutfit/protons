@@ -368,7 +368,7 @@
     display: flex; flex-direction: column;
     justify-content: center;
     gap: 4px;
-    padding: 6px 0;
+    padding: 6px 0 6px 8px;
   }
 
   #energyGraphBox {
@@ -392,11 +392,18 @@
   }
   #phaseTimeline .phase-seg {
     display: flex; align-items: center; justify-content: center;
-    font-size: 10px; font-weight: 700; letter-spacing: 0.05em;
-    overflow: hidden; white-space: nowrap; min-width: 0; transition: flex 0.1s;
+    font-size: 11px; font-weight: 800; letter-spacing: 0.08em;
+    overflow: hidden; white-space: nowrap; min-width: 0; transition: opacity 0.15s;
+    text-shadow: 0 0 8px currentColor;
   }
 
-  #timeSlider { display: block; width: 100%; margin: 0; padding: 0; box-sizing: border-box; height: 8px; }
+  #scrubRow {
+    display: flex;
+    align-items: center;
+    height: 55px;
+    padding: 0;
+  }
+  #timeSlider { flex: 1; display: block; width: 100%; margin: 0; padding: 0; box-sizing: border-box; height: 8px; }
 
   #scrubLeftPanel {
     display: flex;
@@ -683,11 +690,13 @@
       <canvas id="energyGraph" height="150"></canvas>
     </div>
     <div id="phaseTimeline" style="display:flex;">
-      <div class="phase-seg" id="phaseSeg-approach" style="background:rgba(255,255,255,0.05);color:var(--text-dim);flex:1;font-size:0px;">Before</div>
-      <div class="phase-seg" id="phaseSeg-collision" style="background:rgba(255,45,120,0.18);color:var(--accent1);display:none;">During</div>
-      <div class="phase-seg" id="phaseSeg-escape"    style="background:rgba(26,110,255,0.15);color:var(--accent2);display:none;">After</div>
+      <div class="phase-seg" id="phaseSeg-approach"  style="background:rgba(220,215,255,0.08);color:rgba(220,215,255,0.55);flex:1;">Before</div>
+      <div class="phase-seg" id="phaseSeg-collision" style="background:rgba(255,45,120,0.28);color:#ff3a8a;display:none;">During</div>
+      <div class="phase-seg" id="phaseSeg-escape"    style="background:rgba(26,110,255,0.28);color:#4d9fff;display:none;">After</div>
     </div>
-    <input type="range" id="timeSlider" min="0" max="0" value="0" disabled>
+    <div id="scrubRow">
+      <input type="range" id="timeSlider" min="0" max="0" value="0" disabled>
+    </div>
   </div>
   <div id="scrubRight">
     <div id="energyPctDisplay">
@@ -2713,17 +2722,20 @@ function updatePhaseTimeline() {
   const visEscape    = clamp(collisionEnd, escapeEnd);
   const visTotal     = visApproach + visCollision + visEscape;
 
-  const setSegment = (el, frames) => {
+  const curPhase = collisionPhase === 'approach' ? 'approach'
+                 : (collisionPhase === 'collision') ? 'collision' : 'escape';
+
+  const setSegment = (el, frames, phaseKey) => {
     if (frames <= 0) { el.style.display = 'none'; return; }
     el.style.display  = 'flex';
     el.style.flex     = String(frames);
-    // Show label text only once segment is wide enough to hold it
-    el.style.fontSize = frames / visTotal < 0.12 ? '0px' : '10px';
+    el.style.fontSize = frames / visTotal < 0.12 ? '0px' : '11px';
+    el.style.opacity  = phaseKey === curPhase ? '1' : '0.35';
   };
 
-  setSegment(segApproach,  visApproach);
-  setSegment(segCollision, visCollision);
-  setSegment(segEscape,    visEscape);
+  setSegment(segApproach,  visApproach,  'approach');
+  setSegment(segCollision, visCollision, 'collision');
+  setSegment(segEscape,    visEscape,    'escape');
 }
 
 // ============================================================
