@@ -433,8 +433,8 @@
   .pwheel-drop {
     position: absolute;
     top: calc(100% + 5px);
-    left: 50%;
-    transform: translateX(-50%) translateY(-4px);
+    left: 0;
+    transform: translateY(-4px);
     display: flex;
     flex-direction: row;
     gap: 6px;
@@ -447,7 +447,7 @@
     transition: opacity 0.15s, transform 0.15s;
     z-index: 200;
   }
-  .pwheel.open .pwheel-drop { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); }
+  .pwheel.open .pwheel-drop { opacity: 1; pointer-events: auto; transform: translateY(0); }
   .nucleus-opt {
     display: flex;
     flex-direction: column;
@@ -917,9 +917,9 @@
             <canvas class="nucleus-opt-canvas" data-key="u235" width="96" height="42" style="display:block;image-rendering:pixelated;"></canvas>
             <span class="nucleus-opt-label">U-235</span>
           </div>
-          <div class="nucleus-opt" data-key="ag107">
-            <canvas class="nucleus-opt-canvas" data-key="ag107" width="96" height="42" style="display:block;image-rendering:pixelated;"></canvas>
-            <span class="nucleus-opt-label">Ag-107</span>
+          <div class="nucleus-opt" data-key="u236">
+            <canvas class="nucleus-opt-canvas" data-key="u236" width="96" height="42" style="display:block;image-rendering:pixelated;"></canvas>
+            <span class="nucleus-opt-label">U-236</span>
           </div>
           <div class="nucleus-opt" data-key="ba141">
             <canvas class="nucleus-opt-canvas" data-key="ba141" width="96" height="42" style="display:block;image-rendering:pixelated;"></canvas>
@@ -928,6 +928,10 @@
           <div class="nucleus-opt" data-key="kr92">
             <canvas class="nucleus-opt-canvas" data-key="kr92" width="96" height="42" style="display:block;image-rendering:pixelated;"></canvas>
             <span class="nucleus-opt-label">Kr-92</span>
+          </div>
+          <div class="nucleus-opt" data-key="ag107">
+            <canvas class="nucleus-opt-canvas" data-key="ag107" width="96" height="42" style="display:block;image-rendering:pixelated;"></canvas>
+            <span class="nucleus-opt-label">Ag-107</span>
           </div>
         </div>
       </div>
@@ -1643,11 +1647,19 @@ function drawExcitedGlow(cx, cy, sphereR, intensity) {
 const NUCLEUS_DEFS = {
   u235: {
     label: 'U-235',
-    Z: 92, N: 143,           // particle counter physics label
-    animZ: 78, animN: 172,   // generateNucleus args (visual sphere packing)
-    prod1: { Z: 47, N: 103 }, prod2: { Z: 31, N: 69 },  // fission daughters (Xe/Sr branch)
+    Z: 92, N: 143,
+    animZ: 78, animN: 172,
+    prod1: { Z: 47, N: 103 }, prod2: { Z: 31, N: 69 },
     displayScale: 1.0,
     iconNP: 20, iconNN: 42, iconSeed: 0x9e3779b9, iconScale: 1.0,
+  },
+  u236: {
+    label: 'U-236',
+    Z: 92, N: 144,
+    animZ: 78, animN: 172,   // same animation sphere as U-235
+    prod1: { Z: 47, N: 103 }, prod2: { Z: 31, N: 69 },
+    displayScale: 1.0,
+    iconNP: 20, iconNN: 42, iconSeed: 0x9e3779b9, iconScale: 1.0,  // same seed → identical icon
   },
   ag107: {
     label: 'Ag-107',
