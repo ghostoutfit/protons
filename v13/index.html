@@ -859,6 +859,14 @@
 
 <canvas id="canvas"></canvas>
 
+<!-- Theme dots overlaid at top of chain bar chart panel -->
+<div id="chainColorRow" style="position:fixed;right:0;top:0;width:240px;display:none;z-index:50;justify-content:center;align-items:center;gap:10px;padding:7px 0;box-sizing:border-box;background:rgba(4,3,20,0.88);border-bottom:1px solid rgba(0,180,255,0.15);">
+  <button class="theme-btn chart-theme-btn active" data-theme="A" title="Synthwave" style="background:#1a6eff;"></button>
+  <button class="theme-btn chart-theme-btn" data-theme="B" title="Industrial" style="background:#bd00ff;"></button>
+  <button class="theme-btn chart-theme-btn" data-theme="C" title="Neon Blue" style="background:#00f5e0;"></button>
+  <button class="theme-btn chart-theme-btn" data-theme="L" title="Light mode" style="background:#fff;"></button>
+</div>
+
 <div id="devTimecodePanel">
   <div class="dev-hd">Timecodes</div>
   <div id="devTimecodeRows"></div>
@@ -1741,6 +1749,8 @@ function applyTab(tab) {
     totalFuelAdded = 0; energyInFields = 0; energyInMotion = 0;
   }
   document.getElementById('enrichBtn').style.display = tab === 'chain' ? '' : 'none';
+  const chainColorRow = document.getElementById('chainColorRow');
+  chainColorRow.style.display = tab === 'chain' ? 'flex' : 'none';
   heatmapDirty = true;
   if (typeof drawStaticFrame === 'function') drawStaticFrame();
   if (showParticles && !idleParticleRAF && typeof idleParticleLoop === 'function') idleParticleLoop();
@@ -3845,7 +3855,7 @@ let idleParticleRAF = null;
 function idleParticleLoop() {
   if (!showParticles) { idleParticleRAF = null; return; }
   if ((neutronState === 'idle' || neutronState === 'done') &&
-      currentTab === 'fission' && animParent && !nucleusDrag) {
+      currentTab === 'fission' && animParent) {
     updateParticleJitter(animParent.particles.length, 1, true);
     drawStaticFrame();
   }
@@ -4112,7 +4122,7 @@ function drawChainBarChart() {
       ];
 
   const labelH  = 62;
-  const titleH  = 20;
+  const titleH  = 38;
   const chartH  = PH - labelH - titleH;
   const baseline = gy + PH - labelH;
   const padL = 10, padR = 10;
@@ -4362,14 +4372,30 @@ function applyTheme(key) {
   document.body.style.background = t.bg;
   document.body.classList.remove('screenshot-mode');
   document.getElementById('themeLight').classList.remove('active');
-  document.querySelectorAll('.theme-btn:not(#themeLight)').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.theme-btn:not(#themeLight):not([data-theme="L"])').forEach(b => b.classList.remove('active'));
   document.getElementById('theme'+key).classList.add('active');
+  document.querySelectorAll('.chart-theme-btn[data-theme]').forEach(b => {
+    b.classList.toggle('active', b.dataset.theme === key);
+  });
   drawStaticFrame();
   drawForceViz();
 }
 document.getElementById('themeA').addEventListener('click', () => applyTheme('A'));
 document.getElementById('themeB').addEventListener('click', () => applyTheme('B'));
 document.getElementById('themeC').addEventListener('click', () => applyTheme('C'));
+// Chart overlay theme buttons
+document.querySelectorAll('.chart-theme-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (btn.dataset.theme === 'L') {
+      const on = document.body.classList.toggle('screenshot-mode');
+      document.getElementById('themeLight').classList.toggle('active', on);
+      document.querySelectorAll('.chart-theme-btn[data-theme="L"]').forEach(b => b.classList.toggle('active', on));
+      drawStaticFrame(); drawForceViz();
+    } else {
+      applyTheme(btn.dataset.theme);
+    }
+  });
+});
 function getBgColor() { return document.getElementById('bgColorPicker').value; }
 document.getElementById('bgColorPicker').addEventListener('input', function() {
   document.documentElement.style.setProperty('--bg-color', this.value);
@@ -4378,6 +4404,7 @@ document.getElementById('bgColorPicker').addEventListener('input', function() {
 document.getElementById('themeLight').addEventListener('click', () => {
   const on = document.body.classList.toggle('screenshot-mode');
   document.getElementById('themeLight').classList.toggle('active', on);
+  document.querySelectorAll('.chart-theme-btn[data-theme="L"]').forEach(b => b.classList.toggle('active', on));
   drawStaticFrame();
   drawForceViz();
 });

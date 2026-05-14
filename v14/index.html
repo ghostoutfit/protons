@@ -252,7 +252,7 @@
     background: rgba(255,45,120,0.15);
   }
 
-  #fullTimelineBtn, #separateFieldsBtn {
+  #fullTimelineBtn {
     padding: 4px 12px;
     border: 1px solid var(--accent2);
     border-radius: 8px;
@@ -273,8 +273,64 @@
     text-shadow: 0 0 4px rgba(255,255,255,0.5), 0 0 10px var(--accent2);
     transition: all 0.2s;
   }
-  #separateFieldsBtn { font-size: 18px; padding: 6px 18px; width: 100%; box-sizing: border-box; min-width: 0; }
-  #fullTimelineBtn:hover, #separateFieldsBtn:hover { background: var(--accent2-glow); }
+  #fullTimelineBtn:hover { background: var(--accent2-glow); }
+  #separateFieldsLabel {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 18px;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-family: 'Lexend', sans-serif;
+    color: rgba(255,255,255,0.5);
+    text-shadow: 0 0 4px rgba(255,255,255,0.5), 0 0 10px var(--accent2);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  #separateFieldsLabel input[type="checkbox"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    cursor: pointer;
+    background: rgba(6,4,24,0.92);
+    border: 2px solid var(--accent2);
+    border-radius: 5px;
+    box-shadow:
+      inset 0 0 6px rgba(26,110,255,0.15),
+      0 0 4px var(--accent2),
+      0 0 10px var(--accent2-glow),
+      0 0 22px rgba(26,110,255,0.2);
+    transition: box-shadow 0.2s, background 0.2s;
+    position: relative;
+  }
+  #separateFieldsLabel input[type="checkbox"]:checked {
+    background: rgba(26,110,255,0.25);
+    box-shadow:
+      inset 0 0 8px rgba(26,110,255,0.4),
+      0 0 6px var(--accent2),
+      0 0 16px var(--accent2),
+      0 0 32px var(--accent2-glow);
+  }
+  #separateFieldsLabel input[type="checkbox"]::after {
+    content: '';
+    display: none;
+    position: absolute;
+    left: 5px; top: 1px;
+    width: 7px; height: 12px;
+    border: 2.5px solid #fff;
+    border-top: none;
+    border-left: none;
+    transform: rotate(45deg);
+    filter: drop-shadow(0 0 3px var(--accent2));
+  }
+  #separateFieldsLabel input[type="checkbox"]:checked::after { display: block; }
 
   /* ── Selects ───────────────────────────────────────────────────────────── */
   select {
@@ -503,6 +559,10 @@
   .theme-btn:hover { transform: scale(1.2); box-shadow: 0 0 8px rgba(255,255,255,0.3); }
   .theme-btn.active { border-color: rgba(255,255,255,0.55); box-shadow: 0 0 6px rgba(255,255,255,0.4), 0 0 14px rgba(255,255,255,0.15); }
   #themeLight { background: #fff; }
+  #v14ThemeA  { background: #1a6eff; }
+  #v14ThemeB  { background: #bd00ff; }
+  #v14ThemeC  { background: #00f5e0; }
+  #v14ThemeLight { background: #fff; }
   #bgColorPicker { display:none; width:22px; height:22px; padding:2px; border-radius:4px; border:1px solid rgba(0,0,0,0.25); cursor:pointer; vertical-align:middle; margin-left:4px; }
   body.screenshot-mode #bgColorPicker { display:inline-block; }
   body.screenshot-mode,
@@ -553,10 +613,21 @@
   body.screenshot-mode #ieKeyLabel,
   body.screenshot-mode #energyPctIE { color: #777 !important; }
   body.screenshot-mode #scrubBar button { border-color: #000 !important; box-shadow: none !important; }
-  body.screenshot-mode #separateFieldsBtn { border-color: #000 !important; box-shadow: none !important; color: #000 !important; text-shadow: none !important; }
+  body.screenshot-mode #separateFieldsLabel { color: rgba(0,0,0,0.7) !important; text-shadow: none !important; }
   body.screenshot-mode #timeSlider { accent-color: #000 !important; }
   body.screenshot-mode #energyGraph { background: var(--bg-color, #fff) !important; }
   body.screenshot-mode #scrubRight { border-left-color: rgba(0,0,0,0.15) !important; }
+
+  .field-label-electric {
+    color: #46a5ff;
+    text-shadow: 0 0 4px #46a5ff, 0 0 10px rgba(70,165,255,0.5), 0 0 22px rgba(70,165,255,0.2);
+  }
+  .field-label-strong {
+    color: #ffb946;
+    text-shadow: 0 0 4px #ffb946, 0 0 10px rgba(255,185,70,0.5), 0 0 22px rgba(255,185,70,0.2);
+  }
+  body.screenshot-mode .field-label-electric { color: #46a5ff !important; }
+  body.screenshot-mode .field-label-strong   { color: #ffb946 !important; }
 </style>
 </head>
 <body>
@@ -571,8 +642,9 @@
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
     <button class="tab-btn" id="tempTabBtn" style="cursor:pointer" onclick="switchTab('temp')">TEMPERATURE</button>
     <button class="tab-btn active" id="fusionTabBtn" style="cursor:pointer" onclick="switchTab('fusion')">FUSION</button>
-    <button class="theme-btn" id="themeLight" title="Light mode"></button>
     <input type="color" id="bgColorPicker" value="#ffffff" title="Background color">
+    <!-- themeLight kept hidden for JS sync -->
+    <button class="theme-btn" id="themeLight" title="Light mode" style="display:none;"></button>
   </div>
   <div style="display:flex;align-items:stretch;gap:12px;">
   <div style="display:flex;flex-direction:column;justify-content:flex-end;align-self:stretch;gap:6px;padding-bottom:10px;margin-right:4px;">
@@ -624,14 +696,19 @@
       <input type="range" id="simSpeedSlider" min="1" max="10" step="1" value="7" style="flex:1;">
       <span class="slider-icon" title="Fast">🐇</span>
     </div>
-    <div style="border-top:1px solid rgba(255,255,255,0.08);margin-top:6px;padding-top:6px;width:100%;">
-      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-bottom:5px;">Development Values</div>
-      <label style="font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:6px;">SIE offset: <input type="number" id="sieOffsetInput" value="0" step="1" style="width:56px;background:rgba(10,8,30,0.8);color:var(--accent2);border:1px solid rgba(26,110,255,0.35);border-radius:6px;padding:2px 4px;font-size:11px;font-family:inherit;outline:none;"></label>
-      <label class="toggle-label" style="margin-top:4px;"><input type="checkbox" id="scaledEnergyToggle"> Scale</label>
-      <div id="frameCounter" style="margin-top:5px;font-size:10px;color:var(--text-dim);letter-spacing:0.05em;">frame: 0</div>
+    <div style="border-top:1px solid rgba(255,255,255,0.08);margin-top:6px;padding-top:6px;width:100%;display:flex;flex-direction:column;gap:4px;">
+      <label class="toggle-label"><input type="checkbox" id="electricFieldToggle" checked> <span class="field-label-electric">Show electric field</span></label>
+      <label class="toggle-label"><input type="checkbox" id="strongFieldToggle" checked> <span class="field-label-strong">Show strong field</span></label>
     </div>
   </div>
+  <!-- Hidden dev elements kept for JS compatibility -->
+  <div style="display:none;">
+    <input type="checkbox" id="scaledEnergyToggle">
+    <div id="frameCounter"></div>
+  </div>
   </div><!-- /fusionControls -->
+  <!-- SIE offset: outside blue box, for tuning combo energy offsets -->
+  <label id="sieOffsetLabel" style="display:none;font-size:11px;color:var(--text-dim);align-items:center;gap:6px;">SIE offset: <input type="number" id="sieOffsetInput" value="0" step="1" style="width:56px;background:rgba(10,8,30,0.8);color:var(--accent2);border:1px solid rgba(26,110,255,0.35);border-radius:6px;padding:2px 4px;font-size:11px;font-family:inherit;outline:none;"></label>
 
   <!-- Temperature tab controls -->
   <div id="tempControls" style="display:flex;align-items:stretch;gap:12px;">
@@ -714,9 +791,17 @@
   <canvas id="barChartCanvas"></canvas>
 </div>
 
+<!-- Theme color row — floats at top of bar chart panel (fusion tab only) -->
+<div id="v14ColorRow" style="position:fixed;right:0;top:0;width:320px;display:none;z-index:50;justify-content:center;align-items:center;gap:10px;padding:7px 0;box-sizing:border-box;background:rgba(4,3,20,0.88);border-bottom:1px solid rgba(0,180,255,0.15);">
+  <button class="theme-btn active" id="v14ThemeA" title="Synthwave"></button>
+  <button class="theme-btn" id="v14ThemeB" title="Industrial"></button>
+  <button class="theme-btn" id="v14ThemeC" title="Neon Blue"></button>
+  <button class="theme-btn" id="v14ThemeLight" title="Light mode"></button>
+</div>
+
 <!-- Separate Fields panel — floats just above the scrubBar on the right side -->
-<div id="separateFieldsPanel" style="position:fixed;right:0;bottom:0;display:none;z-index:22;width:320px;height:35px;align-items:center;justify-content:center;box-sizing:border-box;padding:0 8px;">
-  <button id="separateFieldsBtn">SEPARATE FIELDS</button>
+<div id="separateFieldsPanel" style="position:fixed;right:0;bottom:0;display:none;z-index:22;width:320px;height:35px;align-items:center;justify-content:center;box-sizing:border-box;">
+  <label id="separateFieldsLabel"><input type="checkbox" id="separateFieldsChk"> SHOW SEPARATE FIELDS</label>
 </div>
 
 <script>
@@ -889,7 +974,8 @@ let cameraSiteX = 0, cameraSiteY = 0;
 // ============================================================
 //  DISPLAY STATE
 // ============================================================
-let showField = true;
+let showElectricField = true;
+let showStrongField   = true;
 let barYRange = 24;
 let barYRangeScaled = null;  // null = auto (use combo max); set by drag when scaledEnergy
 let barScaleDrag = null;     // { startY, startRange } while dragging the scale
@@ -2419,9 +2505,9 @@ function draw() {
   const cx        = canvas.width  / 2;
   const cy        = canvas.height / 2;
 
-  if (showField && particles.length >= 2) {
-    drawHeatmap();
-    drawStrongHeatmap();
+  if (particles.length >= 2) {
+    if (showElectricField) drawHeatmap();
+    if (showStrongField)   drawStrongHeatmap();
   }
 
   ctx.save();
@@ -2523,13 +2609,17 @@ function renderFrame(idx) {
 //  LAYOUT / RESIZE
 // ============================================================
 function resizeBarChart() {
-  const scrubH  = document.getElementById('scrubBar').offsetHeight;
-  const panelH  = 35;
-  const gap     = 4;
-  const overlay = document.getElementById('barChartOverlay');
+  const scrubH   = document.getElementById('scrubBar').offsetHeight;
+  const panelH   = 35;
+  const gap      = 4;
+  const colorRow = document.getElementById('v14ColorRow');
+  const colorH   = colorRow.offsetHeight || 32;
+  const topOff   = colorH;
+  const overlay  = document.getElementById('barChartOverlay');
+  overlay.style.top    = topOff + 'px';
   overlay.style.bottom = (scrubH + panelH + gap) + 'px';
   barChartCanvas.width  = 320;
-  barChartCanvas.height = Math.max(1, window.innerHeight - scrubH - panelH - gap);
+  barChartCanvas.height = Math.max(1, window.innerHeight - topOff - scrubH - panelH - gap);
   document.getElementById('separateFieldsPanel').style.bottom = (scrubH + gap + 4) + 'px';
 }
 
@@ -2871,9 +2961,8 @@ timeSlider.addEventListener('input', () => {
 // ============================================================
 //  CONTROLS
 // ============================================================
-document.getElementById('separateFieldsBtn').addEventListener('click', function() {
-  splitIE = !splitIE;
-  this.textContent = splitIE ? 'COMBINED FIELDS' : 'SEPARATE FIELDS';
+document.getElementById('separateFieldsChk').addEventListener('change', function() {
+  splitIE = this.checked;
   if (!running) draw();
 });
 function updateGraphBtn() {
@@ -2944,6 +3033,14 @@ updateSpeedKeV();    // seed on load
 updateTempTempVal(); // seed on load
 document.getElementById('simSpeedSlider').addEventListener('input', function() {
   simSpeed = parseInt(this.value);
+});
+document.getElementById('electricFieldToggle').addEventListener('change', function() {
+  showElectricField = this.checked;
+  if (!running) draw();
+});
+document.getElementById('strongFieldToggle').addEventListener('change', function() {
+  showStrongField = this.checked;
+  if (!running) draw();
 });
 document.getElementById('sieOffsetInput').addEventListener('input', function() {
   sieOffset = parseFloat(this.value) || 0;
@@ -3560,6 +3657,9 @@ function switchTab(name) {
   document.getElementById('tempTabBtn').classList.toggle('active', name === 'temp');
   document.getElementById('fusionControls').style.display = name === 'fusion' ? 'flex' : 'none';
   document.getElementById('tempControls').style.display   = name === 'temp'   ? 'flex' : 'none';
+  document.getElementById('sieOffsetLabel').style.display = name === 'fusion' ? 'flex' : 'none';
+  const v14ColorRow = document.getElementById('v14ColorRow');
+  v14ColorRow.style.display = name === 'fusion' ? 'flex' : 'none';
   document.getElementById('scrubBar').style.display       = name === 'fusion' ? ''     : 'none';
   setScrubReplayDisabled(true);
   // Stop any running animation
@@ -4006,9 +4106,67 @@ document.getElementById('bgColorPicker').addEventListener('input', function() {
   document.documentElement.style.setProperty('--bg-color', this.value);
   if (currentTab === 'temp') drawTemp(); else draw();
 });
+
+// ─── Themes ───────────────────────────────────────────────────────────────────
+const THEMES = {
+  A: {
+    accent1:'#ff2d78', accent1dim:'rgba(255,45,120,0.22)', accent1glow:'rgba(255,45,120,0.55)',
+    accent2:'#1a6eff', accent2dim:'rgba(26,110,255,0.18)',  accent2glow:'rgba(26,110,255,0.45)',
+    uibg:'rgba(8,6,24,0.38)', uiborder:'rgba(255,255,255,0.07)',
+    textdim:'rgba(220,215,255,0.55)', textbright:'rgba(240,235,255,0.92)',
+    bg:'#05040f',
+  },
+  B: {
+    accent1:'#ff2d78', accent1dim:'rgba(255,45,120,0.22)', accent1glow:'rgba(255,45,120,0.5)',
+    accent2:'#bd00ff', accent2dim:'rgba(189,0,255,0.18)',  accent2glow:'rgba(189,0,255,0.42)',
+    uibg:'rgba(8,4,22,0.42)', uiborder:'rgba(189,0,255,0.14)',
+    textdim:'rgba(230,200,255,0.52)', textbright:'rgba(248,232,255,0.92)',
+    bg:'#05030f',
+  },
+  C: {
+    accent1:'#ff2d78', accent1dim:'rgba(255,45,120,0.22)', accent1glow:'rgba(255,45,120,0.5)',
+    accent2:'#00f5e0', accent2dim:'rgba(0,245,224,0.15)',  accent2glow:'rgba(0,245,224,0.4)',
+    uibg:'rgba(6,4,20,0.40)', uiborder:'rgba(255,45,120,0.12)',
+    textdim:'rgba(220,210,255,0.52)', textbright:'rgba(245,235,255,0.92)',
+    bg:'#04030e',
+  },
+};
+function applyTheme(key) {
+  const t = THEMES[key];
+  const r = document.documentElement.style;
+  r.setProperty('--accent1',      t.accent1);
+  r.setProperty('--accent1-dim',  t.accent1dim);
+  r.setProperty('--accent1-glow', t.accent1glow);
+  r.setProperty('--accent2',      t.accent2);
+  r.setProperty('--accent2-dim',  t.accent2dim);
+  r.setProperty('--accent2-glow', t.accent2glow);
+  r.setProperty('--ui-bg',        t.uibg);
+  r.setProperty('--ui-border',    t.uiborder);
+  r.setProperty('--text-dim',     t.textdim);
+  r.setProperty('--text-bright',  t.textbright);
+  document.body.style.background = t.bg;
+  document.body.classList.remove('screenshot-mode');
+  document.getElementById('themeLight').classList.remove('active');
+  document.querySelectorAll('#v14ThemeA,#v14ThemeB,#v14ThemeC').forEach(b => b.classList.remove('active'));
+  document.getElementById('v14ThemeLight').classList.remove('active');
+  document.getElementById('v14Theme' + key).classList.add('active');
+  if (currentTab === 'temp') drawTemp(); else draw();
+}
+document.getElementById('v14ThemeA').addEventListener('click', () => applyTheme('A'));
+document.getElementById('v14ThemeB').addEventListener('click', () => applyTheme('B'));
+document.getElementById('v14ThemeC').addEventListener('click', () => applyTheme('C'));
+document.getElementById('v14ThemeLight').addEventListener('click', () => {
+  const on = document.body.classList.toggle('screenshot-mode');
+  document.getElementById('themeLight').classList.toggle('active', on);
+  document.getElementById('v14ThemeLight').classList.toggle('active', on);
+  document.querySelectorAll('#v14ThemeA,#v14ThemeB,#v14ThemeC').forEach(b => b.classList.remove('active'));
+  if (currentTab === 'temp') drawTemp(); else draw();
+});
+
 document.getElementById('themeLight').addEventListener('click', () => {
   const on = document.body.classList.toggle('screenshot-mode');
   document.getElementById('themeLight').classList.toggle('active', on);
+  document.getElementById('v14ThemeLight').classList.toggle('active', on);
   if (currentTab === 'temp') drawTemp(); else draw();
 });
 
