@@ -273,7 +273,7 @@
     text-shadow: 0 0 4px rgba(255,255,255,0.5), 0 0 10px var(--accent2);
     transition: all 0.2s;
   }
-  #separateFieldsBtn { font-size: 15px; padding: 6px 18px; }
+  #separateFieldsBtn { font-size: 18px; padding: 6px 18px; width: 100%; box-sizing: border-box; min-width: 0; }
   #fullTimelineBtn:hover, #separateFieldsBtn:hover { background: var(--accent2-glow); }
 
   /* ── Selects ───────────────────────────────────────────────────────────── */
@@ -715,7 +715,7 @@
 </div>
 
 <!-- Separate Fields panel — floats just above the scrubBar on the right side -->
-<div id="separateFieldsPanel" style="position:fixed;right:16px;bottom:0;display:none;z-index:22;height:35px;align-items:center;justify-content:center;">
+<div id="separateFieldsPanel" style="position:fixed;right:0;bottom:0;display:none;z-index:22;width:320px;height:35px;align-items:center;justify-content:center;box-sizing:border-box;padding:0 8px;">
   <button id="separateFieldsBtn">SEPARATE FIELDS</button>
 </div>
 
@@ -2057,19 +2057,19 @@ function drawBarChart() {
 
   const bars = splitIE
     ? [
-        { label: 'Energy in Motion', value: displayKE,  color: '#ff2060', glow: 'rgba(255,20,80,0.9)'   },
+        { label: 'Energy of Motion', value: displayKE,  color: '#ff2060', glow: 'rgba(255,20,80,0.9)'   },
         { label: 'Electric',         value: displayEIE, color: '#00e5ff', glow: 'rgba(0,220,255,0.9)',   dashed: true },
         { label: 'Strong',           value: displaySIE, color: '#ff8040', glow: 'rgba(255,128,64,0.9)',  dashed: true },
       ]
     : [
-        { label: 'Energy in Motion', value: displayKE,  color: '#ff2060', glow: 'rgba(255,20,80,0.9)'   },
+        { label: 'Energy of Motion', value: displayKE,  color: '#ff2060', glow: 'rgba(255,20,80,0.9)'   },
         { label: 'Energy in Fields', value: displayIE,  color: '#7b6fff', glow: 'rgba(120,100,255,0.9)', dashed: true },
       ];
 
   if (LIGHT) {
     bars.forEach(b => {
       b.glow = 'rgba(0,0,0,0)';
-      if      (b.label === 'Energy in Motion') b.color = '#222';
+      if      (b.label === 'Energy of Motion') b.color = '#222';
       else if (b.label === 'Energy in Fields') b.color = '#666';
       else if (b.label === 'Electric')         b.color = '#555';
       else if (b.label === 'Strong')           b.color = '#999';
@@ -2184,17 +2184,17 @@ function drawBarChart() {
     ctx.save();
     ctx.shadowColor = bar.glow; ctx.shadowBlur = 6;
     ctx.fillStyle   = bar.color;
-    ctx.font        = 'bold 14px Lexend, sans-serif';
+    ctx.font        = 'bold 18px Lexend, sans-serif';
     const words = bar.label.split(' ');
     // For negative bars: show value just above the label
     if (scaledEnergy && bar.value < 0) {
-      ctx.font = 'bold 13px Lexend, sans-serif';
+      ctx.font = 'bold 15px Lexend, sans-serif';
       ctx.fillText(fmtMeV(bar.value) + ' MeV', x + bw / 2, baseline + 3);
-      ctx.font = 'bold 14px Lexend, sans-serif';
+      ctx.font = 'bold 18px Lexend, sans-serif';
     }
-    ctx.fillText(words.slice(0, 2).join(' '), x + bw / 2, baseline + 16);
-    ctx.fillText(words[2] || '',              x + bw / 2, baseline + 33);
-    if (words[3]) ctx.fillText(words[3],      x + bw / 2, baseline + 50);
+    ctx.fillText(words.slice(0, 2).join(' '), x + bw / 2, baseline + 22);
+    ctx.fillText(words[2] || '',              x + bw / 2, baseline + 39);
+    if (words[3]) ctx.fillText(words[3],      x + bw / 2, baseline + 56);
     ctx.restore();
   });
 
@@ -2206,7 +2206,7 @@ function drawBarChart() {
     ctx.save();
     ctx.shadowColor = LIGHT ? 'rgba(0,0,0,0)' : 'rgba(180,140,255,0.7)'; ctx.shadowBlur = LIGHT ? 0 : 8;
     ctx.fillStyle   = LIGHT ? '#000' : 'rgba(180,140,255,0.85)';
-    ctx.font        = 'bold 14px Lexend, sans-serif';
+    ctx.font        = 'bold 18px Lexend, sans-serif';
     ctx.textAlign   = 'center';
     ctx.fillText('Energy in Fields', centerX, baseline + 50);
     ctx.restore();
@@ -2530,7 +2530,7 @@ function resizeBarChart() {
   overlay.style.bottom = (scrubH + panelH + gap) + 'px';
   barChartCanvas.width  = 320;
   barChartCanvas.height = Math.max(1, window.innerHeight - scrubH - panelH - gap);
-  document.getElementById('separateFieldsPanel').style.bottom = (scrubH + gap) + 'px';
+  document.getElementById('separateFieldsPanel').style.bottom = (scrubH + gap + 4) + 'px';
 }
 
 function resize() {

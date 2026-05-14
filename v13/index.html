@@ -700,9 +700,7 @@
     text-transform: uppercase;
   }
   #scrubSlider { flex: 1; }
-  #scrubPct {
-    display: none;
-  }
+  #scrubPct { display: none; }
 
   .theme-btn {
     width: 18px; height: 18px;
@@ -917,21 +915,9 @@
             <canvas class="nucleus-opt-canvas" data-key="u235" width="96" height="42" style="display:block;image-rendering:pixelated;"></canvas>
             <span class="nucleus-opt-label">U-235</span>
           </div>
-          <div class="nucleus-opt" data-key="u236">
-            <canvas class="nucleus-opt-canvas" data-key="u236" width="96" height="42" style="display:block;image-rendering:pixelated;"></canvas>
-            <span class="nucleus-opt-label">U-236</span>
-          </div>
-          <div class="nucleus-opt" data-key="ba141">
-            <canvas class="nucleus-opt-canvas" data-key="ba141" width="96" height="42" style="display:block;image-rendering:pixelated;"></canvas>
-            <span class="nucleus-opt-label">Ba-141</span>
-          </div>
           <div class="nucleus-opt" data-key="ag107">
             <canvas class="nucleus-opt-canvas" data-key="ag107" width="96" height="42" style="display:block;image-rendering:pixelated;"></canvas>
             <span class="nucleus-opt-label">Ag-107</span>
-          </div>
-          <div class="nucleus-opt" data-key="kr92">
-            <canvas class="nucleus-opt-canvas" data-key="kr92" width="96" height="42" style="display:block;image-rendering:pixelated;"></canvas>
-            <span class="nucleus-opt-label">Kr-92</span>
           </div>
         </div>
       </div>
@@ -973,8 +959,12 @@
           <span class="field-label-electric">Show electric field</span>
         </label>
         <label class="toggle-label" id="daughterFuelRow" style="display:none;">
-          <input type="checkbox" id="daughterFuelChk" checked>
+          <input type="checkbox" id="daughterFuelChk">
           <span style="font-size:11px;">Daughters hit fuel</span>
+        </label>
+        <label class="toggle-label" id="neutronAbsorbRow" style="display:none;">
+          <input type="checkbox" id="neutronAbsorbChk">
+          <span style="font-size:11px;">Neutrons absorb</span>
         </label>
       </div>
       <div style="display:flex;gap:10px;align-self:stretch;align-items:center">
@@ -991,6 +981,7 @@
 
   </div>
 </div>
+<span id="scrubPct" style="display:none">0</span>
 
 <div id="scrubBar">
   <div id="scrubLeftPanel">
@@ -1027,7 +1018,6 @@
         <div id="egZoomHint">Click and drag on the line graph to zoom in</div>
       </div>
       <div id="scrubRowRightInner">
-        <span id="scrubPct">0</span>
         <button id="energyGraphToggle" class="btn">SHOW LINE GRAPH</button>
       </div>
     </div>
@@ -1740,6 +1730,7 @@ function applyTab(tab) {
   document.getElementById('zoomSliderRow').style.display     = isChain ? 'none' : '';
   document.getElementById('showElectricRow').style.display   = isChain ? 'none' : '';
   document.getElementById('daughterFuelRow').style.display   = isChain ? '' : 'none';
+  document.getElementById('neutronAbsorbRow').style.display  = isChain ? '' : 'none';
   document.getElementById('particleCounters').style.display  = isChain ? 'none' : '';
   document.getElementById('forceModeRow').style.display      = isChain ? 'none' : 'flex';
   if (tab === 'chain') {
@@ -1771,7 +1762,7 @@ const ANIM_T_START = 0.27;
 const ANIM_T_END   = 0.47;
 const ANIM_RANGE   = ANIM_T_END - ANIM_T_START;
 const FISS_STOP_T  = PH2_END + 0.40 * (ANIM_T_END - PH2_END);  // playback endpoint
-const NORMAL_DURATION       = 5000;  // ms — main nucleus phase 3 separation
+const NORMAL_DURATION       = 2500;  // ms — main nucleus phase 3 separation
 const CHAIN_NORMAL_DURATION = 5000;  // ms — chain-site daughters
 let SHAKE_DURATION  = 1000;  // ms — randomised on each hit (500–1500)
 
@@ -1892,23 +1883,31 @@ function drawAnimContent(t) {
 
   // Phase 2: excited state
   if (t <= PH2_END) {
-    const ph2Frac = (t - PH1_END) / (PH2_END - PH1_END);
     if (showElec) drawElectricHeatmap(animParent.particles, 0.5, 1.0, parentMask);
 
-    // Wobble: mode-driven signal (dip1/dip2/dip3/stable), all smooth, no kinks.
-    // deformAmp reaches full by ph2=0.10 so the first wobble is at full visual amplitude.
-    const deformAmp  = 0.15 * Math.min(1, ph2Frac / 0.10);
-    const normWobble = wobbleSignal(ph2Frac, wobbleMode);    // 0=circular, 1=max oblong
-    const wobble     = deformAmp * normWobble;
+    // Energy-driven deformation: read the same values the graph displays so
+    // the animation always matches the bar chart exactly, for any nucleus/outcome.
+    //   eie above baseline → how oblong (field energy stored as deformation)
+    //   ke relative to baseline → how jittery (KE = particle motion)
+    const { ke, eie } = computeEnergy(currentScrubFrac);  // currentScrubFrac is the global; frac not in scope here
+    const EIE_BASE   = 0.38;   // pre-neutron field energy
+    const EIE_RANGE  = 0.47;   // 0.85 − 0.38 = full fission swing
+    const DEFORM_MAX = 0.15;
+    const stableMult = wobbleMode === 'stable' ? 0.70 : 1.0;
+
+    const normWobble = Math.max(0, (eie - EIE_BASE) / EIE_RANGE);  // 0=circular, 1=fully oblong
+    const wobble     = DEFORM_MAX * normWobble * stableMult;
     const scaleAlong = 1 + wobble;
     const scalePerp  = 1 / (1 + wobble * 0.7);
-    const jitterS    = 0.85 * (1 - normWobble * 0.88);
+    const jitterS    = 0.85 * Math.min(1, ke / 0.626);  // jitter tracks KE exactly
 
+    // ph2Frac only for the nucleus-center outAmp ramp at the very start of phase 2
+    const ph2Frac = (t - PH1_END) / (PH2_END - PH1_END);
     const outAmp = PARTICLE_RADIUS * 0.035 * Math.min(1, ph2Frac / 0.12);
     const jx = outAmp * Math.sin(t * 180);
     const jy = outAmp * Math.cos(t * 150);
 
-    const glowIntensity = Math.min(1, ph2Frac / 0.3);
+    const glowIntensity = normWobble;
 
     const ncx = animParent.cx, ncy = animParent.cy;
     const cosA = Math.cos(staticFissAngle), sinA = Math.sin(staticFissAngle);
@@ -2170,7 +2169,8 @@ let enrichSites   = [];    // [{cx,cy,state,fissStart,fissT,angle,shakeDur,neutr
 let chainNeutrons = [];    // [{x,y,vx,vy}]
 let chainRAF      = null;
 let lastChainTime = null;
-let daughterFuelCollide    = true;   // dev toggle: daughters bounce off fuel sites
+let daughterFuelCollide    = false;  // daughters bounce off fuel sites
+let neutronAbsorb          = false;  // neutrons absorbed on contact with non-fuel particles
 let isFirstChainFission   = true;   // first chain trigger always uses dip1 (guaranteed fission)
 let mainNeutronsEmitted    = false;
 let mainEnergyTransferred  = false;
@@ -2248,7 +2248,8 @@ function updateChain(now) {
     for (const site of enrichSites) {
       if (site.state !== 'idle') continue;
       if (Math.hypot(n.x - site.cx, n.y - site.cy) < captureR) {
-        triggerEnrichSite(site);
+        if (!site.isControl) triggerEnrichSite(site);
+        // Control material absorbs the neutron silently; fuel triggers fission
         chainNeutrons.splice(i, 1);
         absorbed = true;
         break;
@@ -2357,6 +2358,12 @@ function updateChain(now) {
       const dist = Math.sqrt(dx * dx + dy * dy);
       const minD = a.r + b2.r;
       if (dist >= minD || dist < 0.001) continue;
+      // Neutron absorption: neutron touching a heavy particle disappears silently
+      if (neutronAbsorb && (a.m === 1) !== (b2.m === 1)) {
+        const neutronRef = a.m === 1 ? a.p : b2.p;
+        neutronRef._absorb = true;
+        continue;
+      }
       const nx = dx / dist, ny = dy / dist;
       const totalM = a.m + b2.m;
       // Push apart proportional to mass
@@ -2399,19 +2406,27 @@ function updateChain(now) {
     }
   }
 
-  // Neutrons bounce off non-idle, non-failed fuel sites (failed sites handled by KMT)
+  // Neutrons bounce off (or are absorbed by) non-idle, non-failed fuel sites
   for (const site of enrichSites) {
     if (site.state === 'idle') continue;
     if (site.state === 'done' && site.wobbleMode === 'stable') continue;
     for (const n of chainNeutrons) {
+      if (neutronAbsorb && n._absorb) continue;
       const dx = n.x - site.cx, dy = n.y - site.cy;
       const dist = Math.sqrt(dx * dx + dy * dy);
       const minD = PARTICLE_RADIUS + sphereR;
       if (dist >= minD || dist < 0.001) continue;
+      if (neutronAbsorb) { n._absorb = true; continue; }
       const nx = dx / dist, ny = dy / dist;
       n.x = site.cx + nx * minD;  n.y = site.cy + ny * minD;
       const dot = n.vx * nx + n.vy * ny;
       if (dot < 0) { n.vx -= 2 * dot * nx;  n.vy -= 2 * dot * ny; }
+    }
+  }
+  // Remove neutrons flagged for absorption this tick
+  if (neutronAbsorb) {
+    for (let i = chainNeutrons.length - 1; i >= 0; i--) {
+      if (chainNeutrons[i]._absorb) chainNeutrons.splice(i, 1);
     }
   }
 }
@@ -2549,10 +2564,34 @@ function drawChainOverlay() {
     ctx.restore();
   }
 
+  // Helper: silver ring + "C" label for control material sites
+  function drawControlRing(cx, cy, r) {
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, r * 1.18, 0, Math.PI * 2);
+    ctx.strokeStyle = _LIGHT ? 'rgba(0,100,200,0.85)' : 'rgba(160,220,255,0.9)';
+    ctx.lineWidth   = 3;
+    ctx.shadowBlur  = _LIGHT ? 0 : 14;
+    ctx.shadowColor = 'rgba(140,210,255,0.85)';
+    ctx.setLineDash([6, 5]);
+    ctx.stroke();
+    ctx.restore();
+    // "C" label below the nucleus
+    ctx.save();
+    ctx.font      = `bold ${Math.round(r * 0.55)}px monospace`;
+    ctx.fillStyle = _LIGHT ? 'rgba(0,80,180,0.9)' : 'rgba(160,220,255,0.95)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.shadowBlur  = _LIGHT ? 0 : 8;
+    ctx.shadowColor = 'rgba(140,210,255,0.8)';
+    ctx.fillText('C', cx, cy + r * 1.22);
+    ctx.restore();
+  }
+
   // ── FOREGROUND LAYER: idle fuel, actively fissioning sites, fresh neutrons ──
   for (const site of enrichSites) {
     if (site.state === 'idle') {
       drawChainNucleus(site.cx, site.cy, sphereR, site.viewAngle);
+      if (site.isControl) drawControlRing(site.cx, site.cy, sphereR);
     } else if (site.state === 'fission') {
       const t = site.fissT;
       if (t <= PH2_END) {
@@ -2798,14 +2837,17 @@ function drawForceViz() {
   const t  = PH1_END + ff * (FISS_STOP_T - PH1_END);
 
   if (t <= PH2_END) {
-    // Phase 2: wobble — strong shrinks, electric stays
-    const ph2 = (t - PH1_END) / (PH2_END - PH1_END);
-    const w   = wobbleSignal(ph2, wobbleMode);
-    const deformAmp  = 0.15 * Math.min(1, ph2 / 0.10);
-    const wobble     = deformAmp * w;
+    // Phase 2: wobble — energy-driven, same source as the bar chart
+    const { ke: _ke, eie } = computeEnergy(frac);
+    const EIE_BASE   = 0.38;
+    const EIE_RANGE  = 0.47;
+    const DEFORM_MAX = 0.15;
+    const stableMult = wobbleMode === 'stable' ? 0.70 : 1.0;
+    const normWobble = Math.max(0, (eie - EIE_BASE) / EIE_RANGE);
+    const wobble     = DEFORM_MAX * normWobble * stableMult;
     const scaleAlong = 1 + wobble;
     const scalePerp  = 1 / (1 + wobble * 0.7);
-    const deformFrac = deformAmp * w / 0.15;  // 0=spherical → 1=max elongation
+    const deformFrac = normWobble * stableMult;  // 0=spherical → 1=max elongation; drives strong arrow
 
     let ph2Particles = null;
     if (showParticles && animParent) {
@@ -2892,6 +2934,8 @@ function updateEnergyPct() {
 }
 
 function updatePhaseTimeline() {
+  const tl = document.getElementById('phaseTimeline');
+  if (tl) tl.style.display = wobbleMode === 'stable' ? 'none' : '';
   const f   = currentScrubFrac;                      // current position (for highlight)
   const rev = Math.max(f, maxRevealedFrac);           // how far playback has ever reached
   const before = document.getElementById('phaseSeg-before');
@@ -2972,6 +3016,11 @@ function neutronTick(now) {
     isFirstFission = false;
     updateTimecodes();
     SHAKE_DURATION = (5 + Math.random() * 10) * 100;   // 500–1500 ms (1 unit = 100 ms)
+    if (wobbleMode === 'stable') SHAKE_DURATION *= 1.5;  // stable wobbles run 1.5× slower
+    // For stable (failed) reactions the timeline ends at frame 700 — resize slider and graph to match
+    const stableEnd = wobbleMode === 'stable' ? 0.70 : 1.0;
+    document.getElementById('scrubSlider').max = Math.round(stableEnd * 1000);
+    egZoomStart = 0; egZoomEnd = stableEnd;
     resetExcitedSpots();
     staticFissT      = PH1_END;
     currentScrubFrac = NEUTRON_FRAC;
@@ -3088,7 +3137,8 @@ function fissionTick(now) {
   syncForceVizVisibility();
   renderAtFrac(currentScrubFrac);
   drawForceViz();
-  if (staticFissT < FISS_STOP_T) {
+  const stableDone = wobbleMode === 'stable' && currentScrubFrac >= 0.70 && currentTab !== 'chain';
+  if (staticFissT < FISS_STOP_T && !stableDone) {
     neutronRAF = requestAnimationFrame(fissionTick);
   } else {
     neutronState = 'done';
@@ -3573,6 +3623,8 @@ document.getElementById('goBtn').addEventListener('click', () => {
   neutronLast  = 0;
   egCtx.clearRect(0, 0, egCanvas.width, egCanvas.height);
   maxRevealedFrac = 0;
+  egZoomStart = 0; egZoomEnd = 1;  // will be narrowed to 0.70 if stable, once wobbleMode is known at impact
+  document.getElementById('scrubSlider').max = 1000;
   if (currentTab !== 'chain') document.getElementById('scrubBar').classList.add('visible');
   document.getElementById('scrubSlider').value = 0;
   document.getElementById('scrubPct').textContent = '0';
@@ -3627,12 +3679,15 @@ document.getElementById('scrubSlider').addEventListener('input', function () {
 
 // ─── Nucleus wheel ─────────────────────────────────────────────────────────────
 function selectNucleus(key) {
+  if (key !== selectedNucleusKey) isFirstFission = true;  // switching nucleus resets to single-wobble dip1
   selectedNucleusKey = key;
   document.getElementById('newBtnLabel').textContent = NUCLEUS_DEFS[key].label;
   document.querySelectorAll('.nucleus-opt').forEach(el => {
     el.classList.toggle('selected', el.dataset.key === key);
   });
   document.getElementById('nucleusWheel').classList.remove('open');
+  document.getElementById('enrichBtn').textContent =
+    key === 'ag107' ? 'Add control material' : 'Add more fuel';
 }
 
 (function bindNucleusWheel() {
@@ -3640,12 +3695,11 @@ function selectNucleus(key) {
   let tid = null;
   wheel.addEventListener('mouseenter', () => { clearTimeout(tid); wheel.classList.add('open'); });
   wheel.addEventListener('mouseleave', () => { tid = setTimeout(() => wheel.classList.remove('open'), 120); });
-  // Option clicks: select nucleus and start new sim
+  // Option clicks: select nucleus (does NOT reset the sim — preserves existing sites)
   wheel.addEventListener('click', (e) => {
     const opt = e.target.closest('.nucleus-opt');
     if (!opt) return;
     selectNucleus(opt.dataset.key);
-    document.getElementById('newBtn').click();
   });
 })();
 
@@ -3717,6 +3771,9 @@ document.getElementById('clearBtn').addEventListener('click', () => {
 document.getElementById('daughterFuelChk').addEventListener('change', function() {
   daughterFuelCollide = this.checked;
 });
+document.getElementById('neutronAbsorbChk').addEventListener('change', function() {
+  neutronAbsorb = this.checked;
+});
 
 document.getElementById('enrichBtn').addEventListener('click', () => {
   if (!animParent) return;
@@ -3736,11 +3793,12 @@ document.getElementById('enrichBtn').addEventListener('click', () => {
       enrichSites.some(s => Math.hypot(cx - s.cx, cy - s.cy) < minDist)
     ));
     if (attempts < 60) {
+      const isCtrl = selectedNucleusKey === 'ag107';
       enrichSites.push({ cx, cy, vx: 0, vy: 0, state: 'idle', fissStart: 0, fissT: PH1_END,
                          angle: 0, shakeDur: 600, neutronsEmitted: false,
-                         viewAngle: Math.random() * Math.PI * 2 });
-      totalFuelAdded++;
-      energyInFields++;
+                         viewAngle: Math.random() * Math.PI * 2,
+                         isControl: isCtrl });
+      if (!isCtrl) { totalFuelAdded++; energyInFields++; }
     }
   }
   drawStaticFrame();
@@ -3777,7 +3835,7 @@ document.getElementById('energyGraphToggle').addEventListener('click', function(
     document.getElementById('scrubGraphKey').classList.remove('visible');
     document.getElementById('energyPctDisplay').style.display = 'none';
   } else {
-    egZoomStart = 0; egZoomEnd = 1;
+    egZoomStart = 0; egZoomEnd = wobbleMode === 'stable' ? 0.70 : 1;
     drawEnergyGraph();
   }
   updateGraphBtn();
@@ -4045,11 +4103,11 @@ function drawChainBarChart() {
 
   const bars = LIGHT
     ? [
-        { label: 'Energy in Motion', value: energyInMotion, color: '#222', glow: 'rgba(0,0,0,0)' },
+        { label: 'Energy of Motion', value: energyInMotion, color: '#222', glow: 'rgba(0,0,0,0)' },
         { label: 'Energy in Fields', value: energyInFields, color: '#666', glow: 'rgba(0,0,0,0)' },
       ]
     : [
-        { label: 'Energy in Motion', value: energyInMotion, color: '#ff2060', glow: 'rgba(255,20,80,0.9)'   },
+        { label: 'Energy of Motion', value: energyInMotion, color: '#ff2060', glow: 'rgba(255,20,80,0.9)'   },
         { label: 'Energy in Fields', value: energyInFields, color: '#7b6fff', glow: 'rgba(120,100,255,0.9)' },
       ];
 
@@ -4201,7 +4259,7 @@ function drawEnergyGraph() {
   }
 
   plotLine(_ieCol, _ieGlow, e => e.eie, [5, 4]);  // Energy in Fields
-  plotLine(_keCol, _keGlow, e => e.ke);            // Energy in Motion
+  plotLine(_keCol, _keGlow, e => e.ke);            // Energy of Motion
 
   // Drag-to-zoom selection overlay
   if (egDragStartPx !== null && egDragCurPx !== null) {
