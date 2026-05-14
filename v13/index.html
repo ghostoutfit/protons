@@ -1808,15 +1808,20 @@ function wobbleSignal(ph2, mode) {
   if (mode === 'dip1') {
     return (1 - Math.cos(Math.PI * ph2)) / 2;
   }
-  const nFull = mode === 'dip2' ? 1 : 2;   // full cycles before elongation (stable uses all 3 as full)
-  const nSegs = mode === 'stable' ? 3 : nFull + 1;
+  if (mode === 'stable') {
+    // Three full cycles: cycles 1+2 each take 1/5 of ph2, cycle 3 takes 3/5 (3× slower)
+    const segs = [0, 0.2, 0.4, 1.0];
+    const i = ph2 < segs[1] ? 0 : ph2 < segs[2] ? 1 : 2;
+    const p = (ph2 - segs[i]) / (segs[i + 1] - segs[i]);
+    return (1 - Math.cos(2 * Math.PI * p)) / 2;
+  }
+  const nFull = mode === 'dip2' ? 1 : 2;
+  const nSegs = nFull + 1;
   const T = 1 / nSegs;
-  if (mode !== 'stable' && ph2 > nFull * T) {
-    // Final half-cosine elongation
+  if (ph2 > nFull * T) {
     const p = (ph2 - nFull * T) / T;
     return (1 - Math.cos(Math.PI * p)) / 2;
   }
-  // Full cosine cycle
   const i = Math.min(nSegs - 1, Math.floor(ph2 / T));
   const p = (ph2 - i * T) / T;
   return (1 - Math.cos(2 * Math.PI * p)) / 2;
@@ -3988,8 +3993,12 @@ function computeEnergy(frac) {
     //         f'(1)=0 — so the descent flattens to zero slope right at the minimum,
     //         rounding the bottom of the dip.
     const keHigh = 0.626 - 0.06 * ph2;
+    // stable: per-cycle amplitude table — step at cycle boundaries is invisible because
+    // normWobble=0 there (keLow has no effect when the nucleus is at rest between cycles).
+    const stableAmps = [0.20, 0.40, 0.20];  // cycle 1: small, cycle 2: large, cycle 3: small
+    const stableCycle = ph2 < 0.2 ? 0 : ph2 < 0.4 ? 1 : 2;
     const keLow  = wobbleMode === 'stable'
-                   ? 0.626 - 0.40 * Math.sin(Math.PI * ph2)          // stable: bell curve — cycle 2 deepest, cycles 1&3 half depth
+                   ? 0.626 - stableAmps[stableCycle]
                    : 0.626 - 0.476 * (2 * ph2 - ph2 * ph2);          // fission: → 0.15, zero slope at ph2=1
     const t01 = (1 - Math.cos(normWobble * Math.PI)) / 2;
     const ke  = keHigh - (keHigh - keLow) * t01;
@@ -3998,10 +4007,8 @@ function computeEnergy(frac) {
 
   const ph3 = (t - E_PH2) / (ANIM_T_END - E_PH2);
   if (wobbleMode === 'stable') {
-    // No fission — nucleus relaxes back toward pre-neutron KE (S-curve)
-    const s  = (1 - Math.cos(ph3 * Math.PI)) / 2;
-    const ke = 0.566 + 0.054 * s;   // 0.566 → 0.62 smoothly
-    return { ke, eie: 1 - ke };
+    // Flat after the 3rd wobble ends — nucleus at rest, no energy change
+    return { ke: 0.566, eie: 0.434 };
   }
   // Fission: KE stays flat at 0.15 until frame 680, then Coulomb ramp begins.
   // Daughters are created at ANIM_T_END but fly apart — KE only rises visibly
