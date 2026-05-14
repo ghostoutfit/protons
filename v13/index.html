@@ -921,6 +921,10 @@
             <canvas class="nucleus-opt-canvas" data-key="ag107" width="96" height="42" style="display:block;image-rendering:pixelated;"></canvas>
             <span class="nucleus-opt-label">Ag-107</span>
           </div>
+          <div class="nucleus-opt" data-key="kr92">
+            <canvas class="nucleus-opt-canvas" data-key="kr92" width="96" height="42" style="display:block;image-rendering:pixelated;"></canvas>
+            <span class="nucleus-opt-label">Kr-92</span>
+          </div>
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:5px;align-items:stretch;">
@@ -1646,8 +1650,16 @@ const NUCLEUS_DEFS = {
     Z: 47, N: 60,
     animZ: 47, animN: 60,
     prod1: { Z: 25, N: 33 }, prod2: { Z: 22, N: 27 },  // placeholder daughters — fission TBD
-    displayScale: 0.90,      // post-generation scale → ~17% smaller visual radius than U-235
+    displayScale: 0.90,
     iconNP: 10, iconNN: 13, iconSeed: 0x1a2b3c4d, iconScale: 0.65,
+  },
+  kr92: {
+    label: 'Kr-92',
+    Z: 36, N: 56,
+    animZ: 36, animN: 56,
+    prod1: { Z: 19, N: 30 }, prod2: { Z: 17, N: 26 },  // placeholder daughters — fission TBD
+    displayScale: 0.90,
+    iconNP: 9, iconNN: 12, iconSeed: 0x4f3a1c8e, iconScale: 0.65,
   },
 };
 let selectedNucleusKey = 'u235';
