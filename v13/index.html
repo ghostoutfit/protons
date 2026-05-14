@@ -428,44 +428,40 @@
   }
   .ctrl-box-pink input[type="range"] { width: 120px; }
 
-  /* ── NEW button nucleus dropdown ───────────────────────────────────────────── */
-  .new-btn-wrap { position: relative; display: flex; flex-direction: column; align-self: stretch; }
-  .nucleus-drop {
+  /* ── NEW button nucleus wheel (pwheel-style hover dropdown) ────────────────── */
+  .pwheel { position: relative; display: flex; flex-direction: column; align-self: stretch; }
+  .pwheel-drop {
     position: absolute;
     top: calc(100% + 5px);
-    left: 0;
-    z-index: 200;
+    left: 50%;
+    transform: translateX(-50%) translateY(-4px);
+    display: flex;
+    flex-direction: row;
+    gap: 6px;
+    padding: 8px;
     background: rgba(8,6,24,0.97);
     border: 1px solid rgba(255,45,120,0.28);
-    border-radius: 10px;
-    padding: 5px;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    min-width: 100%;
+    border-radius: 12px;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.15s, transform 0.15s;
-    transform: translateY(-4px);
+    z-index: 200;
   }
-  .nucleus-drop.open { opacity: 1; pointer-events: auto; transform: translateY(0); }
+  .pwheel.open .pwheel-drop { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); }
   .nucleus-opt {
-    padding: 5px 12px;
-    border-radius: 7px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 8px;
+    border-radius: 8px;
     border: 1px solid transparent;
-    background: transparent;
-    color: rgba(255,255,255,0.7);
-    font-family: inherit;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    text-align: left;
     cursor: pointer;
-    white-space: nowrap;
     transition: border-color 0.1s, background 0.1s;
   }
   .nucleus-opt:hover { border-color: rgba(255,45,120,0.35); background: rgba(255,45,120,0.08); }
-  .nucleus-opt.selected { border-color: rgba(255,45,120,0.65); background: rgba(255,45,120,0.15); color: rgba(255,255,255,0.95); }
+  .nucleus-opt.selected { border-color: rgba(255,45,120,0.65); background: rgba(255,45,120,0.15); }
+  .nucleus-opt-label { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: rgba(255,255,255,0.75); font-family: inherit; }
 
   .ctrl-box-blue {
     display: flex;
@@ -908,18 +904,23 @@
 
     <!-- Pink box: New button + neutron speed + particle counters + Add more fuel -->
     <div class="ctrl-box-pink">
-      <div class="new-btn-wrap">
+      <div class="pwheel" id="nucleusWheel">
         <button id="newBtn" class="btn" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;align-self:stretch;padding:6px 12px;">
           <canvas id="newBtnNucleus" width="96" height="42" style="display:block;flex-shrink:0;image-rendering:pixelated"></canvas>
-          <span style="font-size:11px;">New</span>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <span id="newBtnLabel" style="font-size:11px;">U-235</span>
+            <span style="font-size:8px;opacity:0.45;">▾</span>
+          </div>
         </button>
-        <button id="nucleusPickBtn" class="btn" style="padding:3px 10px;font-size:10px;display:flex;align-items:center;justify-content:center;gap:5px;border-color:rgba(255,45,120,0.25);">
-          <span id="newBtnLabel">U-235</span>
-          <span style="opacity:0.45;font-size:8px;line-height:1;">▾</span>
-        </button>
-        <div id="nucleusDrop" class="nucleus-drop">
-          <button class="nucleus-opt selected" data-key="u235">U-235</button>
-          <button class="nucleus-opt" data-key="ag107">Ag-107 (Silver)</button>
+        <div class="pwheel-drop">
+          <div class="nucleus-opt selected" data-key="u235">
+            <canvas class="nucleus-opt-canvas" data-key="u235" width="96" height="42" style="display:block;image-rendering:pixelated;"></canvas>
+            <span class="nucleus-opt-label">U-235</span>
+          </div>
+          <div class="nucleus-opt" data-key="ag107">
+            <canvas class="nucleus-opt-canvas" data-key="ag107" width="96" height="42" style="display:block;image-rendering:pixelated;"></canvas>
+            <span class="nucleus-opt-label">Ag-107</span>
+          </div>
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:5px;align-items:stretch;">
@@ -1637,14 +1638,14 @@ const NUCLEUS_DEFS = {
     Z: 92, N: 143,           // particle counter physics label
     animZ: 78, animN: 172,   // generateNucleus args (visual sphere packing)
     prod1: { Z: 47, N: 103 }, prod2: { Z: 31, N: 69 },  // fission daughters (Xe/Sr branch)
-    iconNP: 20, iconNN: 42, iconSeed: 0x9e3779b9,
+    iconNP: 20, iconNN: 42, iconSeed: 0x9e3779b9, iconScale: 1.0,
   },
   ag107: {
     label: 'Ag-107',
     Z: 47, N: 60,
     animZ: 78, animN: 172,   // same visual sphere as U-235 for now — fission TBD
     prod1: { Z: 47, N: 103 }, prod2: { Z: 31, N: 69 },  // placeholder — fission TBD
-    iconNP: 10, iconNN: 13, iconSeed: 0x1a2b3c4d,
+    iconNP: 10, iconNN: 13, iconSeed: 0x1a2b3c4d, iconScale: 0.65,
   },
 };
 let selectedNucleusKey = 'u235';
@@ -3161,22 +3162,26 @@ function buildNucleusIconParticles(nP, nN, seed) {
   }
   return pts.sort((a, b) => a.oz - b.oz);  // back-to-front
 }
-let nucleusIconParticles = buildNucleusIconParticles(
-  NUCLEUS_DEFS.u235.iconNP, NUCLEUS_DEFS.u235.iconNN, NUCLEUS_DEFS.u235.iconSeed
-);
+// Precompute particle arrays for all nucleus options
+const nucleusIconParticlesMap = {};
+for (const [key, nd] of Object.entries(NUCLEUS_DEFS)) {
+  nucleusIconParticlesMap[key] = buildNucleusIconParticles(nd.iconNP, nd.iconNN, nd.iconSeed);
+}
 
-function drawNucleusIcon(canvas) {
+// drawNucleusIcon: draws `particles` into `canvas` at the given draw scale.
+// scale < 1 shrinks both the particle positions and their rendered radius.
+function drawNucleusIcon(canvas, particles, scale = 1.0) {
   if (!canvas) return;
   const c = canvas.getContext('2d');
   const w = canvas.width, h = canvas.height;
-  const cx = w / 2 - 6, cy = h / 2;
-  const R = 4;
+  const cx = w / 2, cy = h / 2;
+  const R = 4 * scale;
 
   c.clearRect(0, 0, w, h);
 
-  for (const p of nucleusIconParticles) {
-    const px = cx + p.ox + p.jx;
-    const py = cy + p.oy + p.jy;
+  for (const p of particles) {
+    const px = cx + (p.ox + p.jx) * scale;
+    const py = cy + (p.oy + p.jy) * scale;
     const isProton = p.type === 'proton';
     const mid  = isProton ? '#ff1a65' : '#70707f';
     const core = isProton ? '#ff80b0' : '#b0b0c4';
@@ -3194,7 +3199,7 @@ function drawNucleusIcon(canvas) {
     innerGlow.addColorStop(1,   'rgba(0,0,0,0)');
     c.save();
     c.shadowColor = core;
-    c.shadowBlur  = 4;
+    c.shadowBlur  = 4 * scale;
     c.globalAlpha = 0.82;
     c.fillStyle = innerGlow;
     c.beginPath(); c.arc(px, py, R, 0, Math.PI * 2); c.fill();
@@ -3297,11 +3302,14 @@ function drawOutlineIcon() {
 }
 
 function nucleusIconLoop() {
-  for (const p of nucleusIconParticles) {
-    p.jx += (Math.random() - 0.5) * 0.7;
-    p.jy += (Math.random() - 0.5) * 0.7;
-    p.jx *= 0.78;
-    p.jy *= 0.78;
+  // Animate jitter for all nucleus particle arrays
+  for (const pts of Object.values(nucleusIconParticlesMap)) {
+    for (const p of pts) {
+      p.jx += (Math.random() - 0.5) * 0.7;
+      p.jy += (Math.random() - 0.5) * 0.7;
+      p.jx *= 0.78;
+      p.jy *= 0.78;
+    }
   }
   for (const p of miniNucleusIconParticles) {
     p.jx += (Math.random() - 0.5) * 0.4;
@@ -3309,7 +3317,17 @@ function nucleusIconLoop() {
     p.jx *= 0.78;
     p.jy *= 0.78;
   }
-  drawNucleusIcon(document.getElementById('newBtnNucleus'));
+  // Draw trigger (current selection)
+  drawNucleusIcon(
+    document.getElementById('newBtnNucleus'),
+    nucleusIconParticlesMap[selectedNucleusKey],
+    NUCLEUS_DEFS[selectedNucleusKey].iconScale
+  );
+  // Draw option canvases in dropdown
+  document.querySelectorAll('.nucleus-opt-canvas').forEach(c => {
+    const k = c.dataset.key;
+    drawNucleusIcon(c, nucleusIconParticlesMap[k], NUCLEUS_DEFS[k].iconScale);
+  });
   drawMiniNucleusIcon(document.getElementById('particlesModeIcon'));
   requestAnimationFrame(nucleusIconLoop);
 }
@@ -3553,44 +3571,32 @@ document.getElementById('scrubSlider').addEventListener('input', function () {
   updatePhaseTimeline();
 });
 
-// ─── Nucleus dropdown ─────────────────────────────────────────────────────────
+// ─── Nucleus wheel ─────────────────────────────────────────────────────────────
 function selectNucleus(key) {
   selectedNucleusKey = key;
-  const nd = NUCLEUS_DEFS[key];
-  // Update label
-  document.getElementById('newBtnLabel').textContent = nd.label;
-  // Rebuild icon
-  nucleusIconParticles = buildNucleusIconParticles(nd.iconNP, nd.iconNN, nd.iconSeed);
-  // Highlight selected option
-  document.querySelectorAll('.nucleus-opt').forEach(btn => {
-    btn.classList.toggle('selected', btn.dataset.key === key);
+  document.getElementById('newBtnLabel').textContent = NUCLEUS_DEFS[key].label;
+  document.querySelectorAll('.nucleus-opt').forEach(el => {
+    el.classList.toggle('selected', el.dataset.key === key);
   });
-  // Close dropdown
-  document.getElementById('nucleusDrop').classList.remove('open');
+  document.getElementById('nucleusWheel').classList.remove('open');
 }
 
-document.querySelectorAll('.nucleus-opt').forEach(btn => {
-  btn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    selectNucleus(btn.dataset.key);
-    // Trigger a new sim for the newly selected nucleus
+(function bindNucleusWheel() {
+  const wheel = document.getElementById('nucleusWheel');
+  let tid = null;
+  wheel.addEventListener('mouseenter', () => { clearTimeout(tid); wheel.classList.add('open'); });
+  wheel.addEventListener('mouseleave', () => { tid = setTimeout(() => wheel.classList.remove('open'), 120); });
+  // Option clicks: select nucleus and start new sim
+  wheel.addEventListener('click', (e) => {
+    const opt = e.target.closest('.nucleus-opt');
+    if (!opt) return;
+    selectNucleus(opt.dataset.key);
     document.getElementById('newBtn').click();
   });
-});
-
-// Close dropdown when clicking outside
-document.addEventListener('click', (e) => {
-  const drop = document.getElementById('nucleusDrop');
-  if (!e.target.closest('.new-btn-wrap')) drop.classList.remove('open');
-});
-
-document.getElementById('nucleusPickBtn').addEventListener('click', (e) => {
-  e.stopPropagation();
-  document.getElementById('nucleusDrop').classList.toggle('open');
-});
+})();
 
 document.getElementById('newBtn').addEventListener('click', (e) => {
-  document.getElementById('nucleusDrop').classList.remove('open');
+  // Option-click routes through the wheel handler above, not here directly
   // Stage a fresh neutron — same as Stop but always available, does not require
   // the animation to currently be running.
   resetPrerender();
