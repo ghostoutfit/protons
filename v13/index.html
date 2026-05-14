@@ -2963,7 +2963,7 @@ function neutronTick(now) {
     document.getElementById('neutronSpeedWrap').classList.remove('bounce-warn');
     neutronState     = 'fission';
     staticFissStart  = now;
-    wobbleMode     = isFirstFission ? 'dip1' : pickWobbleMode();
+    wobbleMode     = selectedNucleusKey !== 'u235' ? 'stable' : (isFirstFission ? 'dip1' : pickWobbleMode());
     isFirstFission = false;
     updateTimecodes();
     SHAKE_DURATION = (5 + Math.random() * 10) * 100;   // 500–1500 ms (1 unit = 100 ms)
