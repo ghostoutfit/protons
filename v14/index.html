@@ -266,6 +266,7 @@
     font-family: 'Lexend', sans-serif;
     min-width: unset;
     width: 100%;
+    max-width: 150px;
     white-space: normal;
     text-align: center;
     box-shadow:
@@ -419,7 +420,6 @@
     display: flex;
     flex-direction: row;
     flex-shrink: 0;
-    padding-right: 100px;
   }
 
   #scrubLeft {
@@ -495,7 +495,7 @@
   }
   #scrubReplayBtn { padding: 4px 8px; }
   #scrubRight {
-    width: 170px; flex-shrink: 0;
+    width: 270px; flex-shrink: 0;
     border-left: 1px solid var(--ui-border);
     display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 8px;
@@ -570,6 +570,9 @@
   body.screenshot-mode #bgColorPicker { display:inline-block; }
   body.screenshot-mode,
   body.screenshot-mode #canvasWrap { background: var(--bg-color, #fff) !important; }
+  /* Temperature tab: raise canvas above the logo so the sim isn't cropped */
+  body.temp-tab #canvasWrap { position: relative; z-index: 26; }
+  body.temp-tab #toolbar    { z-index: 30; }
   body.screenshot-mode #toolbar { background: rgba(255,255,255,0.72) !important; box-shadow: none !important; border-bottom-color: rgba(0,0,0,0.1) !important; }
   body.screenshot-mode #toolbar,
   body.screenshot-mode #toolbar * {
@@ -3659,6 +3662,7 @@ applyComboSieOffset();  // seed SIE offset box from table for initial combo
 
 function switchTab(name) {
   currentTab = name;
+  document.body.classList.toggle('temp-tab', name === 'temp');
   document.getElementById('fusionTabBtn').classList.toggle('active', name === 'fusion');
   document.getElementById('tempTabBtn').classList.toggle('active', name === 'temp');
   document.getElementById('fusionControls').style.display = name === 'fusion' ? 'flex' : 'none';
