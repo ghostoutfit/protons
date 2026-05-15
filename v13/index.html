@@ -2092,7 +2092,11 @@ function renderAtFrac(frac) {
   const fvShift = (currentTab === 'fission' && arrowMode > 0)
     ? -(forceVizPanelEl.offsetWidth + 20) / 2
     : 0;
-  ctx.translate(_W / 2 + fvShift, _H / 2);
+  const _tbH = document.getElementById('toolbar').offsetHeight;
+  const _sbEl = document.getElementById('scrubBar');
+  const _sbH  = _sbEl.classList.contains('visible') ? _sbEl.offsetHeight : 0;
+  const _centerY = (_tbH + _H - _sbH) / 2;
+  ctx.translate(_W / 2 + fvShift, _centerY);
   ctx.scale(viewZoom, viewZoom);
   ctx.translate(-_W / 2, -_H / 2);
 

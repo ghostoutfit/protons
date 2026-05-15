@@ -3000,8 +3000,7 @@ document.getElementById('fullTimelineBtn').addEventListener('click', () => {
     resetGraphZoom();
   }
   updateGraphBtn();
-  resizeBarChart();
-  if (!running) draw();
+  resize();
 });
 function speedToKeV(speed) {
   return Math.round(10 + (speed - 0.1) / (2.1 - 0.1) * (120 - 10));
