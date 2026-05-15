@@ -292,7 +292,7 @@
     color: rgba(255,255,255,0.5);
     text-shadow: 0 0 4px rgba(255,255,255,0.5), 0 0 10px var(--accent2);
     cursor: pointer;
-    white-space: normal;
+    white-space: nowrap;
   }
   #separateFieldsLabel input[type="checkbox"] {
     -webkit-appearance: none;
@@ -785,7 +785,7 @@
     </div>
     <div id="energyPctNote">Energy changes are not to scale</div>
     <div id="egZoomHint">Click and drag on the line graph to zoom in</div>
-    <button id="fullTimelineBtn" style="font-size:15px;padding:6px 18px;">SHOW LINE GRAPH</button>
+    <button id="fullTimelineBtn" style="font-size:15px;padding:6px 18px;">SHOW LINE<br>GRAPH</button>
   </div>
 </div>
 
@@ -803,7 +803,7 @@
 </div>
 
 <!-- Separate Fields panel — floats just above the scrubBar on the right side -->
-<div id="separateFieldsPanel" style="position:fixed;right:100px;bottom:0;display:none;z-index:22;width:220px;height:35px;align-items:center;justify-content:center;box-sizing:border-box;">
+<div id="separateFieldsPanel" style="position:fixed;right:0;bottom:0;display:none;z-index:22;width:320px;height:35px;align-items:center;justify-content:center;box-sizing:border-box;">
   <label id="separateFieldsLabel"><input type="checkbox" id="separateFieldsChk"> SHOW SEPARATE FIELDS</label>
 </div>
 <img src="../images/sspi-logo.png" alt="built by SSPI" style="position:fixed;bottom:0;right:0;height:60px;width:auto;border-radius:4px 0 0 0;opacity:0.85;z-index:25;display:block;pointer-events:none;">
@@ -2973,11 +2973,11 @@ function updateGraphBtn() {
   const btn = document.getElementById('fullTimelineBtn');
   const graphOn = document.getElementById('energyGraphBox').classList.contains('visible');
   if (!graphOn) {
-    btn.textContent = 'SHOW LINE GRAPH';
+    btn.innerHTML = 'SHOW LINE<br>GRAPH';
   } else if (graphZoomEnd === null) {
-    btn.textContent = 'HIDE LINE GRAPH';
+    btn.innerHTML = 'HIDE LINE<br>GRAPH';
   } else {
-    btn.textContent = 'FULL TIMELINE';
+    btn.innerHTML = 'FULL<br>TIMELINE';
   }
 }
 
