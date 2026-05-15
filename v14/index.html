@@ -3880,6 +3880,16 @@ function drawTemp() {
   ctx.fillStyle = document.body.classList.contains('screenshot-mode') ? getBgColor() : '#05040f';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+  // Draw logo on canvas so it shows on the temp tab (scrubBar is hidden here).
+  // Draw it before the sim so yellow box + particles render on top.
+  const _logoEl = document.querySelector('#scrubButtons img');
+  if (_logoEl && _logoEl.complete && _logoEl.naturalWidth) {
+    const _lh = 60, _lw = _logoEl.naturalWidth * (_lh / _logoEl.naturalHeight);
+    ctx.globalAlpha = 0.85;
+    ctx.drawImage(_logoEl, canvas.width - _lw - 4, canvas.height - _lh - 4, _lw, _lh);
+    ctx.globalAlpha = 1;
+  }
+
   const { cx, cy, rx, ry, cr } = getTempContainer();
   // Yellow rounded-rect container
   ctx.save();
