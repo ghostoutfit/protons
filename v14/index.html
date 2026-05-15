@@ -523,13 +523,11 @@
   #tempLogoBar {
     display: none;
     position: fixed;
-    bottom: 0; right: 0;
+    bottom: 0px; right: -74px;
     width: 270px; height: 80px;
     z-index: 10;
     align-items: center;
     justify-content: center;
-    background: rgba(6,4,20,0.95);
-    border-left: 1px solid var(--ui-border);
   }
   #tempLogoBar.visible { display: flex; }
   #energyPctDisplay {
@@ -771,10 +769,6 @@
       <div style="display:none;">
         <input type="range" id="tempCoulombSlider" min="1" max="100" step="1" value="25">
         <span id="tempCoulombVal"></span>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:3px;width:100%;font-size:10px;color:var(--text-dim);margin-top:4px;">
-        <label style="display:flex;align-items:center;gap:4px;">Logo X: <input type="range" id="tempLogoX" min="-200" max="200" value="0" style="flex:1;"> <span id="tempLogoXVal">0</span></label>
-        <label style="display:flex;align-items:center;gap:4px;">Logo Y: <input type="range" id="tempLogoY" min="-200" max="200" value="0" style="flex:1;"> <span id="tempLogoYVal">0</span></label>
       </div>
     </div>
   </div>
@@ -4226,23 +4220,6 @@ function applyHash() {
 }
 applyHash();
 window.addEventListener('hashchange', applyHash);
-
-// ── Temp-tab logo dev sliders ─────────────────────────────────────────────────
-(function() {
-  const logoBar = document.getElementById('tempLogoBar');
-  const sliderX = document.getElementById('tempLogoX');
-  const sliderY = document.getElementById('tempLogoY');
-  const valX    = document.getElementById('tempLogoXVal');
-  const valY    = document.getElementById('tempLogoYVal');
-  function applyLogoPos() {
-    logoBar.style.right  = sliderX.value + 'px';
-    logoBar.style.bottom = sliderY.value + 'px';
-    valX.textContent = sliderX.value;
-    valY.textContent = sliderY.value;
-  }
-  sliderX.addEventListener('input', applyLogoPos);
-  sliderY.addEventListener('input', applyLogoPos);
-})();
 
 // ── Dev recording menu (right-click replay button) ───────────────────────────
 (function() {
