@@ -2243,7 +2243,7 @@ let energyInMotion  = 0;  // energy released by completed fissions
 
 const CHAIN_BAR_PANEL_W  = 240;   // width of the energy bar chart panel (right side)
 const CHAIN_ENERGY_MAX   = 100;   // fixed chart scale: 25% above 40-nucleus baseline, fits 60 total
-const CONTROL_SITE_SCALE = 0.75;  // Ag-107 radius relative to U-235 sphere (107^(1/3)/250^(1/3) ≈ 0.754)
+const CONTROL_SITE_SCALE = 0.60;  // Ag-107 radius relative to U-235 sphere — 40% smaller diameter
 let fixedContainerBounds = null; // set once at default zoom; stays fixed even when user zooms
 
 // Compute container bounds from current viewZoom (call once, then cache in fixedContainerBounds)
