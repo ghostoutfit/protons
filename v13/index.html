@@ -629,10 +629,10 @@
     width: 240px; height: 80px;
     z-index: 10;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-end;
+    padding-right: 12px;
     background: rgba(4,3,20,0.88);
     border-top: 1px solid rgba(0,180,255,0.25);
-    border-left: 1px solid rgba(0,180,255,0.15);
     box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
   }
   #chainLogoBar.visible { display: flex; }
@@ -877,7 +877,7 @@
 <canvas id="canvas"></canvas>
 
 <!-- Theme dots overlaid at top of chain bar chart panel -->
-<div id="chainColorRow" style="position:fixed;right:0;top:0;width:240px;display:none;z-index:50;justify-content:center;align-items:center;gap:10px;padding:7px 0;box-sizing:border-box;background:rgba(4,3,20,0.88);border-bottom:1px solid rgba(0,180,255,0.15);">
+<div id="chainColorRow" style="position:fixed;right:0;top:0;width:240px;display:none;z-index:11;justify-content:center;align-items:center;gap:10px;padding:7px 0;box-sizing:border-box;background:rgba(4,3,20,0.88);border-bottom:1px solid rgba(0,180,255,0.15);">
   <button class="theme-btn chart-theme-btn active" data-theme="A" title="Synthwave" style="background:#1a6eff;"></button>
   <button class="theme-btn chart-theme-btn" data-theme="B" title="Industrial" style="background:#bd00ff;"></button>
   <button class="theme-btn chart-theme-btn" data-theme="C" title="Neon Blue" style="background:#00f5e0;"></button>
@@ -994,14 +994,6 @@
         <label class="toggle-label" id="showElectricRow">
           <input type="checkbox" id="showElectric">
           <span class="field-label-electric">Show electric field</span>
-        </label>
-        <label class="toggle-label" id="daughterFuelRow" style="display:none;">
-          <input type="checkbox" id="daughterFuelChk">
-          <span style="font-size:11px;">Daughters hit fuel</span>
-        </label>
-        <label class="toggle-label" id="neutronAbsorbRow" style="display:none;">
-          <input type="checkbox" id="neutronAbsorbChk">
-          <span style="font-size:11px;">Neutrons absorb</span>
         </label>
       </div>
       <div style="display:flex;gap:10px;align-self:stretch;align-items:center">
@@ -1772,8 +1764,6 @@ function applyTab(tab) {
   document.getElementById('playbackSpeedRow').style.display  = isChain ? 'none' : '';
   document.getElementById('zoomSliderRow').style.display     = isChain ? 'none' : '';
   document.getElementById('showElectricRow').style.display   = isChain ? 'none' : '';
-  document.getElementById('daughterFuelRow').style.display   = isChain ? '' : 'none';
-  document.getElementById('neutronAbsorbRow').style.display  = isChain ? '' : 'none';
   document.getElementById('particleCounters').style.display  = isChain ? 'none' : '';
   document.getElementById('forceModeRow').style.display      = isChain ? 'none' : 'flex';
   // Hide fission-only nucleus options on chain tab; show all on fission tab
@@ -1795,6 +1785,7 @@ function applyTab(tab) {
   document.getElementById('enrichBtn').style.display = tab === 'chain' ? '' : 'none';
   const chainColorRow = document.getElementById('chainColorRow');
   chainColorRow.style.display = tab === 'chain' ? 'flex' : 'none';
+  if (tab === 'chain') chainColorRow.style.top = document.getElementById('toolbar').offsetHeight + 'px';
   heatmapDirty = true;
   if (typeof drawStaticFrame === 'function') drawStaticFrame();
   if (showParticles && !idleParticleRAF && typeof idleParticleLoop === 'function') idleParticleLoop();
@@ -3815,12 +3806,6 @@ document.getElementById('clearBtn').addEventListener('click', () => {
   drawStaticFrame();
 });
 
-document.getElementById('daughterFuelChk').addEventListener('change', function() {
-  daughterFuelCollide = this.checked;
-});
-document.getElementById('neutronAbsorbChk').addEventListener('change', function() {
-  neutronAbsorb = this.checked;
-});
 
 document.getElementById('enrichBtn').addEventListener('click', () => {
   if (!animParent) return;
@@ -4196,9 +4181,11 @@ function computeEnergy(frac) {
 function drawChainBarChart() {
   const PW = CHAIN_BAR_PANEL_W;
   const LOGO_H = 80;              // reserved for #chainLogoBar at bottom
-  const PH = canvas.height - LOGO_H;
+  const toolbarH = document.getElementById('toolbar').offsetHeight;
+  const colorRowH = document.getElementById('chainColorRow').offsetHeight || 32;
+  const gy = toolbarH;
+  const PH = canvas.height - toolbarH - LOGO_H;
   const gx = canvas.width - PW;
-  const gy = 0;
 
   const LIGHT = document.body.classList.contains('screenshot-mode');
 
@@ -4226,7 +4213,7 @@ function drawChainBarChart() {
       ];
 
   const labelH  = 62;
-  const titleH  = 38;
+  const titleH  = colorRowH;
   const chartH  = PH - labelH - titleH;
   const baseline = gy + PH - labelH;
   const padL = 10, padR = 10;
@@ -4242,7 +4229,6 @@ function drawChainBarChart() {
 
   const barW = chartW / bars.length;
   ctx.textAlign = 'center';
-  ctx.font = 'bold 13px Lexend, sans-serif';
 
   bars.forEach((bar, i) => {
     const frac  = bar.value / CHAIN_ENERGY_MAX;
@@ -4276,9 +4262,10 @@ function drawChainBarChart() {
     ctx.save();
     ctx.shadowColor = bar.glow; ctx.shadowBlur = 6;
     ctx.fillStyle = bar.color;
+    ctx.font = 'bold 18px Lexend, sans-serif';
     const words = bar.label.split(' ');
-    ctx.fillText(words.slice(0, 2).join(' '), x + bw / 2, baseline + 18);
-    ctx.fillText(words[2] || '',              x + bw / 2, baseline + 36);
+    ctx.fillText(words.slice(0, 2).join(' '), x + bw / 2, baseline + 22);
+    ctx.fillText(words[2] || '',              x + bw / 2, baseline + 39);
     ctx.restore();
   });
 
