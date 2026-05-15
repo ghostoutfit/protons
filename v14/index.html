@@ -2183,10 +2183,13 @@ function drawBarChart() {
     ? (barYRangeScaled ?? autoMax)
     : barYRange;
 
-  // ── 5 horizontal gridlines (always, no numbers) ──────────────
+  // ── 5 horizontal gridlines — scale with bars so a bar at line N stays at line N ──
+  // gridFrac shrinks as maxVal grows beyond the initial default (24), keeping
+  // gridline positions proportional to bar heights.
+  const gridFrac = scaledEnergy ? 1 : Math.min(1, 24 / maxVal);
   ctx.save();
   for (let i = 0; i <= 5; i++) {
-    const py = baseline - (i / 5) * chartH;
+    const py = baseline - (i / 5) * chartH * gridFrac;
     if (py < chartTop - 2) continue;
     const isBaseline = i === 0;
     ctx.strokeStyle = isBaseline
