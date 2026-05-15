@@ -2204,14 +2204,18 @@ function drawBarChart() {
     ? (barYRangeScaled ?? autoMax)
     : barYRange;
 
-  // ── 5 horizontal gridlines — scale with bars so a bar at line N stays at line N ──
-  // gridFrac shrinks as maxVal grows beyond the initial default (24), keeping
-  // gridline positions proportional to bar heights.
-  const gridFrac = scaledEnergy ? 1 : Math.min(1, 24 / maxVal);
+  // ── Horizontal gridlines — dynamic count, fixed spacing in energy units ──
+  // gridFrac = 24/maxVal (no cap): spacing shrinks when zoomed out → more lines fill
+  // the chart; spacing grows when zoomed in → fewer lines, more spread out.
+  // Default (maxVal=24): gridFrac=1, spacing=chartH/5, exactly 5 lines — same as before.
+  const gridFrac   = scaledEnergy ? 1 : (24 / maxVal);
+  const gridSpacing = (chartH / 5) * gridFrac;           // px between lines
+  const gridCount   = scaledEnergy ? 5
+    : Math.min(Math.ceil(chartH / Math.max(gridSpacing, 1)), 25);
   ctx.save();
-  for (let i = 0; i <= 5; i++) {
-    const py = baseline - (i / 5) * chartH * gridFrac;
-    if (py < chartTop - 2) continue;
+  for (let i = 0; i <= gridCount; i++) {
+    const py = baseline - i * gridSpacing;
+    if (i > 0 && py < chartTop - 2) break;
     const isBaseline = i === 0;
     ctx.strokeStyle = isBaseline
       ? (LIGHT ? 'rgba(0,0,0,0.55)' : 'rgba(0,200,255,0.7)')
