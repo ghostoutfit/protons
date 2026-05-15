@@ -1083,19 +1083,41 @@ function resize() {
 resize();
 window.addEventListener('resize', () => {
   resize();
-  if (neutronRAF) { cancelAnimationFrame(neutronRAF); neutronRAF = null; }
-  if (chainRAF)   { cancelAnimationFrame(chainRAF);   chainRAF = null; }
-  neutronState        = 'idle';
-  chainNeutrons       = []; lastChainTime = null;
-  enrichSites         = []; isFirstChainFission = true;
-  mainNeutronsEmitted = false; mainEnergyTransferred = false; mainDaughters = null;
-  document.getElementById('goBtn').textContent = '▶ GO';
-  document.getElementById('goBtn').classList.remove('running');
   document.getElementById('scrubBar').classList.toggle('visible', currentTab !== 'chain');
   document.getElementById('chainLogoBar').classList.toggle('visible', currentTab === 'chain');
-  initNuclei();
   heatmapDirty = true;
-  drawStaticFrame();
+
+  if (currentTab === 'chain' && fixedContainerBounds) {
+    // Recompute the yellow box for the new window size, cull particles now outside it
+    fixedContainerBounds = computeContainerBounds();
+    const b = fixedContainerBounds;
+    function outsideBounds(x, y, r) {
+      return x - r < b.x || x + r > b.x + b.w || y - r < b.y || y + r > b.y + b.h;
+    }
+    chainNeutrons = chainNeutrons.filter(n => !outsideBounds(n.x, n.y, PARTICLE_RADIUS));
+    if (mainDaughters) {
+      mainDaughters = mainDaughters.filter(d => !outsideBounds(d.x, d.y, d.r));
+      if (!mainDaughters.length) mainDaughters = null;
+    }
+    for (const site of enrichSites) {
+      if (site.daughters) site.daughters = site.daughters.filter(d => !outsideBounds(d.x, d.y, d.r));
+    }
+    enrichSites = enrichSites.filter(s => !outsideBounds(s.cx, s.cy, animParent ? animParent.sphereR : 40));
+    chainParticleOffsets = null;
+    drawStaticFrame();
+  } else {
+    // Fission tab: reset as before
+    if (neutronRAF) { cancelAnimationFrame(neutronRAF); neutronRAF = null; }
+    if (chainRAF)   { cancelAnimationFrame(chainRAF);   chainRAF = null; }
+    neutronState        = 'idle';
+    chainNeutrons       = []; lastChainTime = null;
+    enrichSites         = []; isFirstChainFission = true;
+    mainNeutronsEmitted = false; mainEnergyTransferred = false; mainDaughters = null;
+    document.getElementById('goBtn').textContent = '▶ GO';
+    document.getElementById('goBtn').classList.remove('running');
+    initNuclei();
+    drawStaticFrame();
+  }
 });
 
 function ensureHmBuffers(w, h) {
