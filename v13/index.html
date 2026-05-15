@@ -2554,6 +2554,9 @@ function drawChainOverlay() {
     }
   }
 
+  // Control sites (Ag-107) render at 75% the radius of fuel sites
+  const siteR = (site) => site.isControl ? sphereR * CONTROL_SITE_SCALE : sphereR;
+
   // ── BACKGROUND LAYER: stable (failed) sites, bounced daughters, bounced neutrons ──
   // Outline mode: fade with globalAlpha. Particle mode: draw full-bright then overlay a grey circle.
   const _PART = showParticles;
@@ -2601,9 +2604,6 @@ function drawChainOverlay() {
     }
     ctx.restore();
   }
-
-  // Control sites (Ag-107) render at 75% the radius of fuel sites
-  const siteR = (site) => site.isControl ? sphereR * CONTROL_SITE_SCALE : sphereR;
 
   // ── FOREGROUND LAYER: idle fuel, actively fissioning sites, fresh neutrons ──
   for (const site of enrichSites) {
@@ -3960,9 +3960,23 @@ function clientToWorld(clientX, clientY) {
   return { x: (sx - W/2) / viewZoom + W/2, y: (sy - H/2) / viewZoom + H/2 };
 }
 
+function moveAnimParent(newCx, newCy) {
+  const dx = newCx - animParent.cx;
+  const dy = newCy - animParent.cy;
+  animParent.cx = newCx;
+  animParent.cy = newCy;
+  for (const p of animParent.particles) { p.x += dx; p.y += dy; }
+  chainParticleOffsets = null;  // invalidate cached offsets
+}
+
 function pickChainSite(clientX, clientY) {
   const { x: wx, y: wy } = clientToWorld(clientX, clientY);
   const r = animParent ? animParent.sphereR : 50;
+  // Hit-test main nucleus first
+  if (animParent) {
+    const dx = wx - animParent.cx, dy = wy - animParent.cy;
+    if (dx*dx + dy*dy <= r*r) return { target: animParent, isParent: true, offX: animParent.cx - wx, offY: animParent.cy - wy };
+  }
   for (const site of enrichSites) {
     const sr = site.isControl ? r * CONTROL_SITE_SCALE : r;
     const dx = wx - site.cx, dy = wy - site.cy;
@@ -4054,8 +4068,14 @@ canvas.addEventListener('mousemove', (e) => {
 window.addEventListener('mousemove', (e) => {
   if (chainSiteDrag) {
     const { x: wx, y: wy } = clientToWorld(e.clientX, e.clientY);
-    chainSiteDrag.target.cx = wx + chainSiteDrag.offX;
-    chainSiteDrag.target.cy = wy + chainSiteDrag.offY;
+    const newCx = wx + chainSiteDrag.offX;
+    const newCy = wy + chainSiteDrag.offY;
+    if (chainSiteDrag.isParent) {
+      moveAnimParent(newCx, newCy);
+    } else {
+      chainSiteDrag.target.cx = newCx;
+      chainSiteDrag.target.cy = newCy;
+    }
     return;
   }
   if (!nucleusDrag) return;
