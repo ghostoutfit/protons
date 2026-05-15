@@ -119,12 +119,7 @@
     letter-spacing: 1px;
     text-transform: uppercase;
   }
-  #scrubBar .scrub-time {
-    font-size: 11px;
-    color: var(--text-dim);
-    white-space: nowrap;
-    font-variant-numeric: tabular-nums;
-  }
+
   #timeSlider {
     flex: 1;
     height: 6px;
@@ -1057,7 +1052,7 @@
   <button id="scrubReplayBtn" class="btn" disabled>&#8634;</button>
   <span class="slider-icon" style="font-size:32px">⏱</span>
   <input type="range" id="timeSlider" min="0" max="0" value="0" disabled>
-  <span class="scrub-time" id="timeLabel">–</span>
+
 </div>
 <img src="../images/sspi-logo.png" alt="built by SSPI" style="position:fixed;bottom:5px;right:5px;height:60px;width:auto;border-radius:4px 0 0 0;opacity:0.85;z-index:25;display:block;pointer-events:none;">
 
@@ -1074,7 +1069,6 @@ const speedSlider = document.getElementById('speedSlider');
 const statProtons = document.getElementById('statProtons');
 const statNeutrons = document.getElementById('statNeutrons');
 const timeSlider  = document.getElementById('timeSlider');
-const timeLabelEl = document.getElementById('timeLabel');
 
 // ============================================================
 //  SIMULATION STATE
@@ -1641,7 +1635,6 @@ function resetSim() {
   timeSlider.value = 0;
   timeSlider.max = 0;
   timeSlider.disabled = true;
-  timeLabelEl.textContent = '–';
   selectedGroup = [];
   selBox = null;
 }
@@ -1717,8 +1710,7 @@ goBtn.addEventListener('click', () => {
     particleHistory = [];
     scrubFrame = -1;
     timeSlider.disabled = true;
-    timeLabelEl.textContent = '–';
-    takeSnapshot();
+      takeSnapshot();
     loop();
   } else {
     cancelAnimationFrame(animId);
@@ -1738,7 +1730,6 @@ function doReplay() {
   replaying = false;
   scrubFrame = 0;
   timeSlider.value = 0;
-  timeLabelEl.textContent = `1 / ${particleHistory.length}`;
   renderFrame(0);
   // Auto-play through recorded history
   replayAccum = 0;
@@ -3245,7 +3236,6 @@ timeSlider.addEventListener('input', () => {
   }
   const val = parseInt(timeSlider.value);
   scrubFrame = val;
-  timeLabelEl.textContent = `${val + 1} / ${particleHistory.length}`;
   renderFrame(val);
 });
 
@@ -3275,12 +3265,10 @@ function loop() {
       goBtn.textContent = '▶ GO';
       goBtn.classList.remove('running');
       timeSlider.value = scrubFrame;
-      timeLabelEl.textContent = `${scrubFrame + 1} / ${particleHistory.length}`;
-      renderFrame(scrubFrame);
+        renderFrame(scrubFrame);
       return;
     }
     timeSlider.value = scrubFrame;
-    timeLabelEl.textContent = `${scrubFrame + 1} / ${particleHistory.length}`;
     renderFrame(scrubFrame);
     animId = requestAnimationFrame(loop);
     return;
@@ -3301,7 +3289,6 @@ function loop() {
   timeSlider.disabled = false;
   timeSlider.max = particleHistory.length - 1;
   timeSlider.value = timeSlider.max;
-  timeLabelEl.textContent = `${particleHistory.length}`;
 
   draw();
 
