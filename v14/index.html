@@ -532,23 +532,6 @@
     border-left: 1px solid var(--ui-border);
   }
   #tempLogoBar.visible { display: flex; }
-  #tempDevPanel {
-    display: none;
-    position: fixed;
-    bottom: 90px; right: 5px;
-    z-index: 50;
-    background: rgba(0,0,0,0.75);
-    border: 1px solid rgba(0,180,255,0.4);
-    border-radius: 6px;
-    padding: 6px 10px;
-    font-size: 11px;
-    color: #adf;
-    gap: 4px;
-    flex-direction: column;
-  }
-  #tempDevPanel.visible { display: flex; }
-  #tempDevPanel label { display:flex; align-items:center; gap:6px; }
-  #tempDevPanel input[type=range] { width: 80px; }
   #energyPctDisplay {
     display: flex;
     gap: 10px;
@@ -789,6 +772,10 @@
         <input type="range" id="tempCoulombSlider" min="1" max="100" step="1" value="25">
         <span id="tempCoulombVal"></span>
       </div>
+      <div style="display:flex;flex-direction:column;gap:3px;width:100%;font-size:10px;color:var(--text-dim);margin-top:4px;">
+        <label style="display:flex;align-items:center;gap:4px;">Logo X: <input type="range" id="tempLogoX" min="-200" max="200" value="0" style="flex:1;"> <span id="tempLogoXVal">0</span></label>
+        <label style="display:flex;align-items:center;gap:4px;">Logo Y: <input type="range" id="tempLogoY" min="-200" max="200" value="0" style="flex:1;"> <span id="tempLogoYVal">0</span></label>
+      </div>
     </div>
   </div>
 
@@ -842,11 +829,6 @@
 
 <div id="tempLogoBar">
   <img src="../images/sspi-logo.png" alt="built by SSPI" style="height:60px;width:auto;opacity:0.85;display:block;border-radius:4px;">
-</div>
-
-<div id="tempDevPanel">
-  <label>X (right): <input type="range" id="tempLogoX" min="-200" max="200" value="0"> <span id="tempLogoXVal">0</span></label>
-  <label>Y (bottom): <input type="range" id="tempLogoY" min="-200" max="200" value="0"> <span id="tempLogoYVal">0</span></label>
 </div>
 
 <!-- Bar chart overlay — fixed over full height including toolbar -->
@@ -3727,7 +3709,6 @@ function switchTab(name) {
   v14ColorRow.style.display = name === 'fusion' ? 'flex' : 'none';
   document.getElementById('scrubBar').style.display       = name === 'fusion' ? ''     : 'none';
   document.getElementById('tempLogoBar').classList.toggle('visible', name === 'temp');
-  document.getElementById('tempDevPanel').classList.toggle('visible', name === 'temp');
   setScrubReplayDisabled(true);
   // Stop any running animation
   if (tempRAF)  { cancelAnimationFrame(tempRAF); tempRAF = null; }
