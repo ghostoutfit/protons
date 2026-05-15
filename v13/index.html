@@ -613,12 +613,12 @@
     flex-shrink: 0;
     width: 270px;
   }
-  #scrubRowRightInner {
+  #scrubButtons {
     display: flex;
     align-items: center;
     gap: 8px;
     height: 80px;
-    padding: 0 112px 0 12px;
+    padding: 0 12px;
     flex-shrink: 0;
   }
   #energyGraphBox {
@@ -628,18 +628,19 @@
     background: rgba(26,110,255,0.04);
   }
   #energyGraphBox.visible { display: flex; }
-  #energyPctDisplay {
+  #scrubPercents {
     display: none;
     flex: 1;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 4px;
-    padding: 0 12px 8px 12px;
+    padding: 8px 12px;
     font-size: 22px;
     font-weight: 700;
     line-height: 1;
   }
+  #scrubPercents.visible { display: flex; }
   #energyPctNums {
     display: flex;
     gap: 10px;
@@ -662,6 +663,7 @@
     background: var(--accent2-dim);
     color: rgba(255,255,255,0.5);
     font-family: inherit;
+    flex: 1;
     line-height: 1.25;
     padding: 6px 10px;
     text-align: center;
@@ -1028,7 +1030,7 @@
       </div>
     </div>
     <div id="scrubRowRight">
-      <div id="energyPctDisplay">
+      <div id="scrubPercents">
         <div id="energyPctNums">
           <span id="energyPctKE" style="color:#ff2060;text-shadow:0 0 8px rgba(255,20,80,0.7);">62%</span>
           <span id="energyPctIE" style="color:#7b6fff;text-shadow:0 0 8px rgba(120,100,255,0.7);">38%</span>
@@ -1036,13 +1038,13 @@
         <div id="energyPctNote">Energy changes are not to scale</div>
         <div id="egZoomHint">Click and drag on the line graph to zoom in</div>
       </div>
-      <div id="scrubRowRightInner">
+      <div id="scrubButtons">
         <button id="energyGraphToggle" class="btn">SHOW LINE<br>GRAPH</button>
+        <img src="../images/sspi-logo.png" alt="built by SSPI" style="height:60px;width:auto;opacity:0.85;display:block;border-radius:4px;flex-shrink:0;">
       </div>
     </div>
   </div>
 </div>
-<img src="../images/sspi-logo.png" alt="built by SSPI" style="position:fixed;bottom:0;right:0;height:60px;width:auto;border-radius:4px 0 0 0;opacity:0.85;z-index:25;display:block;pointer-events:none;">
 
 <script>
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -3849,12 +3851,12 @@ document.getElementById('energyGraphToggle').addEventListener('click', function(
     box.classList.add('visible');
     this.classList.add('active');
     document.getElementById('scrubGraphKey').classList.add('visible');
-    document.getElementById('energyPctDisplay').style.display = 'flex';
+    document.getElementById('scrubPercents').classList.add('visible');
   } else if (egZoomStart === 0 && egZoomEnd === 1) {
     box.classList.remove('visible');
     this.classList.remove('active');
     document.getElementById('scrubGraphKey').classList.remove('visible');
-    document.getElementById('energyPctDisplay').style.display = 'none';
+    document.getElementById('scrubPercents').classList.remove('visible');
   } else {
     egZoomStart = 0; egZoomEnd = wobbleMode === 'stable' ? 0.70 : 1;
     drawEnergyGraph();

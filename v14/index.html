@@ -264,9 +264,8 @@
     background: var(--accent2-dim);
     color: rgba(255,255,255,0.5);
     font-family: 'Lexend', sans-serif;
+    flex: 1;
     min-width: unset;
-    width: 100%;
-    max-width: 150px;
     white-space: normal;
     text-align: center;
     box-shadow:
@@ -498,11 +497,30 @@
     width: 270px; flex-shrink: 0;
     border-left: 1px solid var(--ui-border);
     display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 8px;
-    padding: 12px;
+  }
+  #scrubPercents {
+    display: none;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 12px;
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  #scrubPercents.visible { display: flex; }
+  #scrubButtons {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 80px;
+    padding: 0 12px;
+    flex-shrink: 0;
   }
   #energyPctDisplay {
-    display: none;
+    display: flex;
     gap: 10px;
     justify-content: center;
     font-size: 22px;
@@ -511,7 +529,6 @@
     margin-bottom: 2px;
   }
   #energyPctNote {
-    display: none;
     font-size: 12px;
     color: #ff3a6e;
     text-align: center;
@@ -519,7 +536,6 @@
     margin-bottom: 6px;
   }
   #egZoomHint {
-    display: none;
     font-size: 12px;
     color: var(--text-dim);
     text-align: center;
@@ -570,9 +586,6 @@
   body.screenshot-mode #bgColorPicker { display:inline-block; }
   body.screenshot-mode,
   body.screenshot-mode #canvasWrap { background: var(--bg-color, #fff) !important; }
-  /* Temperature tab: raise canvas above the logo so the sim isn't cropped */
-  body.temp-tab #canvasWrap { position: relative; z-index: 26; }
-  body.temp-tab #toolbar    { z-index: 30; }
   body.screenshot-mode #toolbar { background: rgba(255,255,255,0.72) !important; box-shadow: none !important; border-bottom-color: rgba(0,0,0,0.1) !important; }
   body.screenshot-mode #toolbar,
   body.screenshot-mode #toolbar * {
@@ -782,13 +795,18 @@
     </div>
   </div>
   <div id="scrubRight">
-    <div id="energyPctDisplay">
-      <span id="energyPctKE" style="color:#ff2060;text-shadow:0 0 8px rgba(255,20,80,0.7);">—%</span>
-      <span id="energyPctIE" style="color:#7b6fff;text-shadow:0 0 8px rgba(120,100,255,0.7);">—%</span>
+    <div id="scrubPercents">
+      <div id="energyPctDisplay">
+        <span id="energyPctKE" style="color:#ff2060;text-shadow:0 0 8px rgba(255,20,80,0.7);">—%</span>
+        <span id="energyPctIE" style="color:#7b6fff;text-shadow:0 0 8px rgba(120,100,255,0.7);">—%</span>
+      </div>
+      <div id="energyPctNote">Energy changes are not to scale</div>
+      <div id="egZoomHint">Click and drag on the line graph to zoom in</div>
     </div>
-    <div id="energyPctNote">Energy changes are not to scale</div>
-    <div id="egZoomHint">Click and drag on the line graph to zoom in</div>
-    <button id="fullTimelineBtn" style="font-size:15px;padding:6px 18px;">SHOW LINE<br>GRAPH</button>
+    <div id="scrubButtons">
+      <button id="fullTimelineBtn" style="font-size:15px;padding:6px 18px;">SHOW LINE<br>GRAPH</button>
+      <img src="../images/sspi-logo.png" alt="built by SSPI" style="height:60px;width:auto;opacity:0.85;display:block;border-radius:4px;flex-shrink:0;">
+    </div>
   </div>
 </div>
 
@@ -809,7 +827,6 @@
 <div id="separateFieldsPanel" style="position:fixed;right:0;bottom:0;display:none;z-index:22;width:320px;height:35px;align-items:center;justify-content:center;box-sizing:border-box;">
   <label id="separateFieldsLabel"><input type="checkbox" id="separateFieldsChk"> SHOW SEPARATE FIELDS</label>
 </div>
-<img src="../images/sspi-logo.png" alt="built by SSPI" style="position:fixed;bottom:0;right:0;height:60px;width:auto;border-radius:4px 0 0 0;opacity:0.85;z-index:25;display:block;pointer-events:none;">
 
 <script>
 // Active tab — declared first so every function can read it safely.
@@ -2993,15 +3010,11 @@ document.getElementById('fullTimelineBtn').addEventListener('click', () => {
   if (!graphOn) {
     box.classList.add('visible');
     document.getElementById('scrubGraphKey').classList.add('visible');
-    document.getElementById('energyPctDisplay').style.display = 'flex';
-    document.getElementById('energyPctNote').style.display = 'block';
-    document.getElementById('egZoomHint').style.display = 'block';
+    document.getElementById('scrubPercents').classList.add('visible');
   } else if (graphZoomEnd === null) {
     box.classList.remove('visible');
     document.getElementById('scrubGraphKey').classList.remove('visible');
-    document.getElementById('energyPctDisplay').style.display = 'none';
-    document.getElementById('energyPctNote').style.display = 'none';
-    document.getElementById('egZoomHint').style.display = 'none';
+    document.getElementById('scrubPercents').classList.remove('visible');
   } else {
     resetGraphZoom();
   }
@@ -3662,7 +3675,6 @@ applyComboSieOffset();  // seed SIE offset box from table for initial combo
 
 function switchTab(name) {
   currentTab = name;
-  document.body.classList.toggle('temp-tab', name === 'temp');
   document.getElementById('fusionTabBtn').classList.toggle('active', name === 'fusion');
   document.getElementById('tempTabBtn').classList.toggle('active', name === 'temp');
   document.getElementById('fusionControls').style.display = name === 'fusion' ? 'flex' : 'none';
