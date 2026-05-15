@@ -876,13 +876,6 @@
 
 <canvas id="canvas"></canvas>
 
-<!-- Theme dots overlaid at top of chain bar chart panel -->
-<div id="chainColorRow" style="position:fixed;right:0;top:0;width:240px;display:none;z-index:11;justify-content:center;align-items:center;gap:10px;padding:7px 0;box-sizing:border-box;background:rgba(4,3,20,0.88);border-bottom:1px solid rgba(0,180,255,0.15);">
-  <button class="theme-btn chart-theme-btn active" data-theme="A" title="Synthwave" style="background:#1a6eff;"></button>
-  <button class="theme-btn chart-theme-btn" data-theme="B" title="Industrial" style="background:#bd00ff;"></button>
-  <button class="theme-btn chart-theme-btn" data-theme="C" title="Neon Blue" style="background:#00f5e0;"></button>
-  <button class="theme-btn chart-theme-btn" data-theme="L" title="Light mode" style="background:#fff;"></button>
-</div>
 
 <div id="devTimecodePanel">
   <div class="dev-hd">Timecodes</div>
@@ -1783,9 +1776,6 @@ function applyTab(tab) {
     totalFuelAdded = 0; energyInFields = 0; energyInMotion = 0;
   }
   document.getElementById('enrichBtn').style.display = tab === 'chain' ? '' : 'none';
-  const chainColorRow = document.getElementById('chainColorRow');
-  chainColorRow.style.display = tab === 'chain' ? 'flex' : 'none';
-  if (tab === 'chain') chainColorRow.style.top = document.getElementById('toolbar').offsetHeight + 'px';
   heatmapDirty = true;
   if (typeof drawStaticFrame === 'function') drawStaticFrame();
   if (showParticles && !idleParticleRAF && typeof idleParticleLoop === 'function') idleParticleLoop();
@@ -2239,11 +2229,14 @@ function computeContainerBounds() {
   const W = canvas.width, H = canvas.height;
   const toolbarH = document.getElementById('toolbar').offsetHeight;
   const edge = 20;  // screen-px margin
-  // Convert screen pixel edges to world coords: worldX = W/2 + (screenX - W/2) / viewZoom
-  const left  = W/2 + (edge                              - W/2) / viewZoom;
-  const right = W/2 + (W - CHAIN_BAR_PANEL_W - edge      - W/2) / viewZoom;
-  const top   = H/2 + (toolbarH + edge                   - H/2) / viewZoom;
-  const bot   = H/2 + (H - edge                          - H/2) / viewZoom;
+  // renderAtFrac maps world (W/2, H/2) → screen (W/2, _centerY) where
+  // _centerY = (toolbarH + H) / 2 (scrubBar is hidden on chain tab).
+  // Inverse: worldY = H/2 + (screenY - _centerY) / viewZoom
+  const _centerY = (toolbarH + H) / 2;
+  const left  = W/2 + (edge                          - W/2)     / viewZoom;
+  const right = W/2 + (W - CHAIN_BAR_PANEL_W - edge  - W/2)     / viewZoom;
+  const top   = H/2 + (toolbarH + edge               - _centerY) / viewZoom;
+  const bot   = H/2 + (H - edge                      - _centerY) / viewZoom;
   return { x: left, y: top, w: right - left, h: bot - top };
 }
 
@@ -4182,7 +4175,6 @@ function drawChainBarChart() {
   const PW = CHAIN_BAR_PANEL_W;
   const LOGO_H = 80;              // reserved for #chainLogoBar at bottom
   const toolbarH = document.getElementById('toolbar').offsetHeight;
-  const colorRowH = document.getElementById('chainColorRow').offsetHeight || 32;
   const gy = toolbarH;
   const PH = canvas.height - toolbarH - LOGO_H;
   const gx = canvas.width - PW;
@@ -4213,7 +4205,7 @@ function drawChainBarChart() {
       ];
 
   const labelH  = 62;
-  const titleH  = colorRowH;
+  const titleH  = 0;
   const chartH  = PH - labelH - titleH;
   const baseline = gy + PH - labelH;
   const padL = 10, padR = 10;
@@ -4465,28 +4457,12 @@ function applyTheme(key) {
   document.getElementById('themeLight').classList.remove('active');
   document.querySelectorAll('.theme-btn:not(#themeLight):not([data-theme="L"])').forEach(b => b.classList.remove('active'));
   document.getElementById('theme'+key).classList.add('active');
-  document.querySelectorAll('.chart-theme-btn[data-theme]').forEach(b => {
-    b.classList.toggle('active', b.dataset.theme === key);
-  });
   drawStaticFrame();
   drawForceViz();
 }
 document.getElementById('themeA').addEventListener('click', () => applyTheme('A'));
 document.getElementById('themeB').addEventListener('click', () => applyTheme('B'));
 document.getElementById('themeC').addEventListener('click', () => applyTheme('C'));
-// Chart overlay theme buttons
-document.querySelectorAll('.chart-theme-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    if (btn.dataset.theme === 'L') {
-      const on = document.body.classList.toggle('screenshot-mode');
-      document.getElementById('themeLight').classList.toggle('active', on);
-      document.querySelectorAll('.chart-theme-btn[data-theme="L"]').forEach(b => b.classList.toggle('active', on));
-      drawStaticFrame(); drawForceViz();
-    } else {
-      applyTheme(btn.dataset.theme);
-    }
-  });
-});
 function getBgColor() { return document.getElementById('bgColorPicker').value; }
 document.getElementById('bgColorPicker').addEventListener('input', function() {
   document.documentElement.style.setProperty('--bg-color', this.value);
@@ -4495,7 +4471,6 @@ document.getElementById('bgColorPicker').addEventListener('input', function() {
 document.getElementById('themeLight').addEventListener('click', () => {
   const on = document.body.classList.toggle('screenshot-mode');
   document.getElementById('themeLight').classList.toggle('active', on);
-  document.querySelectorAll('.chart-theme-btn[data-theme="L"]').forEach(b => b.classList.toggle('active', on));
   drawStaticFrame();
   drawForceViz();
 });
