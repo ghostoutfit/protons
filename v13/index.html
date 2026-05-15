@@ -622,6 +622,20 @@
     flex-shrink: 0;
     margin-top: auto;
   }
+  #chainLogoBar {
+    display: none;
+    position: fixed;
+    bottom: 0; right: 0;
+    width: 240px; height: 80px;
+    z-index: 10;
+    align-items: center;
+    justify-content: center;
+    background: rgba(4,3,20,0.88);
+    border-top: 1px solid rgba(0,180,255,0.25);
+    border-left: 1px solid rgba(0,180,255,0.15);
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+  }
+  #chainLogoBar.visible { display: flex; }
   #energyGraphBox {
     display: none;
     flex-direction: column;
@@ -1047,6 +1061,10 @@
   </div>
 </div>
 
+<div id="chainLogoBar">
+  <img src="../images/sspi-logo.png" alt="built by SSPI" style="height:60px;width:auto;opacity:0.85;display:block;border-radius:4px;">
+</div>
+
 <script>
 // ─── Constants ────────────────────────────────────────────────────────────────
 const PARTICLE_RADIUS = 10;
@@ -1089,6 +1107,7 @@ window.addEventListener('resize', () => {
   document.getElementById('goBtn').textContent = '▶ GO';
   document.getElementById('goBtn').classList.remove('running');
   document.getElementById('scrubBar').classList.toggle('visible', currentTab !== 'chain');
+  document.getElementById('chainLogoBar').classList.toggle('visible', currentTab === 'chain');
   initNuclei();
   heatmapDirty = true;
   drawStaticFrame();
@@ -1736,6 +1755,7 @@ function applyTab(tab) {
   document.getElementById('replayBtn').disabled = true;
   document.getElementById('scrubReplayBtn').disabled = true;
   document.getElementById('scrubBar').classList.toggle('visible', tab !== 'chain');
+  document.getElementById('chainLogoBar').classList.toggle('visible', tab === 'chain');
   document.getElementById('scrubSlider').value = 0;
   document.getElementById('scrubPct').textContent = '0';
 
@@ -3650,6 +3670,7 @@ document.getElementById('goBtn').addEventListener('click', () => {
   egZoomStart = 0; egZoomEnd = 1;  // will be narrowed to 0.70 if stable, once wobbleMode is known at impact
   document.getElementById('scrubSlider').max = 1000;
   if (currentTab !== 'chain') document.getElementById('scrubBar').classList.add('visible');
+  document.getElementById('chainLogoBar').classList.toggle('visible', currentTab === 'chain');
   document.getElementById('scrubSlider').value = 0;
   document.getElementById('scrubPct').textContent = '0';
   document.getElementById('replayBtn').disabled = false;
@@ -3757,6 +3778,7 @@ document.getElementById('newBtn').addEventListener('click', (e) => {
   document.getElementById('replayBtn').disabled = true;
   document.getElementById('scrubReplayBtn').disabled = true;
   document.getElementById('scrubBar').classList.toggle('visible', currentTab !== 'chain');
+  document.getElementById('chainLogoBar').classList.toggle('visible', currentTab === 'chain');
   heatmapDirty = true;
   drawStaticFrame();
 });
@@ -3787,6 +3809,7 @@ document.getElementById('clearBtn').addEventListener('click', () => {
   document.getElementById('replayBtn').disabled = true;
   document.getElementById('scrubReplayBtn').disabled = true;
   document.getElementById('scrubBar').classList.toggle('visible', currentTab !== 'chain');
+  document.getElementById('chainLogoBar').classList.toggle('visible', currentTab === 'chain');
   document.getElementById('scrubSlider').value = 0;
   document.getElementById('scrubPct').textContent = '0';
   drawStaticFrame();
@@ -4172,7 +4195,8 @@ function computeEnergy(frac) {
 // ─── Chain Reaction energy bar chart ─────────────────────────────────────────
 function drawChainBarChart() {
   const PW = CHAIN_BAR_PANEL_W;
-  const PH = canvas.height;
+  const LOGO_H = 80;              // reserved for #chainLogoBar at bottom
+  const PH = canvas.height - LOGO_H;
   const gx = canvas.width - PW;
   const gy = 0;
 
