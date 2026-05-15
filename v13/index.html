@@ -923,9 +923,21 @@
             <canvas class="nucleus-opt-canvas" data-key="u235" width="96" height="42" style="display:block;image-rendering:pixelated;"></canvas>
             <span class="nucleus-opt-label">U-235</span>
           </div>
+          <div class="nucleus-opt" data-key="u236" data-fission-only>
+            <canvas class="nucleus-opt-canvas" data-key="u236" width="96" height="42" style="display:block;image-rendering:pixelated;"></canvas>
+            <span class="nucleus-opt-label">U-236</span>
+          </div>
+          <div class="nucleus-opt" data-key="ba141" data-fission-only>
+            <canvas class="nucleus-opt-canvas" data-key="ba141" width="96" height="42" style="display:block;image-rendering:pixelated;"></canvas>
+            <span class="nucleus-opt-label">Ba-141</span>
+          </div>
           <div class="nucleus-opt" data-key="ag107">
             <canvas class="nucleus-opt-canvas" data-key="ag107" width="96" height="42" style="display:block;image-rendering:pixelated;"></canvas>
             <span class="nucleus-opt-label">Ag-107</span>
+          </div>
+          <div class="nucleus-opt" data-key="kr92" data-fission-only>
+            <canvas class="nucleus-opt-canvas" data-key="kr92" width="96" height="42" style="display:block;image-rendering:pixelated;"></canvas>
+            <span class="nucleus-opt-label">Kr-92</span>
           </div>
         </div>
       </div>
@@ -1741,6 +1753,15 @@ function applyTab(tab) {
   document.getElementById('neutronAbsorbRow').style.display  = isChain ? '' : 'none';
   document.getElementById('particleCounters').style.display  = isChain ? 'none' : '';
   document.getElementById('forceModeRow').style.display      = isChain ? 'none' : 'flex';
+  // Hide fission-only nucleus options on chain tab; show all on fission tab
+  document.querySelectorAll('.nucleus-opt[data-fission-only]').forEach(el => {
+    el.style.display = isChain ? 'none' : '';
+  });
+  // If a fission-only nucleus is selected when entering chain tab, reset to U-235
+  const fissionOnlyKeys = ['u236', 'ba141', 'kr92'];
+  if (isChain && fissionOnlyKeys.includes(selectedNucleusKey)) {
+    selectNucleus('u235');
+  }
   if (tab === 'chain') {
     fixedContainerBounds = computeContainerBounds();
     totalFuelAdded = 1; energyInFields = 1; energyInMotion = 0;
@@ -2134,9 +2155,9 @@ function updateParticleCounters() {
       p1P.textContent = 54; p1N.textContent = 86;
       p2P.textContent = 38; p2N.textContent = 56;
     } else {
-      // Ba-144 (56p, 88n) + Kr-90 (36p, 54n)
-      p1P.textContent = 56; p1N.textContent = 88;
-      p2P.textContent = 36; p2N.textContent = 54;
+      // Ba-141 (56p, 85n) + Kr-92 (36p, 56n)
+      p1P.textContent = 56; p1N.textContent = 85;
+      p2P.textContent = 36; p2N.textContent = 56;
     }
   }
 }
@@ -2145,7 +2166,8 @@ function updateParticleCounters() {
 let fissionNeutrons = [];  // [{angle, speed}] — generated fresh each Go press
 
 function genFissionNeutrons() {
-  const count = Math.random() < 0.5 ? 2 : 3;
+  // Branch 0 (Xe+Sr): 2 prompt neutrons; Branch 1 (Ba+Kr): 3 prompt neutrons
+  const count = fissionBranch === 0 ? 2 : 3;
   fissionNeutrons = [];
   for (let i = 0; i < count; i++) {
     fissionNeutrons.push({
@@ -2189,8 +2211,9 @@ let totalFuelAdded  = 0;  // cumulative units of fuel ever added
 let energyInFields  = 0;  // fuel energy not yet released
 let energyInMotion  = 0;  // energy released by completed fissions
 
-const CHAIN_BAR_PANEL_W = 240;  // width of the energy bar chart panel (right side)
-const CHAIN_ENERGY_MAX  = 100;  // fixed chart scale: 25% above 40-nucleus baseline, fits 60 total
+const CHAIN_BAR_PANEL_W  = 240;   // width of the energy bar chart panel (right side)
+const CHAIN_ENERGY_MAX   = 100;   // fixed chart scale: 25% above 40-nucleus baseline, fits 60 total
+const CONTROL_SITE_SCALE = 0.75;  // Ag-107 radius relative to U-235 sphere (107^(1/3)/250^(1/3) ≈ 0.754)
 let fixedContainerBounds = null; // set once at default zoom; stays fixed even when user zooms
 
 // Compute container bounds from current viewZoom (call once, then cache in fixedContainerBounds)
@@ -2210,8 +2233,9 @@ function chainContainerBounds() {
   return fixedContainerBounds || computeContainerBounds();
 }
 
-function emitChainNeutrons(cx, cy) {
-  const count = 2 + (Math.random() < 0.5 ? 1 : 0);
+function emitChainNeutrons(cx, cy, branch) {
+  // Branch 0 (Xe+Sr): 2 prompt neutrons; Branch 1 (Ba+Kr): 3 prompt neutrons
+  const count = branch === 0 ? 2 : 3;
   for (let i = 0; i < count; i++) {
     const angle = Math.random() * Math.PI * 2;
     const speed = 0.25 + Math.random() * 0.25;  // world px/ms
@@ -2225,6 +2249,7 @@ function triggerEnrichSite(site) {
   site.fissStart      = performance.now();
   site.angle          = Math.random() * Math.PI * 2;
   site.wobbleMode     = isFirstChainFission ? 'dip1' : pickWobbleMode();
+  site.fissionBranch  = Math.floor(Math.random() * 2);  // 0=Xe+Sr+2n, 1=Ba+Kr+3n
   isFirstChainFission = false;
   site.shakeDur        = (5 + Math.random() * 10) * 100;
   site.fissT           = PH1_END;
@@ -2257,7 +2282,10 @@ function updateChain(now) {
     let absorbed = false;
     for (const site of enrichSites) {
       if (site.state !== 'idle') continue;
-      if (Math.hypot(n.x - site.cx, n.y - site.cy) < captureR) {
+      const siteCaptureR = site.isControl
+        ? sphereR * CONTROL_SITE_SCALE + PARTICLE_RADIUS * 2
+        : captureR;
+      if (Math.hypot(n.x - site.cx, n.y - site.cy) < siteCaptureR) {
         if (!site.isControl) triggerEnrichSite(site);
         // Control material absorbs the neutron silently; fuel triggers fission
         chainNeutrons.splice(i, 1);
@@ -2284,7 +2312,7 @@ function updateChain(now) {
     } else {
       if (!site.neutronsEmitted && site.fissT >= PH2_END) {
         site.neutronsEmitted = true;
-        emitChainNeutrons(site.cx, site.cy);
+        emitChainNeutrons(site.cx, site.cy, site.fissionBranch);
         // Transfer energy: Fields → Motion
         energyInFields  = Math.max(0, energyInFields  - 1);
         energyInMotion += 1;
@@ -2424,7 +2452,7 @@ function updateChain(now) {
       if (neutronAbsorb && n._absorb) continue;
       const dx = n.x - site.cx, dy = n.y - site.cy;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      const minD = PARTICLE_RADIUS + sphereR;
+      const minD = PARTICLE_RADIUS + (site.isControl ? sphereR * CONTROL_SITE_SCALE : sphereR);
       if (dist >= minD || dist < 0.001) continue;
       if (neutronAbsorb) { n._absorb = true; continue; }
       const nx = dx / dist, ny = dy / dist;
@@ -2534,7 +2562,7 @@ function drawChainOverlay() {
   if (!_PART) { ctx.save(); ctx.globalAlpha = 0.3; }
   for (const site of enrichSites) {
     if (site.state === 'done' && site.wobbleMode === 'stable') {
-      drawChainNucleus(site.cx, site.cy, sphereR, site.viewAngle);
+      drawChainNucleus(site.cx, site.cy, siteR(site), site.viewAngle);
     }
     if (site.daughters) {
       if (site.state === 'done') {
@@ -2556,7 +2584,7 @@ function drawChainOverlay() {
     ctx.fillStyle = dimCol;
     for (const site of enrichSites) {
       if (site.state === 'done' && site.wobbleMode === 'stable') {
-        ctx.beginPath(); ctx.arc(site.cx, site.cy, sphereR + PARTICLE_RADIUS, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(site.cx, site.cy, siteR(site) + PARTICLE_RADIUS, 0, Math.PI * 2); ctx.fill();
       }
       if (site.daughters) {
         const ds = site.state === 'done' ? site.daughters : site.daughters.filter(d => d.bounced);
@@ -2574,34 +2602,13 @@ function drawChainOverlay() {
     ctx.restore();
   }
 
-  // Helper: silver ring + "C" label for control material sites
-  function drawControlRing(cx, cy, r) {
-    ctx.save();
-    ctx.beginPath(); ctx.arc(cx, cy, r * 1.18, 0, Math.PI * 2);
-    ctx.strokeStyle = _LIGHT ? 'rgba(0,100,200,0.85)' : 'rgba(160,220,255,0.9)';
-    ctx.lineWidth   = 3;
-    ctx.shadowBlur  = _LIGHT ? 0 : 14;
-    ctx.shadowColor = 'rgba(140,210,255,0.85)';
-    ctx.setLineDash([6, 5]);
-    ctx.stroke();
-    ctx.restore();
-    // "C" label below the nucleus
-    ctx.save();
-    ctx.font      = `bold ${Math.round(r * 0.55)}px monospace`;
-    ctx.fillStyle = _LIGHT ? 'rgba(0,80,180,0.9)' : 'rgba(160,220,255,0.95)';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.shadowBlur  = _LIGHT ? 0 : 8;
-    ctx.shadowColor = 'rgba(140,210,255,0.8)';
-    ctx.fillText('C', cx, cy + r * 1.22);
-    ctx.restore();
-  }
+  // Control sites (Ag-107) render at 75% the radius of fuel sites
+  const siteR = (site) => site.isControl ? sphereR * CONTROL_SITE_SCALE : sphereR;
 
   // ── FOREGROUND LAYER: idle fuel, actively fissioning sites, fresh neutrons ──
   for (const site of enrichSites) {
     if (site.state === 'idle') {
-      drawChainNucleus(site.cx, site.cy, sphereR, site.viewAngle);
-      if (site.isControl) drawControlRing(site.cx, site.cy, sphereR);
+      drawChainNucleus(site.cx, site.cy, siteR(site), site.viewAngle);
     } else if (site.state === 'fission') {
       const t = site.fissT;
       if (t <= PH2_END) {
@@ -3943,7 +3950,26 @@ window.addEventListener('mouseup', () => { _fvResize = null; _fvDrag = null; });
 // around the horizontal axis (top/bottom tilt). Trackball convention — the
 // surface follows the cursor. As particles' z flips sign, drawParticles'
 // z-sort swaps them between the front and back of the rendered nucleus.
-let nucleusDrag = null;  // { lastX, lastY } during an active drag
+let nucleusDrag    = null;  // { lastX, lastY } during an active fission-tab rotate
+let chainSiteDrag  = null;  // { target, offX, offY } during chain-tab site drag
+
+function clientToWorld(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const sx = clientX - rect.left, sy = clientY - rect.top;
+  const W = canvas.width, H = canvas.height;
+  return { x: (sx - W/2) / viewZoom + W/2, y: (sy - H/2) / viewZoom + H/2 };
+}
+
+function pickChainSite(clientX, clientY) {
+  const { x: wx, y: wy } = clientToWorld(clientX, clientY);
+  const r = animParent ? animParent.sphereR : 50;
+  for (const site of enrichSites) {
+    const sr = site.isControl ? r * CONTROL_SITE_SCALE : r;
+    const dx = wx - site.cx, dy = wy - site.cy;
+    if (dx*dx + dy*dy <= sr*sr) return { target: site, offX: site.cx - wx, offY: site.cy - wy };
+  }
+  return null;
+}
 // Accumulated rotation during an active nucleus drag — used by the force viz
 // panel to rotate its arrow pair in real time. Reset to 0 on mouseup so the
 // panel snaps back to a horizontal axis when the user releases the nucleus.
@@ -3996,6 +4022,17 @@ function canRotateNucleus() {
 }
 
 canvas.addEventListener('mousedown', (e) => {
+  // Chain tab: drag sites/parent nucleus around
+  if (currentTab === 'chain') {
+    const hit = pickChainSite(e.clientX, e.clientY);
+    if (hit) {
+      chainSiteDrag = hit;
+      canvas.style.cursor = 'grabbing';
+      e.preventDefault();
+    }
+    return;
+  }
+  // Fission tab: rotate nucleus
   if (!canRotateNucleus()) return;
   if (!pickNucleus(e.clientX, e.clientY)) return;
   nucleusDrag = { lastX: e.clientX, lastY: e.clientY };
@@ -4004,13 +4041,23 @@ canvas.addEventListener('mousedown', (e) => {
 });
 
 canvas.addEventListener('mousemove', (e) => {
-  if (nucleusDrag) return;  // window listener handles the drag itself
+  if (nucleusDrag || chainSiteDrag) return;  // window listener handles the drag
+  if (currentTab === 'chain') {
+    canvas.style.cursor = pickChainSite(e.clientX, e.clientY) ? 'grab' : '';
+    return;
+  }
   canvas.style.cursor = (canRotateNucleus() && pickNucleus(e.clientX, e.clientY))
     ? 'grab'
     : '';
 });
 
 window.addEventListener('mousemove', (e) => {
+  if (chainSiteDrag) {
+    const { x: wx, y: wy } = clientToWorld(e.clientX, e.clientY);
+    chainSiteDrag.target.cx = wx + chainSiteDrag.offX;
+    chainSiteDrag.target.cy = wy + chainSiteDrag.offY;
+    return;
+  }
   if (!nucleusDrag) return;
   const dx = e.clientX - nucleusDrag.lastX;
   const dy = e.clientY - nucleusDrag.lastY;
@@ -4028,6 +4075,11 @@ window.addEventListener('mousemove', (e) => {
 });
 
 window.addEventListener('mouseup', () => {
+  if (chainSiteDrag) {
+    chainSiteDrag = null;
+    canvas.style.cursor = '';
+    return;
+  }
   if (!nucleusDrag) return;
   nucleusDrag = null;
   dragRotY = 0;
