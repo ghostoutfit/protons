@@ -107,7 +107,7 @@
   }
   #goBtn.running:hover { background: rgba(255,40,40,0.3); }
 
-  #goBtn, #replayBtn { font-size: 28px; letter-spacing: 0; padding: 2px 18px; }
+  #goBtn, #replayBtn { font-size: 24px; letter-spacing: 0; padding: 2px 0; width: 90px; }
   #clearBtn { font-size: 11px; padding: 4px 14px; width: 100%; }
 
   /* ↺ replay — red */
@@ -677,10 +677,10 @@
     <button class="theme-btn" id="themeLight" title="Light mode" style="display:none;"></button>
   </div>
   <div style="display:flex;align-items:stretch;gap:12px;">
-  <div style="display:flex;flex-direction:column;justify-content:flex-end;align-self:stretch;gap:6px;padding-bottom:10px;margin-right:4px;">
-    <button class="btn" id="goBtn">&#9654;</button>
-    <button class="btn" id="replayBtn" disabled>&#8634;</button>
-    <button class="btn" id="clearBtn">Clear</button>
+  <div style="display:flex;flex-direction:column;align-self:stretch;gap:6px;padding:10px 0">
+    <button class="btn" id="goBtn" style="flex:1">&#9654;</button>
+    <button class="btn" id="replayBtn" disabled style="flex:1">&#8634;</button>
+    <button class="btn" id="clearBtn" style="flex:1">Clear</button>
   </div>
 
   <div id="fusionControls" style="display:none;align-items:stretch;gap:12px;">
@@ -943,10 +943,11 @@ let approachSpeed   = 1.05;
 // ============================================================
 //  SIMULATION STATE
 // ============================================================
-let particles = [];
-let running   = false;
-let paused    = false;
-let animId    = null;
+let particles  = [];
+let running    = false;
+let paused     = false;
+let animId     = null;
+let replayRAF  = null;
 
 // ============================================================
 //  HISTORY & SCRUBBER
@@ -2720,6 +2721,7 @@ function resetState() {
   cat2EscapeFrame      = 0;
   escapeKECap = Infinity;
   chargedEscapeEIEBase = 0;
+  if (replayRAF) { cancelAnimationFrame(replayRAF); replayRAF = null; }
   particleHistory  = [];
   scrubFrame       = -1;
   graphZoomStart   = 0;
@@ -2755,6 +2757,13 @@ function resetAndSetup() {
 // ============================================================
 goBtn.addEventListener('click', () => {
   if (currentTab !== 'fusion') return;   // temp tab handled separately
+  if (replayRAF) {
+    cancelAnimationFrame(replayRAF); replayRAF = null;
+    goBtn.textContent = '▶';
+    goBtn.classList.remove('running');
+    setScrubReplayDisabled(false);
+    return;
+  }
   if (running) {
     // Pause
     running = false;
@@ -2791,26 +2800,37 @@ function setScrubReplayDisabled(val) {
   document.getElementById('scrubReplayBtn').disabled = val;
 }
 
-replayBtn.addEventListener('click', () => {
-  if (!snapshot) return;
-  running = false;
-  paused  = false;
-  cancelAnimationFrame(animId);
-  resetState();
-  restoreSnapshot();
-  const eSnap  = computeEnergy();
-  initialTotal = eSnap.total;
-  initialKE     = eSnap.ke;
-  keVPerSimUnit = (scaledEnergy && eSnap.ke > 0) ? speedToKeV(approachSpeed) / eSnap.ke : 1;
-  updateCamera();
-  draw();
-  running = true;
+function doReplay() {
+  if (!particleHistory.length) return;
+  // Stop live sim and any existing replay
+  running = false; paused = false;
+  if (animId)    { cancelAnimationFrame(animId);    animId    = null; }
+  if (replayRAF) { cancelAnimationFrame(replayRAF); replayRAF = null; }
+  // Start playback from frame 0
+  scrubFrame = 0;
+  timeSlider.value = 0;
   goBtn.textContent = '⏸';
   goBtn.classList.add('running');
-  loop();
-});
-
-document.getElementById('scrubReplayBtn').addEventListener('click', () => replayBtn.click());
+  setScrubReplayDisabled(true);
+  function replayLoop() {
+    if (scrubFrame >= particleHistory.length - 1) {
+      scrubFrame = -1;
+      timeSlider.value = Math.max(0, particleHistory.length - 1);
+      goBtn.textContent = '▶';
+      goBtn.classList.remove('running');
+      setScrubReplayDisabled(false);
+      replayRAF = null;
+      return;
+    }
+    scrubFrame++;
+    timeSlider.value = scrubFrame;
+    renderFrame(scrubFrame);
+    replayRAF = requestAnimationFrame(replayLoop);
+  }
+  replayRAF = requestAnimationFrame(replayLoop);
+}
+replayBtn.addEventListener('click', doReplay);
+document.getElementById('scrubReplayBtn').addEventListener('click', doReplay);
 
 // ============================================================
 //  CLEAR
@@ -3705,8 +3725,9 @@ function switchTab(name) {
   document.getElementById('tempLogoBar').classList.toggle('visible', name === 'temp');
   setScrubReplayDisabled(true);
   // Stop any running animation
-  if (tempRAF)  { cancelAnimationFrame(tempRAF); tempRAF = null; }
-  if (animId)   { cancelAnimationFrame(animId);  animId  = null; }
+  if (tempRAF)   { cancelAnimationFrame(tempRAF);   tempRAF   = null; }
+  if (animId)    { cancelAnimationFrame(animId);     animId    = null; }
+  if (replayRAF) { cancelAnimationFrame(replayRAF);  replayRAF = null; }
   running = false; paused = false; tempRunning = false; tempPaused = false;
   goBtn.textContent = '▶';
   goBtn.classList.remove('running');
