@@ -290,7 +290,7 @@
     color: rgba(255,255,255,0.5);
     text-shadow: 0 0 4px rgba(255,255,255,0.5), 0 0 10px var(--accent2);
     cursor: pointer;
-    white-space: nowrap;
+    white-space: normal;
   }
   #separateFieldsLabel input[type="checkbox"] {
     -webkit-appearance: none;
@@ -706,7 +706,6 @@
     <input type="checkbox" id="scaledEnergyToggle">
     <div id="frameCounter"></div>
   </div>
-  <img src="../images/sspi-logo.png" alt="built by SSPI" style="height:40px;width:auto;border-radius:4px;opacity:0.85;align-self:flex-start;display:block;margin-top:2px;">
   </div><!-- /fusionControls -->
   <!-- SIE offset: outside blue box, for tuning combo energy offsets -->
   <label id="sieOffsetLabel" style="display:none;font-size:11px;color:var(--text-dim);align-items:center;gap:6px;">SIE offset: <input type="number" id="sieOffsetInput" value="0" step="1" style="width:56px;background:rgba(10,8,30,0.8);color:var(--accent2);border:1px solid rgba(26,110,255,0.35);border-radius:6px;padding:2px 4px;font-size:11px;font-family:inherit;outline:none;"></label>
@@ -801,9 +800,10 @@
 </div>
 
 <!-- Separate Fields panel — floats just above the scrubBar on the right side -->
-<div id="separateFieldsPanel" style="position:fixed;right:0;bottom:0;display:none;z-index:22;width:320px;height:35px;align-items:center;justify-content:center;box-sizing:border-box;">
+<div id="separateFieldsPanel" style="position:fixed;right:100px;bottom:0;display:none;z-index:22;width:220px;height:35px;align-items:center;justify-content:center;box-sizing:border-box;">
   <label id="separateFieldsLabel"><input type="checkbox" id="separateFieldsChk"> SHOW SEPARATE FIELDS</label>
 </div>
+<img src="../images/sspi-logo.png" alt="built by SSPI" style="position:fixed;bottom:0;right:0;height:60px;width:auto;border-radius:4px 0 0 0;opacity:0.85;z-index:25;display:block;pointer-events:none;">
 
 <script>
 // Active tab — declared first so every function can read it safely.
