@@ -529,7 +529,6 @@
     align-items: center;
     justify-content: center;
     background: rgba(6,4,20,0.95);
-    border-top: 3px solid rgba(100,120,180,0.55);
     border-left: 1px solid var(--ui-border);
   }
   #tempLogoBar.visible { display: flex; }
@@ -846,8 +845,8 @@
 </div>
 
 <div id="tempDevPanel">
-  <label>X (right offset): <input type="range" id="tempLogoX" min="0" max="200" value="0"> <span id="tempLogoXVal">0</span></label>
-  <label>Y (bottom offset): <input type="range" id="tempLogoY" min="0" max="200" value="0"> <span id="tempLogoYVal">0</span></label>
+  <label>X (right): <input type="range" id="tempLogoX" min="-200" max="200" value="0"> <span id="tempLogoXVal">0</span></label>
+  <label>Y (bottom): <input type="range" id="tempLogoY" min="-200" max="200" value="0"> <span id="tempLogoYVal">0</span></label>
 </div>
 
 <!-- Bar chart overlay — fixed over full height including toolbar -->
