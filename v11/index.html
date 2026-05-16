@@ -942,7 +942,7 @@
     <div style="display:flex;flex-direction:column;justify-content:flex-end;align-self:stretch;gap:6px;padding-bottom:10px">
       <button class="btn" id="goBtn">&#9654; GO</button>
       <button class="btn" id="replayBtn" disabled>&#8634;</button>
-      <button id="clearBtn" class="btn">Clear</button>
+      <button id="clearBtn" class="btn">Reset</button>
     </div>
 
     <!-- PINK BOX: stats/center | proton add buttons + neutron slider -->
@@ -1623,6 +1623,7 @@ function resetSim() {
   running = false;
   replaying = false;
   replayAccum = 0;
+  camX = 0; camY = 0;
   cancelAnimationFrame(animId);
   goBtn.textContent = '▶ GO';
   goBtn.classList.remove('running');
@@ -1858,6 +1859,7 @@ document.getElementById('tabB').addEventListener('click', () => {
   neutronSlider.value = 2;
   neutronSliderVal.textContent = '2';
   placeNucleus(2, 2);
+  updateCam();
 });
 
 
@@ -1921,6 +1923,7 @@ neutronSlider.addEventListener('input', function() {
   neutronSliderVal.textContent = this.value;
   if (lastNucleusProtonCount > 0) {
     placeNucleus(lastNucleusProtonCount, parseInt(this.value));
+    updateCam();
   }
 });
 
@@ -1928,7 +1931,7 @@ function stepNeutronSlider(delta) {
   const v = Math.min(60, Math.max(0, parseInt(neutronSlider.value) + delta));
   neutronSlider.value = v;
   neutronSliderVal.textContent = v;
-  if (lastNucleusProtonCount > 0) placeNucleus(lastNucleusProtonCount, v);
+  if (lastNucleusProtonCount > 0) { placeNucleus(lastNucleusProtonCount, v); updateCam(); }
 }
 document.getElementById('neutronDecBtn').addEventListener('click', () => stepNeutronSlider(-1));
 document.getElementById('neutronIncBtn').addEventListener('click', () => stepNeutronSlider(1));
@@ -3055,8 +3058,10 @@ function updateCam() {
 
   const fpW = (arrowMode > 0) ? forcePanelEl.offsetWidth : 0;
   const availW = canvas.width - fpW;
+  const toolbarH   = document.getElementById('toolbar').offsetHeight;
+  const visibleCy  = toolbarH + (canvas.height - toolbarH) / 2;
   camX = availW / 2 - (zoom * (cx - canvas.width  / 2) + canvas.width  / 2);
-  camY = canvas.height / 2 - (zoom * (cy - canvas.height / 2) + canvas.height / 2);
+  camY = visibleCy  - (zoom * (cy - canvas.height / 2) + canvas.height / 2);
 }
 
 function draw() {
@@ -3251,9 +3256,8 @@ function loop() {
 
   // ── Replay mode: play back recorded history automatically ──
   if (replaying) {
-    // Speed slider controls playback rate via fractional accumulator.
-    // speed is in sim units; normalise to ~1 frame/tick at default (speed≈1.5).
-    replayAccum += Math.max(0.05, speed / 1.5);
+    // Slider controls playback rate; floor at 0.5 to avoid extreme slowdown at turtle position.
+    replayAccum += Math.max(0.5, speed / 1.5);
     const steps = Math.floor(replayAccum);
     replayAccum -= steps;
     scrubFrame = Math.min(scrubFrame + steps, particleHistory.length - 1);
@@ -3297,8 +3301,9 @@ function loop() {
   // travel in physics coords before being culled.
   {
     const cx = canvas.width / 2, cy = canvas.height / 2;
-    const mw = canvas.width  * 0.3;
-    const mh = canvas.height * 0.3;
+    const mw   = canvas.width  * 0.3;
+    const mh   = canvas.height * 0.3;
+    const mhDn = mh * 2.0;   // 2× margin before culling particles that exit downward
     if (currentTab === 'nucleus') {
       // Never remove bound (non-ejected) nucleus particles even if they drift off-screen
       particles = particles.filter(p => {
@@ -3306,7 +3311,7 @@ function loop() {
         const sx = zoom * (p.x - cx) + cx;
         const sy = zoom * (p.y - cy) + cy;
         return sx > -mw && sx < canvas.width  + mw &&
-               sy > -mh && sy < canvas.height + mh;
+               sy > -mh && sy < canvas.height + mhDn;
       });
     } else {
       const kept = [];
@@ -3316,7 +3321,7 @@ function loop() {
         const sx = zoom * (p.x - cx) + cx;
         const sy = zoom * (p.y - cy) + cy;
         if (sx > -mw && sx < canvas.width  + mw &&
-            sy > -mh && sy < canvas.height + mh) {
+            sy > -mh && sy < canvas.height + mhDn) {
           if (i === dragging) newDragging = kept.length;
           kept.push(p);
         }

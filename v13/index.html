@@ -521,11 +521,11 @@
   .toggle-label input[type="checkbox"] { accent-color: var(--accent1); }
 
   .field-label-electric {
-    color: var(--accent2);
+    color: #46a5ff;
     text-shadow:
-      0 0 4px var(--accent2),
-      0 0 10px var(--accent2-glow),
-      0 0 22px var(--accent2-dim);
+      0 0 4px #46a5ff,
+      0 0 10px rgba(70,165,255,0.5),
+      0 0 22px rgba(70,165,255,0.2);
   }
 
   /* ── Scrub bar — floating glass at bottom ──────────────────────────────── */
@@ -915,7 +915,7 @@
     <div style="display:flex;flex-direction:column;align-self:stretch;gap:6px;padding:10px 0">
       <button id="goBtn" class="btn" style="flex:1">&#9654; GO</button>
       <button id="replayBtn" class="btn" disabled style="flex:1">&#8634;</button>
-      <button id="clearBtn" class="btn" style="flex:1">Clear</button>
+      <button id="clearBtn" class="btn" style="flex:1">Reset</button>
     </div>
 
     <!-- Pink box: New button + neutron speed + particle counters + Add more fuel -->
@@ -3534,7 +3534,9 @@ function playbackLoop(now) {
   if (!n) return;
 
   const speed   = parseFloat(document.getElementById('playbackSpeed').value);
-  const elapsed = (now - playbackStartRealT) * speed;
+  // Slider is an absolute control: default (1.0) = 1:1 real-time; floor at 0.5 to prevent
+  // extreme slowdown at the turtle end.
+  const elapsed = (now - playbackStartRealT) * Math.max(0.5, speed);
   const animEnd = prerenderTimes[n - 1] - prerenderTimes[0];
 
   // Binary search for the frame whose capture time <= elapsed
@@ -3739,6 +3741,13 @@ function selectNucleus(key) {
   document.getElementById('nucleusWheel').classList.remove('open');
   document.getElementById('enrichBtn').textContent =
     key === 'ag107' ? 'Add control material' : 'Add more fuel';
+  // Immediately show the selected nucleus centred — only when idle
+  if (neutronState === 'idle') {
+    currentSeed = Math.floor(Math.random() * 1e9);
+    staticFissAngle = 0;
+    initNuclei();
+    drawStaticFrame();
+  }
 }
 
 (function bindNucleusWheel() {

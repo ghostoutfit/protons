@@ -179,8 +179,8 @@
     flex-direction: column;
     align-self: stretch;
     gap: 10px;
-    background: rgba(26,110,255,0.07);
-    border: 1px solid rgba(26,110,255,0.22);
+    background: var(--accent2-dim);
+    border: 1px solid var(--accent2);
     border-radius: 12px;
     padding: 10px 16px;
   }
@@ -680,7 +680,7 @@
   <div style="display:flex;flex-direction:column;align-self:stretch;gap:6px;padding:10px 0">
     <button class="btn" id="goBtn" style="flex:1">&#9654;</button>
     <button class="btn" id="replayBtn" disabled style="flex:1">&#8634;</button>
-    <button class="btn" id="clearBtn" style="flex:1">Clear</button>
+    <button class="btn" id="clearBtn" style="flex:1">Reset</button>
   </div>
 
   <div id="fusionControls" style="display:none;align-items:stretch;gap:12px;">
@@ -711,8 +711,8 @@
       <canvas class="psel-icon pslider-icon" data-side="left"  width="44" height="36" style="margin-right:5px;"></canvas>
       <div style="flex:1;min-width:80px;display:flex;flex-direction:column;align-items:stretch;gap:1px;">
         <input type="range" id="v9SpeedSlider" min="0.1" max="2.1" step="0.05" value="1.05" style="width:100%;accent-color:var(--accent1);">
-        <div style="display:flex;justify-content:center;align-items:center;font-size:12px;color:var(--text-dim);padding:0 2px;margin-top:8px;">
-          <span id="speedKeV" style="font-size:11px;font-family:'Lexend', sans-serif;color:var(--accent1);text-align:center;"></span>
+        <div style="display:flex;justify-content:center;align-items:center;font-size:12px;color:var(--text-dim);padding:0 2px;margin-top:10px;">
+          <span id="speedKeV" style="font-size:20px;font-family:'Lexend', sans-serif;color:var(--accent1);text-align:center;text-shadow:0 0 4px var(--accent1),0 0 10px var(--accent1-glow),0 0 22px var(--accent1-dim);"></span>
         </div>
       </div>
       <canvas class="psel-icon pslider-icon" data-side="right" width="44" height="36" style="margin-left:5px;"></canvas>
@@ -749,18 +749,18 @@
         <input type="range" id="tempSlider" min="0" max="100" value="40" style="flex:1;min-width:80px;">
         <canvas id="tempProtonR" width="52" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;transform:scaleX(-1);"></canvas>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--text-dim);padding:0 2px;">
-        <span>1 Million °C</span>
-        <span id="tempTempVal" style="color:var(--accent1);font-size:11px;"></span>
-        <span>15 Million °C</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--text-dim);padding:0 2px;margin-top:3px;">
+        <span style="text-align:center;">1<br>Million °C</span>
+        <span id="tempTempVal" style="color:var(--accent1);font-size:20px;text-shadow:0 0 4px var(--accent1),0 0 10px var(--accent1-glow),0 0 22px var(--accent1-dim);"></span>
+        <span style="text-align:center;">15<br>Million °C</span>
       </div>
-      <div style="text-align:center;font-size:11px;color:var(--accent1);margin-top:2px;font-family:'Lexend',sans-serif;">
+      <div style="text-align:center;font-size:20px;color:var(--accent1);margin-top:-7px;font-family:'Lexend',sans-serif;text-shadow:0 0 4px var(--accent1),0 0 10px var(--accent1-glow),0 0 22px var(--accent1-dim);">
         <span id="tempKeVVal"></span>
       </div>
     </div>
     <div class="ctrl-box-blue" style="align-items:flex-start;gap:8px;min-width:180px;">
       <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em;">Forces</div>
-      <button id="showForceBtn" class="btn" style="font-size:13px;padding:14px;width:100%;background:#1a6eff;color:#fff;border-color:#1a6eff;box-shadow:0 0 12px rgba(26,110,255,0.7);">Show Total Force</button>
+      <button id="showForceBtn" class="btn" style="font-size:13px;padding:14px;width:100%;background:var(--accent2);color:#fff;border-color:var(--accent2);box-shadow:0 0 12px var(--accent2-glow);">Show Total Force</button>
       <div style="display:flex;align-items:center;gap:4px;width:100%;margin-top:4px;">
         <span class="slider-icon" title="Slow">🐢</span>
         <input type="range" id="tempSpeedSlider" min="1" max="10" step="1" value="10" style="flex:1;">
@@ -947,7 +947,8 @@ let particles  = [];
 let running    = false;
 let paused     = false;
 let animId     = null;
-let replayRAF  = null;
+let replayRAF   = null;
+let replayAccum = 0;    // fractional frame accumulator for speed-controlled playback
 
 // ============================================================
 //  HISTORY & SCRUBBER
@@ -1022,7 +1023,9 @@ let barScaleDrag = null;     // { startY, startRange } while dragging the scale
 let splitIE   = false;
 let sieOffset = 0;
 let simSpeed  = 7;       // 1–10 speed slider; wired up later
+let recordingFrameSpeed = null; // frameSpeed() captured at Go — normalizes replay rate
 let scaledEnergy = false; // "Show Energy Changes to Scale"
+let currentAccent2RGB = '26,110,255'; // r,g,b of accent2; must be before idleJitter/draw
 
 // ============================================================
 //  CLUSTER DEFINITIONS  (per-nucleon offsets from cluster CM)
@@ -2232,12 +2235,13 @@ function drawBarChart() {
     const py = baseline - i * gridSpacing;
     if (i > 0 && py < chartTop - 2) break;
     const isBaseline = i === 0;
+    const a2 = currentAccent2RGB;
     ctx.strokeStyle = isBaseline
-      ? (LIGHT ? 'rgba(0,0,0,0.55)' : 'rgba(0,200,255,0.7)')
-      : (LIGHT ? 'rgba(0,0,0,0.15)' : 'rgba(0,200,255,0.2)');
+      ? (LIGHT ? 'rgba(0,0,0,0.55)' : `rgba(${a2},0.7)`)
+      : (LIGHT ? 'rgba(0,0,0,0.15)' : `rgba(${a2},0.2)`);
     ctx.lineWidth   = isBaseline ? 2 : 1.5;
     if (isBaseline) {
-      ctx.shadowColor = LIGHT ? 'rgba(0,0,0,0)' : 'rgba(0,200,255,1.0)';
+      ctx.shadowColor = LIGHT ? 'rgba(0,0,0,0)' : `rgba(${a2},1.0)`;
       ctx.shadowBlur  = LIGHT ? 0 : 8;
     } else { ctx.shadowBlur = 0; }
     ctx.beginPath(); ctx.moveTo(gx, py); ctx.lineTo(gx + W, py); ctx.stroke();
@@ -2788,6 +2792,7 @@ goBtn.addEventListener('click', () => {
     goBtn.textContent = '⏸';
     goBtn.classList.add('running');
     takeSnapshot();
+    recordingFrameSpeed = frameSpeed();
     loop();
   }
 });
@@ -2808,11 +2813,20 @@ function doReplay() {
   if (replayRAF) { cancelAnimationFrame(replayRAF); replayRAF = null; }
   // Start playback from frame 0
   scrubFrame = 0;
+  replayAccum = 0;
   timeSlider.value = 0;
   goBtn.textContent = '⏸';
   goBtn.classList.add('running');
   setScrubReplayDisabled(true);
   function replayLoop() {
+    // Replay rate normalizes out the recording speed so the slider feels consistent:
+    // frameSpeed() / recordingFrameSpeed = 1.0 when slider matches recording position,
+    // > 1 when replaying faster than recorded (skips frames), < 1 for slow-motion.
+    const recFS = recordingFrameSpeed || frameSpeed();
+    replayAccum += Math.max(0.05, frameSpeed() / recFS);
+    const steps = Math.floor(replayAccum);
+    replayAccum -= steps;
+    scrubFrame = Math.min(scrubFrame + steps, particleHistory.length - 1);
     if (scrubFrame >= particleHistory.length - 1) {
       scrubFrame = -1;
       timeSlider.value = Math.max(0, particleHistory.length - 1);
@@ -2822,7 +2836,6 @@ function doReplay() {
       replayRAF = null;
       return;
     }
-    scrubFrame++;
     timeSlider.value = scrubFrame;
     renderFrame(scrubFrame);
     replayRAF = requestAnimationFrame(replayLoop);
@@ -2885,7 +2898,7 @@ function updatePhaseTimeline() {
     if (frames <= 0) { el.style.display = 'none'; return; }
     el.style.display  = 'flex';
     el.style.flex     = String(frames);
-    el.style.fontSize = frames / visTotal < 0.12 ? '0px' : '11px';
+    el.style.fontSize = Math.max(6, Math.min(11, (frames / visTotal) * 90)) + 'px';
     el.style.opacity  = phaseKey === curPhase ? '1' : '0.35';
   };
 
@@ -3322,6 +3335,14 @@ function updateJitter() {
 // fusion's draw() while on the temp tab would clobber the temp UI (including while paused).
 (function idleJitter() {
   updateJitter();
+  if (currentTab === 'temp' && !tempRunning && !tempPaused) {
+    for (const p of tempProtons) {
+      if (p._jx === undefined) { p._jx = 0; p._jy = 0; }
+      p._jx += (Math.random() - 0.5) * 0.7; p._jx *= 0.78;
+      p._jy += (Math.random() - 0.5) * 0.7; p._jy *= 0.78;
+    }
+    drawTemp();
+  }
   if (currentTab === 'fusion' && !running) {
     if (scrubFrame >= 0) {
       renderFrame(scrubFrame); // keep showing the scrubbed frame with fresh jitter
@@ -3957,8 +3978,8 @@ function drawTemp() {
   // Physics positions are untouched so the overlap (and flash) lasts its full natural duration.
   const N = tempProtons.length;
   const diam = TEMP_R * 2;
-  const visX = tempProtons.map(p => p.x);
-  const visY = tempProtons.map(p => p.y);
+  const visX = tempProtons.map(p => p.x + (p._jx || 0));
+  const visY = tempProtons.map(p => p.y + (p._jy || 0));
   for (let i = 0; i < N; i++) {
     for (let j = i + 1; j < N; j++) {
       const dx = visX[j] - visX[i], dy = visY[j] - visY[i];
@@ -4175,6 +4196,7 @@ const THEMES = {
   A: {
     accent1:'#ff2d78', accent1dim:'rgba(255,45,120,0.22)', accent1glow:'rgba(255,45,120,0.55)',
     accent2:'#1a6eff', accent2dim:'rgba(26,110,255,0.18)',  accent2glow:'rgba(26,110,255,0.45)',
+    accent2rgb:'26,110,255',
     uibg:'rgba(8,6,24,0.38)', uiborder:'rgba(255,255,255,0.07)',
     textdim:'rgba(220,215,255,0.55)', textbright:'rgba(240,235,255,0.92)',
     bg:'#05040f',
@@ -4182,6 +4204,7 @@ const THEMES = {
   B: {
     accent1:'#ff2d78', accent1dim:'rgba(255,45,120,0.22)', accent1glow:'rgba(255,45,120,0.5)',
     accent2:'#bd00ff', accent2dim:'rgba(189,0,255,0.18)',  accent2glow:'rgba(189,0,255,0.42)',
+    accent2rgb:'189,0,255',
     uibg:'rgba(8,4,22,0.42)', uiborder:'rgba(189,0,255,0.14)',
     textdim:'rgba(230,200,255,0.52)', textbright:'rgba(248,232,255,0.92)',
     bg:'#05030f',
@@ -4189,6 +4212,7 @@ const THEMES = {
   C: {
     accent1:'#ff2d78', accent1dim:'rgba(255,45,120,0.22)', accent1glow:'rgba(255,45,120,0.5)',
     accent2:'#00f5e0', accent2dim:'rgba(0,245,224,0.15)',  accent2glow:'rgba(0,245,224,0.4)',
+    accent2rgb:'0,245,224',
     uibg:'rgba(6,4,20,0.40)', uiborder:'rgba(255,45,120,0.12)',
     textdim:'rgba(220,210,255,0.52)', textbright:'rgba(245,235,255,0.92)',
     bg:'#04030e',
@@ -4196,6 +4220,7 @@ const THEMES = {
 };
 function applyTheme(key) {
   const t = THEMES[key];
+  currentAccent2RGB = t.accent2rgb;
   const r = document.documentElement.style;
   r.setProperty('--accent1',      t.accent1);
   r.setProperty('--accent1-dim',  t.accent1dim);
