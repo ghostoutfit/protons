@@ -1054,7 +1054,7 @@
   <input type="range" id="timeSlider" min="0" max="0" value="0" disabled>
 
 </div>
-<a href="https://ssp.org/" target="_blank" rel="noopener" style="position:fixed;bottom:5px;right:5px;z-index:25;display:block;line-height:0;"><img src="../images/sspi-logo.png" alt="built by SSPI" style="height:60px;width:auto;border-radius:4px 0 0 0;opacity:0.85;display:block;"></a>
+<a href="https://bscs.org/" target="_blank" rel="noopener" style="position:fixed;bottom:5px;right:5px;z-index:25;display:block;line-height:0;"><img src="../images/bscs-logo.png" alt="built by BSCS" style="height:60px;width:auto;border-radius:4px 0 0 0;opacity:0.85;display:block;"></a>
 
 <script>
 // ============================================================
@@ -3774,6 +3774,48 @@ draw();
     menu.style.top  = e.clientY + 'px';
   });
   document.addEventListener('click', () => menu.style.display = 'none');
+})();
+
+// ── Bug report button ─────────────────────────────────────────────────────
+function getBugState() {
+  return {
+    sim:              'v11',
+    tab:              currentTab,
+    strongForce:      strongForceStrength,
+    strongRange:      strongForceRange,
+    zoom:             +zoom.toFixed(3),
+    camX:             Math.round(camX),
+    camY:             Math.round(camY),
+    running, paused,
+    arrowMode:        typeof arrowMode !== 'undefined' ? arrowMode : null,
+    showElecField:    document.getElementById('electricFieldToggle')?.checked,
+    showStrongField:  document.getElementById('strongFieldToggle')?.checked,
+    particleCount:    particles.length,
+    particles: particles.map(p => ({
+      t: p.type, x: Math.round(p.x), y: Math.round(p.y),
+      vx: +p.vx.toFixed(3), vy: +p.vy.toFixed(3),
+    })),
+  };
+}
+(function addBugButton() {
+  const btn = document.createElement('a');
+  btn.textContent = '🐛';
+  btn.title = 'Report a bug';
+  Object.assign(btn.style, {
+    position: 'fixed', bottom: '6px', left: '8px', zIndex: '30',
+    fontSize: '18px', opacity: '0.25', cursor: 'pointer',
+    textDecoration: 'none', lineHeight: '1', userSelect: 'none',
+    transition: 'opacity 0.15s',
+  });
+  btn.addEventListener('mouseenter', () => btn.style.opacity = '0.85');
+  btn.addEventListener('mouseleave', () => btn.style.opacity = '0.25');
+  btn.addEventListener('click', e => {
+    e.preventDefault();
+    const state = encodeURIComponent(JSON.stringify(getBugState()));
+    const url   = `../dev/bug-report.html?sim=v11&sourceUrl=${encodeURIComponent(location.href)}&state=${state}`;
+    window.open(url, '_blank');
+  });
+  document.body.appendChild(btn);
 })();
 </script>
 </body>

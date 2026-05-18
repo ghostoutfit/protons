@@ -816,13 +816,13 @@
     </div>
     <div id="scrubButtons">
       <button id="fullTimelineBtn" style="font-size:15px;padding:6px 18px;">SHOW LINE<br>GRAPH</button>
-      <a href="https://ssp.org/" target="_blank" rel="noopener" style="display:block;line-height:0;flex-shrink:0;"><img src="../images/sspi-logo.png" alt="built by SSPI" style="height:60px;width:auto;opacity:0.85;display:block;border-radius:4px;"></a>
+      <a href="https://bscs.org/" target="_blank" rel="noopener" style="display:block;line-height:0;flex-shrink:0;"><img src="../images/bscs-logo.png" alt="built by BSCS" style="height:60px;width:auto;opacity:0.85;display:block;border-radius:4px;"></a>
     </div>
   </div>
 </div>
 
 <div id="tempLogoBar">
-  <a href="https://ssp.org/" target="_blank" rel="noopener" style="display:block;line-height:0;"><img src="../images/sspi-logo.png" alt="built by SSPI" style="height:60px;width:auto;opacity:0.85;display:block;border-radius:4px;"></a>
+  <a href="https://bscs.org/" target="_blank" rel="noopener" style="display:block;line-height:0;"><img src="../images/bscs-logo.png" alt="built by BSCS" style="height:60px;width:auto;opacity:0.85;display:block;border-radius:4px;"></a>
 </div>
 
 <!-- Bar chart overlay — fixed over full height including toolbar -->
@@ -906,7 +906,7 @@ const COMBO_TABLE = {
   // Cat 2 — productive fusion (KE Out = immediateKE − 2)
   't+d':   { sieOffset: 178, sieOffsetUnscaled: 178, immediateKE: 86, keOut: 84, keInScaled: 17600, keOutScaled: 16700, gammaKE:  0 },
   'd+t':   { sieOffset: 178, sieOffsetUnscaled: 178, immediateKE: 86, keOut: 84, keInScaled: 17600, keOutScaled: 16700, gammaKE:  0 },
-  'd+d':   { sieOffset: 92, sieOffsetUnscaled: 92, immediateKE: 20, keOut: 18, gammaKE:  0 },
+  'd+d':   { sieOffset: 100, sieOffsetUnscaled: 100, immediateKE: 20, keOut: 18, gammaKE:  0 },
   't+t':   { sieOffset: 258, sieOffsetUnscaled: 258, immediateKE: 47, keOut: 41, gammaKE:  0 },
   // Cat 3 — gamma emission
   'p+n':   { sieOffset: 100, immediateKE: 54, keOut:  4, gammaKE: 50 },
@@ -995,6 +995,10 @@ let coulombScatterEscape = false;  // true when escape is pure Coulomb (run phys
 let chargedNuclearEscape = false;  // true when D+D→T+p in not-to-scale mode (run physics, cap KE)
 let escapeKECap = Infinity;        // max displayed KE during chargedNuclearEscape
 let chargedEscapeEIEBase = 0;      // EIE at collision onset, used to mirror KE ramp inversely
+let ddToTPEscape    = false;  // true when D+D produced T+p — live Coulomb EIE display
+let ddTPEscapeTotal = 0;     // conserved KE_bar + EIE_bar budget at escape start
+let ddTPEscapeEIE0  = 0;     // collisionDisplayEIE frozen value at escape start (display baseline)
+let ddTPEscapeDistRef = 0;   // T-p distance at escape snap; EIE decays as 1/r from here
 
 // ============================================================
 //  PHASE STATE
@@ -1730,10 +1734,9 @@ function fireDDtoTP(targetKE = null) {
   escapeAnimTargetPos = particles.map(p => ({ x: p.x, y: p.y }));
   for (let i = 0; i < 4; i++) { particles[i].x = escapeAnimStartPos[i].x; particles[i].y = escapeAnimStartPos[i].y; }
   applyCategory2Velocities(3, 1, targetKE);
-  // T and P are both charged — run live Coulomb physics, no artificial KE cap
-  collisionDisplayEIE  = null;
-  collisionDisplayKE   = null;
-  coulombScatterEscape = true;
+  // Coast like other Cat2 combos — real physics would let strong-force pull from T's
+  // neutrons decelerate the escaping proton, and the type-swap causes a KE spike.
+  ddToTPEscape = true;
 }
 
 // T+T → He4 + 2N  (3-body, full 2D momentum conservation)
@@ -2696,6 +2699,10 @@ function resetState() {
   photonEscapeFrames  = 0;
   coulombScatterEscape = false;
   chargedNuclearEscape = false;
+  ddToTPEscape      = false;
+  ddTPEscapeTotal   = 0;
+  ddTPEscapeEIE0    = 0;
+  ddTPEscapeDistRef = 0;
   strongRangeMult      = 1.0;
   coulombMult          = 1.0;
   cat2EscapeFrame      = 0;
@@ -2844,11 +2851,11 @@ function updatePhaseTimeline() {
 
   // No history yet — keep the placeholder approach bar visible (no text), hide others.
   if (total === 0 || collisionStartFrame < 0) {
-    segApproach.style.display  = 'flex';
-    segApproach.style.flex     = '1';
-    segApproach.style.fontSize = '0px';   // space reserved, label hidden
-    segCollision.style.display = 'none';
-    segEscape.style.display    = 'none';
+    if (segApproach.style.display  !== 'flex') segApproach.style.display  = 'flex';
+    if (segApproach.style.flex     !== '1')    segApproach.style.flex     = '1';
+    if (segApproach.style.fontSize !== '0px')  segApproach.style.fontSize = '0px';
+    if (segCollision.style.display !== 'none') segCollision.style.display = 'none';
+    if (segEscape.style.display    !== 'none') segEscape.style.display    = 'none';
     return;
   }
 
@@ -2871,11 +2878,14 @@ function updatePhaseTimeline() {
                  : (collisionPhase === 'collision') ? 'collision' : 'escape';
 
   const setSegment = (el, frames, phaseKey) => {
-    if (frames <= 0) { el.style.display = 'none'; return; }
-    el.style.display  = 'flex';
-    el.style.flex     = String(frames);
-    el.style.fontSize = Math.max(6, Math.min(11, (frames / visTotal) * 90)) + 'px';
-    el.style.opacity  = phaseKey === curPhase ? '1' : '0.35';
+    if (frames <= 0) { if (el.style.display !== 'none') el.style.display = 'none'; return; }
+    const newFlex = String(frames);
+    const newSize = Math.max(6, Math.min(11, (frames / visTotal) * 90)) + 'px';
+    const newOp   = phaseKey === curPhase ? '1' : '0.35';
+    if (el.style.display   !== 'flex')    el.style.display   = 'flex';
+    if (el.style.flex      !== newFlex)   el.style.flex      = newFlex;
+    if (el.style.fontSize  !== newSize)   el.style.fontSize  = newSize;
+    if (el.style.opacity   !== newOp)     el.style.opacity   = newOp;
   };
 
   setSegment(segApproach,  visApproach,  'approach');
@@ -3349,6 +3359,24 @@ function loop() {
     return;
   }
 
+  // ── D+D→T+p live Coulomb display update (escapeAnim + escape) ──
+  // Called after positions are updated each frame so EIE drains into KE as T and p fly apart.
+  function updateDDToTPDisplay() {
+    if (!ddToTPEscape || ddTPEscapeDistRef <= 0) return;
+    const _ds = scaledEnergy ? 1 : 0.2;
+    let _tcx = 0, _tcy = 0;
+    for (let _i = 0; _i < leftClusterSize; _i++) { _tcx += particles[_i].x; _tcy += particles[_i].y; }
+    _tcx /= leftClusterSize; _tcy /= leftClusterSize;
+    const _pdx = particles[leftClusterSize].x - _tcx;
+    const _pdy = particles[leftClusterSize].y - _tcy;
+    const _d   = Math.sqrt(_pdx * _pdx + _pdy * _pdy);
+    // EIE decays as 1/r from the snap reference: starts at ddTPEscapeEIE0, drains to 0.
+    // Clamped so it never exceeds the starting value (particles can only fly apart).
+    const _eie = Math.max(0, ddTPEscapeEIE0 * ddTPEscapeDistRef / Math.max(_d, ddTPEscapeDistRef));
+    collisionDisplayEIE = _eie;
+    collisionDisplayKE  = (ddTPEscapeTotal - _eie) / _ds;
+  }
+
   // ── ESCAPE ANIMATION  (lerp positions + cluster velocities) ───
   if (collisionPhase === 'escapeAnim') {
     const escFrames = effectiveFrames(ESCAPE_ANIM_FRAMES);
@@ -3393,6 +3421,7 @@ function loop() {
       for (let i = lSz; i < n;   i++) { particles[i].vx = lerpRvx; particles[i].vy = lerpRvy; }
     }
 
+    updateDDToTPDisplay();
     updateCamera();
     if (escapeAnimFrame >= escFrames) {
       // Snap to exact final state
@@ -3436,6 +3465,7 @@ function loop() {
         p.y += p.vy * frameSpeed();
       }
     }
+    updateDDToTPDisplay();
     updateCamera();
 
     // Auto-stop when all particles are off-screen
@@ -3547,19 +3577,29 @@ function loop() {
         // EIE stays frozen — N is neutral, no inter-cluster Coulomb
       } else if (isCategory2()) {
         fireCategory2Escape(); escapeAnimFrame = 0; collisionPhase = 'escapeAnim';
-        if (chargedNuclearEscape) {
-          // D+D→T+p not-to-scale: collisionDisplayKE already hardcoded in fireDDtoTP
-        } else if (collisionDisplayEIE === null) {
-          // D+D→T+p to-scale: show actual physics KE
-          collisionDisplayKE = null;
-        } else if (!scaledEnergy && leftChoice === 'd' && rightChoice === 'd') {
-          // D+D→He3+n not-to-scale: small drop from 11 to 10.6
+        if (!scaledEnergy && leftChoice === 'd' && rightChoice === 'd') {
+          // D+D (He3+n or T+p): not-to-scale display drops slightly to 10.6
           collisionDisplayKE = 10.6 * escScale / 0.2;
         } else {
           // When to-scale and the combo has a real keV value, use it directly (no speedScale)
           collisionDisplayKE = (scaledEnergy && escEntry?.keOutScaled != null)
             ? escEntry.keOutScaled
             : escEntry ? escEntry.keOut * escScale : collisionPeakKE * 0.88;
+        }
+        // D+D→T+p: lock in the conserved budget using the mid-collision frozen EIE as
+        // the starting point — no jump. EIE decays as 1/r from the snap distance.
+        if (ddToTPEscape) {
+          const _ds = scaledEnergy ? 1 : 0.2;
+          // Starting EIE = frozen collision-phase value (what's already on screen)
+          ddTPEscapeEIE0  = collisionDisplayEIE || 0;
+          ddTPEscapeTotal = collisionDisplayKE * _ds + ddTPEscapeEIE0;
+          // Record T-p distance at snap geometry for proportional decay
+          let _tcx = 0, _tcy = 0;
+          for (let _i = 0; _i < 3; _i++) { _tcx += escapeAnimTargetPos[_i].x; _tcy += escapeAnimTargetPos[_i].y; }
+          _tcx /= 3; _tcy /= 3;
+          const _pdx = escapeAnimTargetPos[3].x - _tcx, _pdy = escapeAnimTargetPos[3].y - _tcy;
+          ddTPEscapeDistRef = Math.max(1, Math.sqrt(_pdx * _pdx + _pdy * _pdy));
+          // Display values unchanged here — they're already correct from collision phase
         }
       } else if (isCategory3()) {
         if (!photonCaptureFired) firePhotonCapture();
@@ -3764,6 +3804,15 @@ let   tempFrameAccum  = 0;          // fractional step accumulator for slow-moti
 const TEMP_SUBSTEPS   = 4;
 
 let tempProtons  = [];
+
+// Persistent buffers — reused every frame to avoid per-frame allocations (#79, #81)
+let _tempAx  = new Float32Array(TEMP_N);  // acceleration buffers for stepTempPhysics
+let _tempAy  = new Float32Array(TEMP_N);
+let _tempVisX = new Float32Array(TEMP_N); // visual-overlap-clamped positions for drawTemp
+let _tempVisY = new Float32Array(TEMP_N);
+
+// Cached container geometry — recomputed only on canvas resize (#80)
+const _tempContainer = { cx: 0, cy: 0, rx: 0, ry: 0, cr: 0, _w: -1, _h: -1 };
 let tempRAF      = null;
 let tempRunning  = false;
 let tempPaused   = false;
@@ -3775,10 +3824,14 @@ function tempSliderToSpeed(val) {
 
 function getTempContainer() {
   const W = canvas.width, H = canvas.height;
-  const rx = Math.min(W * 0.44, H * 0.92);
-  const ry = H * 0.46;
-  const cr = Math.min(rx, ry) * 0.45;  // corner radius — halfway between rect and ellipse
-  return { cx: W / 2, cy: H / 2, rx, ry, cr };
+  if (W !== _tempContainer._w || H !== _tempContainer._h) {
+    _tempContainer._w = W; _tempContainer._h = H;
+    _tempContainer.rx = Math.min(W * 0.44, H * 0.92);
+    _tempContainer.ry = H * 0.46;
+    _tempContainer.cr = Math.min(_tempContainer.rx, _tempContainer.ry) * 0.45;
+    _tempContainer.cx = W / 2; _tempContainer.cy = H / 2;
+  }
+  return _tempContainer;
 }
 
 function rescaleTempVelocities() {
@@ -3835,10 +3888,13 @@ function stepTempPhysics() {
   const sub = TEMP_SUBSTEPS;
   const irx = rx - R, iry = ry - R, icr = Math.max(0, cr - R);
 
+  // Grow acceleration buffers if somehow N exceeds TEMP_N (defensive)
+  if (_tempAx.length < N) { _tempAx = new Float32Array(N); _tempAy = new Float32Array(N); }
+
   for (let s = 0; s < sub; s++) {
-    // Compute Coulomb accelerations
-    const ax = new Float32Array(N);
-    const ay = new Float32Array(N);
+    // Compute Coulomb accelerations — reuse persistent buffers
+    const ax = _tempAx; ax.fill(0, 0, N);
+    const ay = _tempAy; ay.fill(0, 0, N);
     for (let i = 0; i < N; i++) {
       for (let j = i + 1; j < N; j++) {
         const dx = tempProtons[j].x - tempProtons[i].x;
@@ -3954,8 +4010,10 @@ function drawTemp() {
   // Physics positions are untouched so the overlap (and flash) lasts its full natural duration.
   const N = tempProtons.length;
   const diam = TEMP_R * 2;
-  const visX = tempProtons.map(p => p.x + (p._jx || 0));
-  const visY = tempProtons.map(p => p.y + (p._jy || 0));
+  if (_tempVisX.length < N) { _tempVisX = new Float32Array(N); _tempVisY = new Float32Array(N); }
+  for (let i = 0; i < N; i++) { _tempVisX[i] = tempProtons[i].x + (tempProtons[i]._jx || 0); }
+  for (let i = 0; i < N; i++) { _tempVisY[i] = tempProtons[i].y + (tempProtons[i]._jy || 0); }
+  const visX = _tempVisX, visY = _tempVisY;
   for (let i = 0; i < N; i++) {
     for (let j = i + 1; j < N; j++) {
       const dx = visX[j] - visX[i], dy = visY[j] - visY[i];
@@ -4290,6 +4348,53 @@ window.addEventListener('hashchange', applyHash);
     menu.style.top  = e.clientY + 'px';
   });
   document.addEventListener('click', () => menu.style.display = 'none');
+})();
+
+// ── Bug report button ─────────────────────────────────────────────────────
+function getBugState() {
+  return {
+    sim:          'v14',
+    tab:          currentTab,
+    left:         leftChoice,
+    right:        rightChoice,
+    approachSpeed,
+    simSpeed,
+    collisionPhase,
+    scaledEnergy,
+    ddToTPEscape,
+    leftClusterSize,
+    collisionDisplayKE,
+    collisionDisplayEIE,
+    tempRunning,
+    tempSpeed,
+    showElecField:   document.getElementById('electricFieldToggle')?.checked,
+    showStrongField: document.getElementById('strongFieldToggle')?.checked,
+    historyLen:      particleHistory.length,
+    particles: particles.map(p => ({
+      t: p.type, x: Math.round(p.x), y: Math.round(p.y),
+      vx: +p.vx.toFixed(3), vy: +p.vy.toFixed(3),
+    })),
+  };
+}
+(function addBugButton() {
+  const btn = document.createElement('a');
+  btn.textContent = '🐛';
+  btn.title = 'Report a bug';
+  Object.assign(btn.style, {
+    position: 'fixed', bottom: '6px', left: '8px', zIndex: '30',
+    fontSize: '18px', opacity: '0.25', cursor: 'pointer',
+    textDecoration: 'none', lineHeight: '1', userSelect: 'none',
+    transition: 'opacity 0.15s',
+  });
+  btn.addEventListener('mouseenter', () => btn.style.opacity = '0.85');
+  btn.addEventListener('mouseleave', () => btn.style.opacity = '0.25');
+  btn.addEventListener('click', e => {
+    e.preventDefault();
+    const state = encodeURIComponent(JSON.stringify(getBugState()));
+    const url   = `../dev/bug-report.html?sim=v14&sourceUrl=${encodeURIComponent(location.href)}&state=${state}`;
+    window.open(url, '_blank');
+  });
+  document.body.appendChild(btn);
 })();
 </script>
 </body>

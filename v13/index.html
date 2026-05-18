@@ -1040,14 +1040,14 @@
       </div>
       <div id="scrubButtons">
         <button id="energyGraphToggle" class="btn">SHOW LINE<br>GRAPH</button>
-        <a href="https://ssp.org/" target="_blank" rel="noopener" style="display:block;line-height:0;flex-shrink:0;"><img src="../images/sspi-logo.png" alt="built by SSPI" style="height:60px;width:auto;opacity:0.85;display:block;border-radius:4px;"></a>
+        <a href="https://bscs.org/" target="_blank" rel="noopener" style="display:block;line-height:0;flex-shrink:0;"><img src="../images/bscs-logo.png" alt="built by BSCS" style="height:60px;width:auto;opacity:0.85;display:block;border-radius:4px;"></a>
       </div>
     </div>
   </div>
 </div>
 
 <div id="chainLogoBar">
-  <a href="https://ssp.org/" target="_blank" rel="noopener" style="display:block;line-height:0;"><img src="../images/sspi-logo.png" alt="built by SSPI" style="height:60px;width:auto;opacity:0.85;display:block;border-radius:4px;"></a>
+  <a href="https://bscs.org/" target="_blank" rel="noopener" style="display:block;line-height:0;"><img src="../images/bscs-logo.png" alt="built by BSCS" style="height:60px;width:auto;opacity:0.85;display:block;border-radius:4px;"></a>
 </div>
 
 <script>
@@ -4566,6 +4566,41 @@ if (showParticles && !idleParticleRAF) idleParticleLoop();
     menu.style.top  = e.clientY + 'px';
   });
   document.addEventListener('click', () => menu.style.display = 'none');
+})();
+
+// ── Bug report button ─────────────────────────────────────────────────────
+function getBugState() {
+  return {
+    sim:          'v13',
+    tab:          currentTab,
+    neutronState,
+    wobbleMode,
+    staticFissAngle: +staticFissAngle.toFixed(4),
+    dragRotY:     +dragRotY.toFixed(4),
+    dragRotX:     +dragRotX.toFixed(4),
+    enrichCount:  (enrichSites || []).length,
+    chainNeutronCount: (typeof chainNeutrons !== 'undefined' ? chainNeutrons.length : 0),
+  };
+}
+(function addBugButton() {
+  const btn = document.createElement('a');
+  btn.textContent = '🐛';
+  btn.title = 'Report a bug';
+  Object.assign(btn.style, {
+    position: 'fixed', bottom: '6px', left: '8px', zIndex: '30',
+    fontSize: '18px', opacity: '0.25', cursor: 'pointer',
+    textDecoration: 'none', lineHeight: '1', userSelect: 'none',
+    transition: 'opacity 0.15s',
+  });
+  btn.addEventListener('mouseenter', () => btn.style.opacity = '0.85');
+  btn.addEventListener('mouseleave', () => btn.style.opacity = '0.25');
+  btn.addEventListener('click', e => {
+    e.preventDefault();
+    const state = encodeURIComponent(JSON.stringify(getBugState()));
+    const url   = `../dev/bug-report.html?sim=v13&sourceUrl=${encodeURIComponent(location.href)}&state=${state}`;
+    window.open(url, '_blank');
+  });
+  document.body.appendChild(btn);
 })();
 </script>
 

@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bug Report — Protons</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;700;800&display=swap" rel="stylesheet">
+  <script src="../v2/sheets-api.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #05040f;
+      color: #d0d0e8;
+      font-family: 'Lexend', system-ui, sans-serif;
+      font-size: 13px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 36px 20px 60px;
+    }
+
+    h1 {
+      font-size: 20px;
+      font-weight: 800;
+      color: #1a6eff;
+      text-shadow: 0 0 10px rgba(26,110,255,0.7), 0 0 28px rgba(26,110,255,0.3);
+      margin-bottom: 28px;
+      letter-spacing: 0.04em;
+    }
+
+    .form {
+      width: 100%;
+      max-width: 640px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .field { display: flex; flex-direction: column; gap: 5px; }
+
+    label {
+      font-size: 10px;
+      font-weight: 700;
+      color: #6070a0;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    input[type="text"], textarea, select {
+      width: 100%;
+      background: rgba(10,8,30,0.9);
+      color: #d0d0e8;
+      border: 1px solid rgba(26,110,255,0.3);
+      border-radius: 6px;
+      padding: 8px 11px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input[type="text"]:focus, textarea:focus, select:focus {
+      border-color: rgba(26,110,255,0.7);
+    }
+    textarea { resize: vertical; }
+
+    .meta-block {
+      background: rgba(26,110,255,0.05);
+      border: 1px solid rgba(26,110,255,0.15);
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      color: #7080b0;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 160px;
+      overflow-y: auto;
+    }
+
+    .state-block {
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      min-height: 140px;
+      color: #a0b0d0;
+    }
+
+    .btn-row { display: flex; gap: 10px; }
+
+    button {
+      flex: 1;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      border: 1px solid rgba(26,110,255,0.35);
+      background: rgba(26,110,255,0.14);
+      color: #d0d0e8;
+      transition: background 0.15s;
+      letter-spacing: 0.04em;
+    }
+    button:hover { background: rgba(26,110,255,0.28); }
+    button.primary {
+      background: rgba(26,110,255,0.4);
+      border-color: rgba(26,110,255,0.8);
+      color: #fff;
+    }
+    button.primary:hover { background: rgba(26,110,255,0.6); }
+
+    #status {
+      text-align: center;
+      font-size: 13px;
+      min-height: 20px;
+      font-weight: 700;
+    }
+    #status.ok  { color: #00ff88; text-shadow: 0 0 8px rgba(0,255,136,0.6); }
+    #status.err { color: #ff2060; }
+
+    .divider {
+      border: none;
+      border-top: 1px solid rgba(255,255,255,0.07);
+      margin: 4px 0;
+    }
+
+    .hint { font-size: 10px; color: #5060a0; margin-top: 2px; }
+  </style>
+</head>
+<body>
+
+<div class="form">
+  <h1>🐛 Bug Report</h1>
+
+  <div class="field">
+    <label>Sim</label>
+    <select id="simSel">
+      <option value="v11">v11 — Protons / Nucleus</option>
+      <option value="v13">v13 — Fission / Chain Reaction</option>
+      <option value="v14" selected>v14 — Fusion / Temperature</option>
+      <option value="other">Other / Unknown</option>
+    </select>
+  </div>
+
+  <div class="field">
+    <label>Title *</label>
+    <input id="titleInput" type="text" placeholder="One-line summary of the bug">
+  </div>
+
+  <div class="field">
+    <label>What happened? What did you expect? *</label>
+    <textarea id="descInput" rows="4" placeholder="Describe the bug…"></textarea>
+  </div>
+
+  <div class="field">
+    <label>Steps to reproduce</label>
+    <textarea id="stepsInput" rows="3" placeholder="1. Select D+D&#10;2. Press Go&#10;3. …"></textarea>
+  </div>
+
+  <hr class="divider">
+
+  <div class="field">
+    <label>Auto-captured context</label>
+    <div class="meta-block" id="metaDisplay"></div>
+  </div>
+
+  <div class="field" id="stateField" style="display:none">
+    <label>Sim state (auto-filled from source sim)</label>
+    <textarea class="state-block" id="simStateInput" rows="7" placeholder="{}"></textarea>
+    <p class="hint">You can edit this before sending.</p>
+  </div>
+
+  <div class="btn-row">
+    <button class="primary" onclick="submitReport()">Send Report</button>
+    <button onclick="copyJson()">Copy Full JSON</button>
+  </div>
+  <div id="status"></div>
+</div>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+
+  // Pre-select sim
+  const simParam = params.get('sim');
+  if (simParam) {
+    for (const opt of document.getElementById('simSel').options) {
+      if (opt.value === simParam) { opt.selected = true; break; }
+    }
+  }
+
+  // Pre-fill title
+  if (params.get('title')) document.getElementById('titleInput').value = params.get('title');
+
+  // Parse injected sim state
+  let parsedState = null;
+  const stateParam = params.get('state');
+  if (stateParam) {
+    try { parsedState = JSON.parse(decodeURIComponent(stateParam)); } catch (e) {}
+    if (parsedState) {
+      document.getElementById('simStateInput').value = JSON.stringify(parsedState, null, 2);
+      document.getElementById('stateField').style.display = 'flex';
+    }
+  }
+
+  // Collect environment metadata
+  const meta = {
+    timestamp:   new Date().toISOString(),
+    sourceUrl:   params.get('sourceUrl') || document.referrer || window.location.href,
+    userAgent:   navigator.userAgent,
+    viewport:    window.innerWidth + 'x' + window.innerHeight,
+    screen:      screen.width + 'x' + screen.height + ' @' + (window.devicePixelRatio||1) + 'x',
+    platform:    navigator.platform,
+    language:    navigator.language,
+    online:      navigator.onLine,
+  };
+  document.getElementById('metaDisplay').textContent = JSON.stringify(meta, null, 2);
+
+  // ── Build the full report payload ──────────────────────────
+  function buildPayload() {
+    const title  = document.getElementById('titleInput').value.trim();
+    const desc   = document.getElementById('descInput').value.trim();
+    const steps  = document.getElementById('stepsInput').value.trim();
+    const sim    = document.getElementById('simSel').value;
+    const stateRaw = document.getElementById('simStateInput').value.trim();
+    let simState = null;
+    if (stateRaw) {
+      try { simState = JSON.parse(stateRaw); } catch { simState = { raw: stateRaw }; }
+    }
+    return { meta, sim, title, description: desc, steps, simState };
+  }
+
+  // ── Submit ─────────────────────────────────────────────────
+  async function submitReport() {
+    const status = document.getElementById('status');
+    const payload = buildPayload();
+
+    if (!payload.title) {
+      status.textContent = 'Please enter a title.'; status.className = 'err'; return;
+    }
+    if (!payload.description) {
+      status.textContent = 'Please describe the bug.'; status.className = 'err'; return;
+    }
+
+    status.textContent = 'Sending…'; status.className = '';
+
+    const textBody = [
+      payload.title,
+      '',
+      payload.description,
+      payload.steps ? '\nSteps to reproduce:\n' + payload.steps : '',
+    ].join('\n').trim();
+
+    // Serialize full payload; truncate sim_state to keep URL manageable (~4KB cap)
+    const fullJson = JSON.stringify(payload);
+    const simStateJson = payload.simState ? JSON.stringify(payload.simState) : '';
+    const simStateTrunc = simStateJson.length > 3800
+      ? simStateJson.slice(0, 3800) + '…[truncated]'
+      : simStateJson;
+
+    try {
+      await SHEETS.appendNote({
+        id:          SHEETS.generateId(),
+        student_id:  'BUG',
+        timestamp:   meta.timestamp,
+        sim_version: 'bug-' + payload.sim,
+        sim_state:   simStateTrunc || JSON.stringify({ meta }),
+        text:        textBody,
+        is_public:   false,
+      });
+      status.textContent = '✓ Submitted — thank you!';
+      status.className = 'ok';
+      document.getElementById('titleInput').value = '';
+      document.getElementById('descInput').value  = '';
+      document.getElementById('stepsInput').value = '';
+    } catch (e) {
+      status.textContent = 'Error: ' + (e.message || 'unknown');
+      status.className   = 'err';
+      console.error(e);
+    }
+  }
+
+  // ── Copy full JSON ─────────────────────────────────────────
+  async function copyJson() {
+    const payload = buildPayload();
+    const json = JSON.stringify(payload, null, 2);
+    try {
+      await navigator.clipboard.writeText(json);
+      const s = document.getElementById('status');
+      s.textContent = 'Copied to clipboard!'; s.className = 'ok';
+    } catch {
+      // Fallback: show in textarea so user can copy manually
+      document.getElementById('simStateInput').value = JSON.stringify(payload, null, 2);
+      document.getElementById('stateField').style.display = 'flex';
+      const s = document.getElementById('status');
+      s.textContent = 'Clipboard blocked — full JSON is now in the state box above.';
+      s.className = 'err';
+    }
+  }
+</script>
+</body>
+</html>
