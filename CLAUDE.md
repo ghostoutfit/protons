@@ -9,9 +9,13 @@ Vanilla HTML + CSS + JS only — no build system, no npm, no bundler.
 v1/ … v15/    Each version is a self-contained index.html
 v100/         Older standalone fission simulation (651 lines, superseded)
 dev/          Scratch/in-progress work (not versioned with vN)
+  bug-report.html    Student/user bug submission form; auto-fills steps from
+                     actionLog; submits via SHEETS.appendNote (student_id='BUG')
 v2/           Also hosts shared backend:
   sheets-api.js      Google Sheets Lab Journal API (SHEETS global)
   test-sheets.html   Manual test harness for the API
+images/
+  bscs-logo.png      BSCS logo shown in toolbar of v11, v13, v14
 index.html    Landing page — currently lists only v1–v8 + dev/. v11–v15 are
               accessed by direct URL while in active iteration.
 ```
@@ -24,10 +28,10 @@ To run locally: `python3 -m http.server` in the repo root, then open
 
 | Version | Title in `<title>` | Lines | Tabs | Role |
 |---------|--------------------|-------|------|------|
-| **v11** | Nuclear Simulation v11 | 3598 | Protons / Investigate Stability | Main proton + nucleus sim |
+| **v11** | Nuclear Simulation v11 | ~3840 | Protons / Investigate Stability | Main proton + nucleus sim |
 | **v12** | Nuclear Simulation v12 | 4547 | (Tab A / Tab B) | Lab-Journal-bearing nucleus sim — kept around because v15 borrows its `SideSim` |
-| **v13** | Nuclear Fission — v13 | 3575 | Fission / Chain Reaction | Current fission sim — replaced v15's role |
-| **v14** | Nuclear Fusion — v14 | 3682 | FUSION / TEMPERATURE | Standalone fusion + temperature/heat sim |
+| **v13** | Nuclear Fission — v13 | ~4640 | Fission / Chain Reaction | Current fission sim — replaced v15's role |
+| **v14** | Nuclear Fusion — v14 | ~4490 | FUSION / TEMPERATURE | Standalone fusion + temperature/heat sim |
 | **v15** | Nuclear Fission — v13 *(stale)* | 3792 | Fission / Chain Reaction | Older fission + Lab Journal. Loads v12 in a hidden iframe for `SideSim` card playback. Last touched in `63982ee`; v13 is where new fission work happens. |
 
 v1–v10 and v100 are history only. **All recent commit activity is on v11, v13, v14.**
@@ -101,19 +105,23 @@ Runs every frame in the live loop; `findAllClusters()` inside it is O(n²).
 | Replay button (`doReplay`) | v11, v12 | Auto-advances `scrubFrame` through history; rate driven by speed slider |
 | Lab Journal panel + save/load | v12 | v15 has its own copy; v11/v13/v14 have no Lab Journal |
 | `SideSim` (card playback engine) | v12 | v15 borrows it via the hidden iframe |
-| Google Sheets API | `v2/sheets-api.js` | Shared; never duplicate. Only v12 + v15 currently load it |
+| Google Sheets API | `v2/sheets-api.js` | Shared; never duplicate. Only v12 + v15 currently load it. `dev/bug-report.html` also loads it for bug submission. |
 | Field heatmaps (electric + strong) | v11, v12 | `drawCombinedHeatmap()` |
+| Shared field heatmap renderer | v14 | `drawFieldHeatmap(pairs, colormap, mode)` — replaced separate `drawHeatmap`/`drawStrongHeatmap`. `mode` is `'eie'` (additive) or `'sie'` (max accumulation); branches inside pixel loop. |
 | Energy / bar chart + energy-vs-time graph | v14, v15 | v14 has the recent layout work (5 gridlines, "Energy in Fields" combined label) |
 | Particle icons (toolbar canvas animations) | v11, v12 | `iconAnimLoop()` |
-| Themes (Synthwave / Midnight / Plasma) | v11, v12 | `THEMES` object, `currentTheme` |
+| Themes (Synthwave / Midnight / Plasma) | v11, v12, v13 | v11/v12: `THEMES` object, `currentTheme`; v13: theme-btn circles in toolbar, same CSS vars |
 | Field auto-off for notebook playback | v12 | Frame-time check → `SideSim.isRunning()` |
 | Fission animation + Chain Reaction tab | v13 (canonical), v15 (older) | Cluster-centered animation, daughter ejection, enrich sites, prompt neutron flight |
 | Nucleus drag-to-rotate (yaw + pitch) | v13 | Click-and-drag the parent nucleus pre-flight; mutates `animParent.particles` in place, invalidates `chainParticleOffsets` cache |
 | Force-viz panel (electric + strong arrows along fission axis) | v13 | `drawForceViz`; pre-impact axis = drag yaw / 0; post-impact axis = `staticFissAngle` chosen at impact |
 | Light-mode toggle (white background for screenshots) | v11, v13, v14 | `body.screenshot-mode` CSS class; v13/v14 also gate `ctx.fillStyle` for the canvas background fill |
 | Fusion tab + COMBO_TABLE (D+T, D+D, T+T, etc.) | v14 | Tracks per-combo immediateKE, keOut, sieOffset, gammaKE |
-| Temperature tab (1/r⁴ repulsion in rounded-rect container, thermostat slider, slow-mo) | v14 | Wall bouncing handled in `stepTempPhysics()` |
-| Hard-sphere elastic proton collisions | v14 | Recent — "no overlap, roll around the edge" + visual overlap clamping |
+| D+D→T+p live EIE drain | v14 | `ddToTPEscape` flag + `updateDDToTPDisplay()` — EIE decays as `eie0 * distRef / max(d, distRef)` (1/r) from frozen collision-phase value; no `coulombScatterEscape` during escape |
+| Temperature tab (1/r⁴ repulsion in rounded-rect container, thermostat slider, slow-mo) | v14 | Wall bouncing handled in `stepTempPhysics()`; persistent `Float32Array` buffers `_tempAx/_tempAy` (forces) and `_tempVisX/_tempVisY` (visual positions) avoid per-frame allocations |
+| Hard-sphere elastic proton collisions | v14 | "no overlap, roll around the edge" + visual overlap clamping |
+| Bug report button (🐞) + action log | v11, v13, v14 | Button lives in the toolbar theme-button row (right side, after color picker). `getBugState()` serializes sim state + `actionLog`. `logAction(msg)` pushes to 25-entry circular buffer on key UI events. Opens `dev/bug-report.html` in a new tab. |
+| BSCS logo | v11, v13, v14 | `../images/bscs-logo.png`, links to `https://bscs.org/`, `alt="built by BSCS"`. Replaced SSPI logo. |
 
 ## Key globals — by version
 
@@ -228,6 +236,16 @@ Four behavioral categories:
 
 `getComboEntry()` looks up `${leftChoice}+${rightChoice}`; `isCategory1()`, `isCategory2()`, `isCoulombOnly()` are the runtime predicates.
 
+### D+D → T+p escape display
+D+D is Cat 2 but produces two different-mass particles (T + p). Special handling:
+
+- `ddToTPEscape` flag is set in `fireDDtoTP()` when the escape phase starts.
+- `coulombScatterEscape` is **not** set for D+D (unlike some other combos) — real strong force is disabled during escape so the T's extra neutron doesn't pull the proton back.
+- `collisionDisplayKE` and `collisionDisplayEIE` are **not** nulled at type-swap; they stay frozen at the mid-collision values to prevent a KE/EIE jump.
+- `updateDDToTPDisplay()` runs every frame during `escapeAnim` and `escape`, computing: `eie = ddTPEscapeEIE0 * ddTPEscapeDistRef / max(currentDist, ddTPEscapeDistRef)` — a 1/r decay starting from the frozen collision-phase EIE (`ddTPEscapeEIE0`) normalized to the snap distance (`ddTPEscapeDistRef`). KE = `(ddTPEscapeTotal − eie) / displayScale`.
+
+Globals: `ddToTPEscape` (bool), `ddTPEscapeTotal` (total energy = KE+EIE at escape start), `ddTPEscapeEIE0` (frozen EIE snapshot), `ddTPEscapeDistRef` (T-centroid to proton distance at escape snap). All reset to `0`/`false` in `resetSim()`.
+
 ### Phase machine
 `collisionPhase` ∈ `'approach' | 'collision' | 'escapeAnim' | 'escape'`:
 - **approach**: free flight; Coulomb repels, strong attracts once inside cutoff.
@@ -266,6 +284,8 @@ let   tempSpeed      = 1.5;       // thermostat target px/frame
 
 `stepTempPhysics()` runs `TEMP_SUBSTEPS` substeps: pairwise 1/r⁴ forces, integrate, bounce off the rounded-rect wall (4 flat edges + 4 corner arcs). After substeps, a soft thermostat `rescaleTempVelocities()` nudges mean speed back to `tempSpeed`.
 
+**Performance notes**: force accumulation uses persistent `Float32Array` buffers `_tempAx` / `_tempAy` (reset with `.fill(0, 0, N)` each substep — no allocation). The container geometry is cached in `_tempContainer` and only recomputed on canvas resize. `drawTemp()` uses persistent `_tempVisX` / `_tempVisY` Float32Arrays for visual positions.
+
 Visuals (`drawTemp()`):
 - Yellow rounded-rect container.
 - `tempFlashes[]` — close-approach events from `detectTempFlashes()` (when edge-to-edge distance < ~2 px); each flash fades over 250 ms; capped at 80 entries.
@@ -275,12 +295,15 @@ Visuals (`drawTemp()`):
 ### Hard-sphere elastic collisions (fusion tab)
 Inside `step()`, after force integration: any overlapping pair is separated and the normal-velocity components are swapped (equal-mass elastic collision). Visual overlap clamping in the draw layer keeps the collision flash centered between the two protons even when their physics positions cross.
 
+### Scrub bar + replay button
+`#scrubBar` uses `border-top: 1px solid var(--ui-border)` + `box-shadow: 0 -1px 0 var(--accent1-dim), 0 -4px 20px rgba(0,0,0,0.5)` — identical to v13. The visual result is a thin dark pinkish line (~`#430f25` on screen). `#scrubReplayBtn` has full red neon styling matching v13 (font-size 32px, border/glow/text-shadow, disabled state).
+
 ### What v14 does NOT have
 - No `NUCLEUS_TABLE` / stability table — different physics model.
 - No `SideSim`, no Lab Journal, no `../v2/sheets-api.js`.
 - No force panel (the v11/v12 right-side overlay).
 - No `centerTracking` / cluster-tracking camera button.
-- No themes.
+- No themes (only the theme-button row with color picker + bug icon).
 - No quantum stability / unstable-neutron timer.
 
 ## v13: Fission + Chain Reaction
@@ -378,6 +401,28 @@ let   wobbleMode;                   // 'dip1' / 'dip2' / 'dip3' / 'stable'
 - No bar chart / energy graph.
 - No themes wired to body classes the way v11 does (themes change CSS vars + body inline bg, but no `theme-teal` body class).
 
+### Action log (v13)
+`const actionLog = []` + `logAction(msg)` (25-entry circular buffer). Hooked into: tab switches, Go/Pause/Reset, nucleus selection (`selectNucleus`), view mode (particles/outline), forces on/off, electric field toggle, playback speed slider (400 ms debounce). Included in `getBugState()` as `actionLog` array. Bug report button (🐞) is a static `<a id="bugReportBtn">` in the toolbar theme row; click handler calls `getBugState()` and opens `dev/bug-report.html`.
+
+## Action log — shared pattern (v11, v13, v14)
+
+All three active sims share the same bug-report instrumentation pattern:
+
+```javascript
+const actionLog = [];
+function logAction(msg) {
+  actionLog.push(msg);
+  if (actionLog.length > 25) actionLog.shift();
+}
+```
+
+`getBugState()` includes `actionLog: actionLog.slice()` in its return value. The bug report button is a static `<a id="bugReportBtn">` in the toolbar's theme-button row (right side, after the color picker). Its click handler serializes `getBugState()` and opens `dev/bug-report.html?sim=vNN&sourceUrl=...&state=...`. The bug report form auto-populates the "Steps to reproduce" textarea from `parsedState.actionLog` if present.
+
+Hooked events per sim:
+- **v11**: tab switches, Go/Pause/Reset, `.particle-add-btn` clicks (proton/nucleus count), neutron slider (debounced), speed slider (debounced), `setForceModeActive` (force mode changes)
+- **v13**: tab switches, Go/Pause/Reset, `selectNucleus`, particle/outline view mode, forces on/off, electric field toggle, playback speed slider (debounced)
+- **v14**: tab switches (fusion/temp), Go/Pause/Reset on both tabs, combo selection (left/right particle wheel), electric/strong field toggles, separate-fields toggle, approach speed slider (debounced), thermostat slider (debounced), slow-motion slider (debounced)
+
 ## Gotchas
 
 - All CSS and JS is inline in `index.html` — no external files except `sheets-api.js` and Google Fonts.
@@ -392,3 +437,5 @@ let   wobbleMode;                   // 'dip1' / 'dip2' / 'dip3' / 'stable'
 - Field auto-off (v12): triggers when frame > 50ms AND `SideSim.isRunning()` — only fires during active Lab Journal card playback.
 - v11's per-frame camera update in the live `loop()` only runs when `centerTracking` is on. The same call is mirrored inside `renderFrame()` so replay and time-slider scrubbing behave identically — without that mirror, replay would freeze the camera at the last live position regardless of the toggle.
 - v11's per-particle labels (A–Z / numbers) only appear in **All Forces** mode (`arrowMode === 1`), single-particle selection (`!groupSelectMode`), on the proton tab any count or the nucleus tab with ≤10 protons. The fallback `+` on protons is preserved when label mode is off.
+- v14's `step()` precomputes `const masses = new Float32Array(n)` before the substep loop — `p.physMass || 1` read once per particle, not per substep. `updatePhaseTimeline()` guards every `el.style` write with `!== newVal` to avoid layout thrash on each frame.
+- v14's `#scrubBar` uses `display:none` inline on the HTML element (toggled by JS), while the CSS rule has `display:flex`. The inline style takes precedence; JS sets `scrubBar.style.display = 'flex'` / `'none'` to show/hide it. v13 uses a `.visible` CSS class instead.

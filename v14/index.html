@@ -185,6 +185,7 @@
     padding: 10px 16px;
   }
   .ctrl-box-blue input[type="range"] { width: 140px; }
+  .ctrl-box-blue .slider-icon { font-size: 28px; }
   .ctrl-box-blue .toggle-label { font-size: 12px; gap: 6px; }
   .slider-icon {
     display: inline-flex; align-items: center; justify-content: center;
@@ -415,7 +416,8 @@
   /* ── Scrub bar ─────────────────────────────────────────────────────────── */
   #scrubBar {
     background: rgba(6,4,20,0.95);
-    border-top: 3px solid rgba(100,120,180,0.55);
+    border-top: 1px solid var(--ui-border);
+    box-shadow: 0 -1px 0 var(--accent1-dim), 0 -4px 20px rgba(0,0,0,0.5);
     display: flex;
     flex-direction: row;
     flex-shrink: 0;
@@ -492,7 +494,29 @@
     padding: 0 8px;
     flex-shrink: 0;
   }
-  #scrubReplayBtn { padding: 4px 8px; }
+  /* Mini replay in scrub bar — same red, default small size */
+  #scrubReplayBtn {
+    font-size: 32px;
+    border-color: #ff4040;
+    color: rgba(255,255,255,0.5);
+    background: rgba(255,40,40,0.15);
+    box-shadow:
+      inset 0 0 4px rgba(255,40,40,0.2),
+      0 0 2px #ff4040,
+      0 0 6px #ff4040,
+      0 0 14px rgba(255,40,40,0.4);
+    text-shadow: 0 0 4px rgba(255,255,255,0.5), 0 0 8px #ff4040;
+    padding: 4px 8px;
+  }
+  #scrubReplayBtn:hover { background: rgba(255,40,40,0.3); }
+  #scrubReplayBtn:disabled {
+    background: transparent;
+    border-color: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.18);
+    box-shadow: none;
+    text-shadow: none;
+    cursor: not-allowed;
+  }
   #scrubRight {
     width: 270px; flex-shrink: 0;
     border-left: 1px solid var(--ui-border);
@@ -836,6 +860,7 @@
   <button class="theme-btn" id="v14ThemeB" title="Industrial"></button>
   <button class="theme-btn" id="v14ThemeC" title="Neon Blue"></button>
   <button class="theme-btn" id="v14ThemeLight" title="Light mode"></button>
+  <a id="bugReportBtn" title="Report a bug" style="cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;transition:opacity 0.15s;opacity:0.4;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.4'"><span class="slider-icon" style="font-size:22px;">🐞</span></a>
 </div>
 
 <!-- Separate Fields panel — floats just above the scrubBar on the right side -->
@@ -846,6 +871,13 @@
 <script>
 // Active tab — declared first so every function can read it safely.
 let currentTab = 'fusion';
+
+// ── Action log (for bug reports) ─────────────────────────────────────────────
+const actionLog = [];
+function logAction(msg) {
+  actionLog.push(msg);
+  if (actionLog.length > 25) actionLog.shift();
+}
 
 // ============================================================
 //  DOM REFERENCES
@@ -896,38 +928,32 @@ const PN_JIGGLE_FRAMES = 12;       // P+N scripted jiggle before photon fires
 //  gammaKE:     energy carried away by photon (Cat 3 only)
 //  sieOffset:   SIE bar visual offset, set at input selection
 // ============================================================
+// Keys are canonical: [a, b].sort().join('+') — getComboEntry() normalises on lookup.
 const COMBO_TABLE = {
   // Cat 1 — elastic, no binding
   'n+n':   { sieOffset: 100, immediateKE: 54, keOut:  4, gammaKE:  0 },
-  'n+he':  { sieOffset: 100, immediateKE: 60, keOut: 10, gammaKE:  0 },
   'he+n':  { sieOffset: 100, immediateKE: 60, keOut: 10, gammaKE:  0 },
   'n+t':   { sieOffset: 100, immediateKE: 58, keOut:  8, gammaKE:  0 },
-  't+n':   { sieOffset: 100, immediateKE: 58, keOut:  8, gammaKE:  0 },
-  // Cat 2 — productive fusion (KE Out = immediateKE − 2)
-  't+d':   { sieOffset: 178, sieOffsetUnscaled: 178, immediateKE: 86, keOut: 84, keInScaled: 17600, keOutScaled: 16700, gammaKE:  0 },
+  // Cat 2 — productive fusion
   'd+t':   { sieOffset: 178, sieOffsetUnscaled: 178, immediateKE: 86, keOut: 84, keInScaled: 17600, keOutScaled: 16700, gammaKE:  0 },
   'd+d':   { sieOffset: 100, sieOffsetUnscaled: 100, immediateKE: 20, keOut: 18, gammaKE:  0 },
   't+t':   { sieOffset: 258, sieOffsetUnscaled: 258, immediateKE: 47, keOut: 41, gammaKE:  0 },
   // Cat 3 — gamma emission
-  'p+n':   { sieOffset: 100, immediateKE: 54, keOut:  4, gammaKE: 50 },
   'n+p':   { sieOffset: 100, immediateKE: 54, keOut:  4, gammaKE: 50 },
-  'p+d':   { sieOffset: 100, immediateKE: 56, keOut:  6, gammaKE: 50 },
   'd+p':   { sieOffset: 100, immediateKE: 56, keOut:  6, gammaKE: 50 },
   'p+t':   { sieOffset: 150, immediateKE: 58, keOut:  8, gammaKE: 50 },
-  't+p':   { sieOffset: 150, immediateKE: 58, keOut:  8, gammaKE: 50 },
-  'n+d':   { sieOffset: 100, immediateKE: 56, keOut:  6, gammaKE: 50 },
   'd+n':   { sieOffset: 100, immediateKE: 56, keOut:  6, gammaKE: 50 },
-  // Cat 4 — Coulomb only, never reach strong range.
-  // KE display uses actual physics (collisionDisplayKE never set for these).
+  // Cat 4 — Coulomb only (KE display uses actual physics)
   'p+p':   { sieOffset:   0 },
-  'p+he':  { sieOffset: 250 }, 'he+p':  { sieOffset: 250 },
-  'd+he':  { sieOffset: 270 }, 'he+d':  { sieOffset: 270 },
-  't+he':  { sieOffset: 350 }, 'he+t':  { sieOffset: 350 },
+  'he+p':  { sieOffset: 250 },
+  'd+he':  { sieOffset: 270 },
+  'he+t':  { sieOffset: 350 },
   'he+he': { sieOffset: 460 },
 };
 
 function getComboEntry() {
-  return COMBO_TABLE[leftChoice + '+' + rightChoice] || null;
+  const key = [leftChoice, rightChoice].sort().join('+');
+  return COMBO_TABLE[key] || null;
 }
 
 // KE values in the table are at speed 2.0; scale by (speed/2)²
@@ -1014,7 +1040,7 @@ let escapeAnimTargetVel = null;   // {lv, rv} final escape cluster velocities
 let cat2EscapeFrame     = 0;      // counts frames since Cat2 AFTER began (for physics assist)
 
 // Camera: geometric midpoint between cluster centroids
-let cameraSiteX = 0, cameraSiteY = 0;
+let cameraSiteX = null, cameraSiteY = null;
 
 // ============================================================
 //  DISPLAY STATE
@@ -1981,8 +2007,8 @@ function drawFieldHeatmap(pairs, colormap, mode) {
   const invScale = 1 / scale;
   const cxH = fullW / 2, cyH = fullH / 2;
   const zoomScale = 1.5;
-  const midX = cameraSiteX || canvas.width  / 2;
-  const midY = cameraSiteY || canvas.height / 2;
+  const midX = cameraSiteX ?? canvas.width  / 2;
+  const midY = cameraSiteY ?? canvas.height / 2;
 
   if (hmCanvas.width !== w || hmCanvas.height !== h) { hmCanvas.width = w; hmCanvas.height = h; }
   const imageData = hmCtx.createImageData(w, h);
@@ -2529,8 +2555,8 @@ function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
 
-  const midX      = cameraSiteX || canvas.width  / 2;
-  const midY      = cameraSiteY || canvas.height / 2;
+  const midX      = cameraSiteX ?? canvas.width  / 2;
+  const midY      = cameraSiteY ?? canvas.height / 2;
   const zoomScale = 1.5;
   const cx        = canvas.width  / 2;
   const cy        = canvas.height / 2;
@@ -2758,12 +2784,14 @@ goBtn.addEventListener('click', () => {
     cancelAnimationFrame(animId);
     goBtn.textContent = '▶';
     goBtn.classList.remove('running');
+    logAction('Paused (FUSION)');
   } else if (paused) {
     // Resume from pause
     paused  = false;
     running = true;
     goBtn.textContent = '⏸';
     goBtn.classList.add('running');
+    logAction('Resumed (FUSION)');
     loop();
   } else {
     // Fresh start
@@ -2772,6 +2800,7 @@ goBtn.addEventListener('click', () => {
     hasRunOnce = true;
     paused     = false;
     running    = true;
+    logAction('Pressed Go — ' + leftChoice.toUpperCase() + ' + ' + rightChoice.toUpperCase() + ' (FUSION)');
     goBtn.textContent = '⏸';
     goBtn.classList.add('running');
     takeSnapshot();
@@ -2833,6 +2862,7 @@ document.getElementById('scrubReplayBtn').addEventListener('click', doReplay);
 // ============================================================
 document.getElementById('clearBtn').addEventListener('click', () => {
   if (currentTab !== 'fusion') return;   // temp tab handled separately
+  logAction('Pressed Reset (FUSION)');
   hasRunOnce = false;
   paused = false;
   resetAndSetup();
@@ -3028,6 +3058,7 @@ timeSlider.addEventListener('input', () => {
 // ============================================================
 document.getElementById('separateFieldsChk').addEventListener('change', function() {
   splitIE = this.checked;
+  logAction('Separate fields: ' + (this.checked ? 'on' : 'off'));
   if (!running) draw();
 });
 function updateGraphBtn() {
@@ -3084,10 +3115,13 @@ function updateTempTempVal() {
   const el2 = document.getElementById('tempKeVVal');
   if (el2) el2.textContent = tempSliderToKeV(parseFloat(document.getElementById('tempSlider').value)) + ' keV';
 }
+let _v9SpeedLogTimer = null;
 document.getElementById('v9SpeedSlider').addEventListener('input', function() {
   approachSpeed = parseFloat(this.value);
   drawSpeedLines();
   updateSpeedKeV();
+  clearTimeout(_v9SpeedLogTimer);
+  _v9SpeedLogTimer = setTimeout(() => logAction('Set approach speed to ' + parseFloat(this.value).toFixed(2)), 400);
 });
 updateSpeedKeV();    // seed on load
 updateTempTempVal(); // seed on load
@@ -3096,10 +3130,12 @@ document.getElementById('simSpeedSlider').addEventListener('input', function() {
 });
 document.getElementById('electricFieldToggle').addEventListener('change', function() {
   showElectricField = this.checked;
+  logAction('Electric field: ' + (this.checked ? 'on' : 'off'));
   if (!running) draw();
 });
 document.getElementById('strongFieldToggle').addEventListener('change', function() {
   showStrongField = this.checked;
+  logAction('Strong field: ' + (this.checked ? 'on' : 'off'));
   if (!running) draw();
 });
 document.getElementById('sieOffsetInput').addEventListener('input', function() {
@@ -3233,6 +3269,8 @@ pselIcons.forEach(canvas => {
   canvas.addEventListener('click', () => {
     if (canvas.dataset.side === 'left') leftChoice  = canvas.dataset.key;
     else                                rightChoice = canvas.dataset.key;
+    const _names = { p: 'Proton', n: 'Neutron', d: 'H-2', t: 'H-3', he: 'He-4' };
+    logAction('Selected ' + (_names[canvas.dataset.key] || canvas.dataset.key) + ' (' + canvas.dataset.side + ')');
     updatePselSelection();
     // Close the wheel
     canvas.closest('.pwheel').classList.remove('open');
@@ -3751,6 +3789,7 @@ applyComboSieOffset();  // seed SIE offset box from table for initial combo
 
 function switchTab(name) {
   currentTab = name;
+  logAction('Switched to ' + (name === 'fusion' ? 'FUSION' : 'TEMPERATURE') + ' tab');
   document.getElementById('fusionTabBtn').classList.toggle('active', name === 'fusion');
   document.getElementById('tempTabBtn').classList.toggle('active', name === 'temp');
   document.getElementById('fusionControls').style.display = name === 'fusion' ? 'flex' : 'none';
@@ -4163,10 +4202,12 @@ goBtn.addEventListener('click', (e) => {
     cancelAnimationFrame(tempRAF); tempRAF = null;
     tempRunning = false; tempPaused = true;
     goBtn.textContent = '▶'; goBtn.classList.remove('running');
+    logAction('Paused (TEMPERATURE)');
   } else {
     if (!tempProtons.length || !tempPaused) initTempProtons();
     tempPaused = false; tempRunning = true;
     goBtn.textContent = '⏸'; goBtn.classList.add('running');
+    logAction('Pressed Go (TEMPERATURE)');
     tempRAF = requestAnimationFrame(tempLoop);
   }
 }, true);  // capture phase so it runs before existing bubble-phase listener
@@ -4175,6 +4216,7 @@ goBtn.addEventListener('click', (e) => {
 document.getElementById('clearBtn').addEventListener('click', (e) => {
   if (currentTab !== 'temp') return;
   e.stopImmediatePropagation();
+  logAction('Pressed Reset (TEMPERATURE)');
   cancelAnimationFrame(tempRAF); tempRAF = null;
   tempRunning = false; tempPaused = false;
   goBtn.textContent = '▶'; goBtn.classList.remove('running');
@@ -4192,19 +4234,25 @@ document.getElementById('showForceBtn').addEventListener('click', () => {
 });
 
 // ─── Temperature slider ──────────────────────────────────────────────────────
+let _tempSliderLogTimer = null;
 document.getElementById('tempSlider').addEventListener('input', function () {
   tempSpeed = tempSliderToSpeed(parseFloat(this.value));
   updateTempTempVal();
   rescaleTempVelocities();
   if (!tempRunning) drawTemp();
+  clearTimeout(_tempSliderLogTimer);
+  _tempSliderLogTimer = setTimeout(() => logAction('Set thermostat to ' + parseFloat(this.value).toFixed(1) + ' (' + (parseFloat(this.value) < 0 ? 'cooler' : 'hotter') + ')'), 400);
 });
 // Seed initial tempSpeed from slider default value
 tempSpeed = tempSliderToSpeed(parseFloat(document.getElementById('tempSlider').value));
 
 // ─── Slow-motion slider ──────────────────────────────────────────────────────
+let _tempSpeedLogTimer = null;
 document.getElementById('tempSpeedSlider').addEventListener('input', function () {
   tempTimeScale = parseInt(this.value) / 10;  // 0.1 … 1.0 steps/frame
   tempFrameAccum = 0;  // reset accumulator so no burst of steps on slider release
+  clearTimeout(_tempSpeedLogTimer);
+  _tempSpeedLogTimer = setTimeout(() => logAction('Set slow-motion to ' + (parseInt(this.value) * 10) + '%'), 400);
 });
 
 // ─── Repulsion dev slider ─────────────────────────────────────────────────────
@@ -4374,28 +4422,15 @@ function getBugState() {
       t: p.type, x: Math.round(p.x), y: Math.round(p.y),
       vx: +p.vx.toFixed(3), vy: +p.vy.toFixed(3),
     })),
+    actionLog: actionLog.slice(),
   };
 }
-(function addBugButton() {
-  const btn = document.createElement('a');
-  btn.textContent = '🐛';
-  btn.title = 'Report a bug';
-  Object.assign(btn.style, {
-    position: 'fixed', bottom: '6px', left: '8px', zIndex: '30',
-    fontSize: '18px', opacity: '0.25', cursor: 'pointer',
-    textDecoration: 'none', lineHeight: '1', userSelect: 'none',
-    transition: 'opacity 0.15s',
-  });
-  btn.addEventListener('mouseenter', () => btn.style.opacity = '0.85');
-  btn.addEventListener('mouseleave', () => btn.style.opacity = '0.25');
-  btn.addEventListener('click', e => {
-    e.preventDefault();
-    const state = encodeURIComponent(JSON.stringify(getBugState()));
-    const url   = `../dev/bug-report.html?sim=v14&sourceUrl=${encodeURIComponent(location.href)}&state=${state}`;
-    window.open(url, '_blank');
-  });
-  document.body.appendChild(btn);
-})();
+document.getElementById('bugReportBtn').addEventListener('click', e => {
+  e.preventDefault();
+  const state = encodeURIComponent(JSON.stringify(getBugState()));
+  const url   = `../dev/bug-report.html?sim=v14&sourceUrl=${encodeURIComponent(location.href)}&state=${state}`;
+  window.open(url, '_blank');
+});
 </script>
 </body>
 </html>

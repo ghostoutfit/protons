@@ -908,6 +908,7 @@
       <button class="theme-btn" id="themeC" title="Neon Blue"></button>
       <button class="theme-btn" id="themeLight" title="Light mode"></button>
       <input type="color" id="bgColorPicker" value="#ffffff" title="Background color">
+      <a id="bugReportBtn" title="Report a bug" style="cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;transition:opacity 0.15s;opacity:0.4;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.4'"><span class="slider-icon">🐞</span></a>
     </div>
   </div>
   <div class="toolbar-row">
@@ -1732,6 +1733,13 @@ let currentSeed = Math.floor(Math.random() * 1e9);
 let viewZoom = 1.0;
 let currentTab = 'fission';
 
+// ── Action log (for bug reports) ─────────────────────────────────────────────
+const actionLog = [];
+function logAction(msg) {
+  actionLog.push(msg);
+  if (actionLog.length > 25) actionLog.shift();
+}
+
 // Piecewise zoom mapping: slider -1..0..1, default at centre (v=0)
 // Fission:       v=-1 → 0.83 (20% wider),  v=0 → 1.0,  v=1 → 2.0
 // Chain Reaction: v=-1 → 0.15 (very wide),  v=0 → 0.35, v=1 → 0.80
@@ -1744,6 +1752,7 @@ function zoomFromSlider(v) {
 }
 
 function applyTab(tab) {
+  logAction('Switched to ' + (tab === 'chain' ? 'CHAIN REACTION' : 'FISSION') + ' tab');
   // Stop any in-progress animation
   if (neutronRAF)  { cancelAnimationFrame(neutronRAF);  neutronRAF  = null; }
   if (playbackRAF) { cancelAnimationFrame(playbackRAF); playbackRAF = null; }
@@ -3534,9 +3543,9 @@ function playbackLoop(now) {
   if (!n) return;
 
   const speed   = parseFloat(document.getElementById('playbackSpeed').value);
-  // Slider is an absolute control: default (1.0) = 1:1 real-time; floor at 0.5 to prevent
-  // extreme slowdown at the turtle end.
-  const elapsed = (now - playbackStartRealT) * Math.max(0.5, speed);
+  // Slider is an absolute control: default (1.0) = 1:1 real-time. No floor — fissionTick()
+  // (live play) uses the raw slider value, so replay must match it exactly.
+  const elapsed = (now - playbackStartRealT) * speed;
   const animEnd = prerenderTimes[n - 1] - prerenderTimes[0];
 
   // Binary search for the frame whose capture time <= elapsed
@@ -3580,6 +3589,7 @@ document.getElementById('goBtn').addEventListener('click', () => {
 
   // ── PAUSE: freeze everything in place ────────────────────────────────────
   if (btn.textContent === '⏸') {
+    logAction('Paused');
     if (neutronRAF) { cancelAnimationFrame(neutronRAF); neutronRAF = null; }
     if (chainRAF)   { cancelAnimationFrame(chainRAF);   chainRAF   = null; chainPaused = true; }
     if (playbackRAF) {
@@ -3659,6 +3669,7 @@ document.getElementById('goBtn').addEventListener('click', () => {
     prerenderTimes   = [];
   }
 
+  logAction('Pressed Go (' + (currentTab === 'chain' ? 'CHAIN REACTION' : 'FISSION') + ')');
   mainNeutronsEmitted = false; mainEnergyTransferred = false; mainDaughters = null;
   chainNeutrons       = []; lastChainTime = null;
   if (currentTab === 'chain') { isFirstFission = true; isFirstChainFission = true; }
@@ -3734,6 +3745,7 @@ document.getElementById('scrubSlider').addEventListener('input', function () {
 function selectNucleus(key) {
   if (key !== selectedNucleusKey) isFirstFission = true;  // switching nucleus resets to single-wobble dip1
   selectedNucleusKey = key;
+  logAction('Selected nucleus: ' + (NUCLEUS_DEFS[key]?.label || key));
   document.getElementById('newBtnLabel').textContent = NUCLEUS_DEFS[key].label;
   document.querySelectorAll('.nucleus-opt').forEach(el => {
     el.classList.toggle('selected', el.dataset.key === key);
@@ -3805,6 +3817,7 @@ document.getElementById('zoomSlider').addEventListener('input', function () {
 });
 
 document.getElementById('clearBtn').addEventListener('click', () => {
+  logAction('Pressed Reset');
   if (neutronRAF)  { cancelAnimationFrame(neutronRAF);  neutronRAF  = null; }
   if (playbackRAF) { cancelAnimationFrame(playbackRAF); playbackRAF = null; }
   if (chainRAF)    { cancelAnimationFrame(chainRAF);    chainRAF    = null; }
@@ -3860,9 +3873,16 @@ document.getElementById('enrichBtn').addEventListener('click', () => {
   drawStaticFrame();
 });
 
-document.getElementById('showElectric').addEventListener('change', () => {
+document.getElementById('showElectric').addEventListener('change', function() {
+  logAction('Electric field: ' + (this.checked ? 'on' : 'off'));
   heatmapDirty = true;
   drawStaticFrame();
+});
+
+let _pbSpeedLogTimer = null;
+document.getElementById('playbackSpeed').addEventListener('input', function() {
+  clearTimeout(_pbSpeedLogTimer);
+  _pbSpeedLogTimer = setTimeout(() => logAction('Set playback speed to ' + parseFloat(this.value).toFixed(2) + '×'), 400);
 });
 
 function updateGraphBtn() {
@@ -3928,6 +3948,7 @@ let arrowMode = 0;
 document.querySelectorAll('.awheel-item[data-pmode]').forEach(btn => {
   btn.addEventListener('click', () => {
     showParticles = btn.dataset.pmode === 'particles';
+    logAction('View mode: ' + btn.dataset.pmode);
     setParticleWheelActive(btn);
     if (showParticles && !idleParticleRAF) idleParticleLoop();
     drawStaticFrame();
@@ -3937,6 +3958,7 @@ document.querySelectorAll('.awheel-item[data-pmode]').forEach(btn => {
 document.querySelectorAll('.awheel-item[data-fmode]').forEach(btn => {
   btn.addEventListener('click', () => {
     arrowMode = parseInt(btn.dataset.fmode);
+    logAction('Forces: ' + (arrowMode === 0 ? 'off' : 'on'));
     setForceWheelActive(btn);
     drawStaticFrame();
   });
@@ -4580,28 +4602,15 @@ function getBugState() {
     dragRotX:     +dragRotX.toFixed(4),
     enrichCount:  (enrichSites || []).length,
     chainNeutronCount: (typeof chainNeutrons !== 'undefined' ? chainNeutrons.length : 0),
+    actionLog:    actionLog.slice(),
   };
 }
-(function addBugButton() {
-  const btn = document.createElement('a');
-  btn.textContent = '🐛';
-  btn.title = 'Report a bug';
-  Object.assign(btn.style, {
-    position: 'fixed', bottom: '6px', left: '8px', zIndex: '30',
-    fontSize: '18px', opacity: '0.25', cursor: 'pointer',
-    textDecoration: 'none', lineHeight: '1', userSelect: 'none',
-    transition: 'opacity 0.15s',
-  });
-  btn.addEventListener('mouseenter', () => btn.style.opacity = '0.85');
-  btn.addEventListener('mouseleave', () => btn.style.opacity = '0.25');
-  btn.addEventListener('click', e => {
-    e.preventDefault();
-    const state = encodeURIComponent(JSON.stringify(getBugState()));
-    const url   = `../dev/bug-report.html?sim=v13&sourceUrl=${encodeURIComponent(location.href)}&state=${state}`;
-    window.open(url, '_blank');
-  });
-  document.body.appendChild(btn);
-})();
+document.getElementById('bugReportBtn').addEventListener('click', e => {
+  e.preventDefault();
+  const state = encodeURIComponent(JSON.stringify(getBugState()));
+  const url   = `../dev/bug-report.html?sim=v13&sourceUrl=${encodeURIComponent(location.href)}&state=${state}`;
+  window.open(url, '_blank');
+});
 </script>
 
 </body>

@@ -935,6 +935,7 @@
       <button class="theme-btn" id="themeC" title="Neon Blue"></button>
       <button class="theme-btn" id="themeLight" title="Light mode"></button>
       <input type="color" id="bgColorPicker" value="#ffffff" title="Background color">
+      <a id="bugReportBtn" title="Report a bug" style="cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;transition:opacity 0.15s;opacity:0.4;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.4'"><span class="slider-icon">🐞</span></a>
     </div>
   </div>
   <div class="toolbar-row" style="align-items:stretch;gap:12px">
@@ -1079,6 +1080,7 @@ let particles = [];
 let running = false;
 let animId = null;
 let speed = 1.5;  // Internal dt per frame (display speed = speed * 2)
+let recordedSpeed = 1.5;  // speed at which the current recording was made; used to normalise replay rate
 
 // ---- Time scrubber ----
 const MAX_HISTORY = 4000;
@@ -1101,6 +1103,13 @@ let selectedGroup = [];       // particle indices in the current group selection
 let selBox = null;            // rubber-band rect while dragging { x1,y1,x2,y2 } world coords
 let currentTabIsProton = true; // true = Tab A (protons only)
 let currentTab = 'proton';    // 'proton' | 'nucleus'
+
+// ── Action log (for bug reports) ─────────────────────────────────────────────
+const actionLog = [];
+function logAction(msg) {
+  actionLog.push(msg);
+  if (actionLog.length > 25) actionLog.shift();
+}
 
 // ============================================================
 //  QUANTUM: NUCLEAR STABILITY + NEUTRON DECAY CASCADE
@@ -1705,11 +1714,13 @@ function restoreSnapshot() {
 goBtn.addEventListener('click', () => {
   replaying = false;
   running = !running;
+  logAction(running ? 'Pressed Go (' + currentTab + ')' : 'Paused (' + currentTab + ')');
   goBtn.textContent = running ? '⏸' : '▶ GO';
   goBtn.classList.toggle('running', running);
   if (running) {
     particleHistory = [];
     scrubFrame = -1;
+    recordedSpeed = speed;  // snapshot the speed this recording is made at
     timeSlider.disabled = true;
       takeSnapshot();
     loop();
@@ -1744,6 +1755,7 @@ replayBtn.addEventListener('click', doReplay);
 scrubReplayBtn.addEventListener('click', doReplay);
 
 document.getElementById('clearBtn').addEventListener('click', () => {
+  logAction('Pressed Reset (' + currentTab + ')');
   resetSim();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 });
@@ -1761,7 +1773,12 @@ function applySpeedSlider() {
   const idx = parseInt(speedSlider.value);
   speed = SPEED_STOPS[idx] / 2;  // Internal dt is half the display value for stability
 }
-speedSlider.addEventListener('input', applySpeedSlider);
+let _speedLogTimer = null;
+speedSlider.addEventListener('input', function() {
+  applySpeedSlider();
+  clearTimeout(_speedLogTimer);
+  _speedLogTimer = setTimeout(() => logAction('Set speed to ' + SPEED_STOPS[parseInt(this.value)] + '×'), 400);
+});
 
 // ============================================================
 //  VIZ TOGGLES & SLIDERS
@@ -1799,6 +1816,7 @@ function applyTab(tab) {
   const isNucleus    = !isProtonOnly;
   currentTabIsProton = isProtonOnly;
   currentTab = isProtonOnly ? 'proton' : 'nucleus';
+  logAction('Switched to ' + (isProtonOnly ? 'PROTONS' : 'INVESTIGATE STABILITY') + ' tab');
   neutronFrame.style.visibility = isNucleus ? 'visible' : 'hidden';
   document.getElementById('particleBtns').style.display        = isNucleus ? 'none' : 'flex';
   document.getElementById('particleBtnsNucleus').style.display = isNucleus ? 'flex' : 'none';
@@ -1909,8 +1927,10 @@ document.querySelectorAll('.particle-add-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const count = parseInt(btn.dataset.count);
     if (currentTabIsProton) {
+      logAction('Set ' + count + ' proton' + (count !== 1 ? 's' : ''));
       placeProtons(count);
     } else {
+      logAction('Set nucleus: ' + count + 'p ' + parseInt(neutronSlider.value) + 'n');
       placeNucleus(count, parseInt(neutronSlider.value));
     }
     updateCam();
@@ -1919,11 +1939,14 @@ document.querySelectorAll('.particle-add-btn').forEach(btn => {
 
 const neutronSlider    = document.getElementById('neutronSlider');
 const neutronSliderVal = { textContent: '' }; // label removed; stub to avoid errors
+let _neutronLogTimer = null;
 neutronSlider.addEventListener('input', function() {
   neutronSliderVal.textContent = this.value;
   if (lastNucleusProtonCount > 0) {
     placeNucleus(lastNucleusProtonCount, parseInt(this.value));
     updateCam();
+    clearTimeout(_neutronLogTimer);
+    _neutronLogTimer = setTimeout(() => logAction('Set neutrons to ' + this.value + ' (nucleus ' + lastNucleusProtonCount + 'p)'), 400);
   }
 });
 
@@ -1944,8 +1967,16 @@ function setForceModeActive(mode) {
   const wasVisible = arrowMode > 0;
   arrowMode = mode;
   if (mode > 0) lastArrowMode = mode;
+  const _fmNames = { 0: 'off', 1: 'all forces', 2: 'total force' };
+  logAction('Forces: ' + (_fmNames[mode] || mode));
   // On Tab A, auto-select rightmost proton when turning forces on
   if (currentTabIsProton && mode > 0) selectRightmostProton();
+  // On Tab B, auto-select the first proton when forces turn on with nothing selected
+  if (!currentTabIsProton && mode > 0 && selectedParticle < 0 && particles.length > 0) {
+    for (let i = 0; i < particles.length; i++) {
+      if (particles[i].type === 'proton') { selectedParticle = i; break; }
+    }
+  }
   // Show/Hide toggle label
   const shBtn = document.getElementById('showHideForces');
   if (shBtn) {
@@ -3256,8 +3287,10 @@ function loop() {
 
   // ── Replay mode: play back recorded history automatically ──
   if (replaying) {
-    // Slider controls playback rate; floor at 0.5 to avoid extreme slowdown at turtle position.
-    replayAccum += Math.max(0.5, speed / 1.5);
+    // Advance (currentSpeed / recordedSpeed) frames per RAF.
+    // recordedSpeed cancels out the motion density baked into each recorded frame,
+    // so only the current slider value determines visual replay speed.
+    replayAccum += speed / recordedSpeed;
     const steps = Math.floor(replayAccum);
     replayAccum -= steps;
     scrubFrame = Math.min(scrubFrame + steps, particleHistory.length - 1);
@@ -3705,6 +3738,9 @@ function applyHash() {
 
   if (location.hash === '#nucleus') {
     applyTab(false);
+    neutronSlider.value = 2;
+    placeNucleus(2, 2);
+    updateCam();
   } else if (location.hash === '#protons') {
     document.getElementById('tabB').style.display = 'none';
     tabA.textContent = 'PROTONS';
@@ -3795,28 +3831,15 @@ function getBugState() {
       t: p.type, x: Math.round(p.x), y: Math.round(p.y),
       vx: +p.vx.toFixed(3), vy: +p.vy.toFixed(3),
     })),
+    actionLog: actionLog.slice(),
   };
 }
-(function addBugButton() {
-  const btn = document.createElement('a');
-  btn.textContent = '🐛';
-  btn.title = 'Report a bug';
-  Object.assign(btn.style, {
-    position: 'fixed', bottom: '6px', left: '8px', zIndex: '30',
-    fontSize: '18px', opacity: '0.25', cursor: 'pointer',
-    textDecoration: 'none', lineHeight: '1', userSelect: 'none',
-    transition: 'opacity 0.15s',
-  });
-  btn.addEventListener('mouseenter', () => btn.style.opacity = '0.85');
-  btn.addEventListener('mouseleave', () => btn.style.opacity = '0.25');
-  btn.addEventListener('click', e => {
-    e.preventDefault();
-    const state = encodeURIComponent(JSON.stringify(getBugState()));
-    const url   = `../dev/bug-report.html?sim=v11&sourceUrl=${encodeURIComponent(location.href)}&state=${state}`;
-    window.open(url, '_blank');
-  });
-  document.body.appendChild(btn);
-})();
+document.getElementById('bugReportBtn').addEventListener('click', e => {
+  e.preventDefault();
+  const state = encodeURIComponent(JSON.stringify(getBugState()));
+  const url   = `../dev/bug-report.html?sim=v11&sourceUrl=${encodeURIComponent(location.href)}&state=${state}`;
+  window.open(url, '_blank');
+});
 </script>
 </body>
 </html>
