@@ -127,6 +127,9 @@
     background: transparent; box-shadow: none; text-shadow: none; cursor: not-allowed;
   }
 
+  /* ── Tab bar ───────────────────────────────────────────────────────────── */
+  #tabBar { display: flex; gap: 8px; padding-bottom: 2px; }
+  a.tab-btn { text-decoration: none; cursor: pointer; }
   /* ── Tab-style title label (matches v11 tab styling) ─────────────────────── */
   .tab-btn {
     padding: 4px 14px;
@@ -694,8 +697,14 @@
 
 <div id="toolbar">
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
-    <button class="tab-btn" id="tempTabBtn" style="cursor:pointer" onclick="switchTab('temp')">TEMPERATURE</button>
-    <button class="tab-btn active" id="fusionTabBtn" style="cursor:pointer" onclick="switchTab('fusion')">FUSION</button>
+    <div id="tabBar">
+      <a href="../v11/index.html" class="tab-btn">Protons</a>
+      <a href="../v11/index.html#nucleus" class="tab-btn">Investigate Stability</a>
+      <a href="../v13/index.html" class="tab-btn">Fission</a>
+      <a href="../v13/index.html#chain" class="tab-btn">Chain Reaction</a>
+      <button class="tab-btn" id="tempTabBtn" onclick="switchTab('temp')">Temperature</button>
+      <button class="tab-btn active" id="fusionTabBtn" onclick="switchTab('fusion')">Fusion</button>
+    </div>
     <input type="color" id="bgColorPicker" value="#ffffff" title="Background color">
     <!-- themeLight kept hidden for JS sync -->
     <button class="theme-btn" id="themeLight" title="Light mode" style="display:none;"></button>
@@ -860,7 +869,7 @@
   <button class="theme-btn" id="v14ThemeB" title="Industrial"></button>
   <button class="theme-btn" id="v14ThemeC" title="Neon Blue"></button>
   <button class="theme-btn" id="v14ThemeLight" title="Light mode"></button>
-  <a id="bugReportBtn" title="Report a bug" style="cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;transition:opacity 0.15s;opacity:0.75;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.75'"><span class="slider-icon" style="font-size:22px;filter:drop-shadow(0 0 5px rgba(255,50,50,0.95)) drop-shadow(0 0 14px rgba(255,30,30,0.7)) drop-shadow(0 0 28px rgba(220,0,0,0.45));">🐞</span></a>
+  <a id="bugReportBtn" title="Report a bug" style="cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;"><span class="slider-icon" style="font-size:22px;background:white;border-radius:50%;padding:2px;filter:drop-shadow(0 0 5px rgba(255,50,50,0.95)) drop-shadow(0 0 14px rgba(255,30,30,0.7)) drop-shadow(0 0 28px rgba(220,0,0,0.45));">🐞</span></a>
 </div>
 
 <!-- Separate Fields panel — floats just above the scrubBar on the right side -->

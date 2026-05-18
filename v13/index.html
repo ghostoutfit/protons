@@ -90,7 +90,7 @@
     font-family: inherit;
   }
   /* Navigation tabs (links to other sims) inherit tab-btn appearance */
-  a.tab-btn { text-decoration: none; }
+  a.tab-btn { text-decoration: none; cursor: pointer; }
 
   .tab-btn:hover {
     color: rgba(255,255,255,0.38);
@@ -916,10 +916,12 @@
 <div id="toolbar">
   <div class="toolbar-row">
     <div id="tabBar">
-      <a href="../v11/index.html#fission" class="tab-btn">Protons</a>
-      <a href="../v11/index.html#fission" class="tab-btn">Investigate Stability</a>
+      <a href="../v11/index.html" class="tab-btn">Protons</a>
+      <a href="../v11/index.html#nucleus" class="tab-btn">Investigate Stability</a>
       <button class="tab-btn active" data-tab="fission">Fission</button>
       <button class="tab-btn" data-tab="chain">Chain Reaction</button>
+      <a href="../v14/index.html#temp" class="tab-btn">Temperature</a>
+      <a href="../v14/index.html" class="tab-btn">Fusion</a>
     </div>
     <div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
       <button class="theme-btn active" id="themeA" title="Synthwave"></button>
@@ -927,7 +929,7 @@
       <button class="theme-btn" id="themeC" title="Neon Blue"></button>
       <button class="theme-btn" id="themeLight" title="Light mode"></button>
       <input type="color" id="bgColorPicker" value="#ffffff" title="Background color">
-      <a id="bugReportBtn" title="Report a bug" style="cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;transition:opacity 0.15s;opacity:0.75;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.75'"><span class="slider-icon" style="filter:drop-shadow(0 0 5px rgba(255,50,50,0.95)) drop-shadow(0 0 14px rgba(255,30,30,0.7)) drop-shadow(0 0 28px rgba(220,0,0,0.45));">🐞</span></a>
+      <a id="bugReportBtn" title="Report a bug" style="cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;"><span class="slider-icon" style="background:white;border-radius:50%;padding:2px;filter:drop-shadow(0 0 5px rgba(255,50,50,0.95)) drop-shadow(0 0 14px rgba(255,30,30,0.7)) drop-shadow(0 0 28px rgba(220,0,0,0.45));">🐞</span></a>
     </div>
   </div>
   <div class="toolbar-row">
