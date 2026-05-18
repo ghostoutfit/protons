@@ -150,13 +150,13 @@
   </div>
 
   <div class="field">
-    <label>Title *</label>
-    <input id="titleInput" type="text" placeholder="One-line summary of the bug">
+    <label>What happened? *</label>
+    <textarea id="titleInput" rows="2" placeholder="Brief description of the bug" style="resize:vertical;"></textarea>
   </div>
 
   <div class="field">
-    <label>What happened? What did you expect? *</label>
-    <textarea id="descInput" rows="4" placeholder="Describe the bug…"></textarea>
+    <label>If you want, describe a potential fix or describe what you expected to happen.</label>
+    <textarea id="descInput" rows="4" placeholder="Optional details…"></textarea>
   </div>
 
   <div class="field">
@@ -250,10 +250,7 @@
     const payload = buildPayload();
 
     if (!payload.title) {
-      status.textContent = 'Please enter a title.'; status.className = 'err'; return;
-    }
-    if (!payload.description) {
-      status.textContent = 'Please describe the bug.'; status.className = 'err'; return;
+      status.textContent = 'Please describe what happened.'; status.className = 'err'; return;
     }
 
     status.textContent = 'Sending…'; status.className = '';

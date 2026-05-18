@@ -935,7 +935,7 @@
       <button class="theme-btn" id="themeC" title="Neon Blue"></button>
       <button class="theme-btn" id="themeLight" title="Light mode"></button>
       <input type="color" id="bgColorPicker" value="#ffffff" title="Background color">
-      <a id="bugReportBtn" title="Report a bug" style="cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;transition:opacity 0.15s;opacity:0.4;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.4'"><span class="slider-icon">🐞</span></a>
+      <a id="bugReportBtn" title="Report a bug" style="cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;transition:opacity 0.15s;opacity:0.75;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.75'"><span class="slider-icon" style="filter:drop-shadow(0 0 5px rgba(255,50,50,0.95)) drop-shadow(0 0 14px rgba(255,30,30,0.7)) drop-shadow(0 0 28px rgba(220,0,0,0.45));">🐞</span></a>
     </div>
   </div>
   <div class="toolbar-row" style="align-items:stretch;gap:12px">
@@ -2155,6 +2155,15 @@ function step(dt) {
   const n = particles.length;
   const subDt = dt / SUBSTEPS;  // Per-substep timestep
 
+  // Hoist tab check + per-particle strongScale out of the N²×SUBSTEPS inner loop.
+  // strongScale is set by updateQuantumStability() once per frame before step(), so
+  // it's constant for the entire step() call.
+  const isNucleus = !currentTabIsProton;
+  const strongScales = new Float32Array(n);
+  if (isNucleus) {
+    for (let i = 0; i < n; i++) strongScales[i] = particles[i].strongScale ?? 1;
+  }
+
   for (let sub = 0; sub < SUBSTEPS; sub++) {
     // 1. Compute pairwise forces
     for (let i = 0; i < n; i++) {
@@ -2170,9 +2179,7 @@ function step(dt) {
         if (distSq > COULOMB_CUTOFF_SQ) continue;  // Too far for any meaningful force
         const dist = Math.sqrt(distSq);
         if (dist < 0.01) continue;  // Skip coincident particles
-        const ss = currentTab === 'nucleus'
-          ? Math.min(a.strongScale ?? 1, b.strongScale ?? 1)
-          : 1;
+        const ss = isNucleus ? Math.min(strongScales[i], strongScales[j]) : 1;
         const force = pairForce(dist, distSq, a.type, b.type, ss);
         const fx = force * (dx / dist);
         const fy = force * (dy / dist);
@@ -2185,7 +2192,7 @@ function step(dt) {
 
 
     // Cohesion: gentle spring toward each particle's cluster CM (nucleus tab)
-    if (currentTab === 'nucleus') {
+    if (isNucleus) {
       for (let i = 0; i < n; i++) {
         if (i === dragging) continue;
         const p = particles[i];

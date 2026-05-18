@@ -860,7 +860,7 @@
   <button class="theme-btn" id="v14ThemeB" title="Industrial"></button>
   <button class="theme-btn" id="v14ThemeC" title="Neon Blue"></button>
   <button class="theme-btn" id="v14ThemeLight" title="Light mode"></button>
-  <a id="bugReportBtn" title="Report a bug" style="cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;transition:opacity 0.15s;opacity:0.4;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.4'"><span class="slider-icon" style="font-size:22px;">🐞</span></a>
+  <a id="bugReportBtn" title="Report a bug" style="cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;transition:opacity 0.15s;opacity:0.75;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.75'"><span class="slider-icon" style="font-size:22px;filter:drop-shadow(0 0 5px rgba(255,50,50,0.95)) drop-shadow(0 0 14px rgba(255,30,30,0.7)) drop-shadow(0 0 28px rgba(220,0,0,0.45));">🐞</span></a>
 </div>
 
 <!-- Separate Fields panel — floats just above the scrubBar on the right side -->
@@ -1075,6 +1075,7 @@ let leftClusterSize = 1;
 // Offscreen canvas for heatmap rendering
 const hmCanvas = document.createElement('canvas');
 const hmCtx    = hmCanvas.getContext('2d');
+let   hmImageData = null;  // reused across frames; reallocated only on resize
 
 // ============================================================
 //  GEOMETRY SNAP
@@ -2010,9 +2011,14 @@ function drawFieldHeatmap(pairs, colormap, mode) {
   const midX = cameraSiteX ?? canvas.width  / 2;
   const midY = cameraSiteY ?? canvas.height / 2;
 
-  if (hmCanvas.width !== w || hmCanvas.height !== h) { hmCanvas.width = w; hmCanvas.height = h; }
-  const imageData = hmCtx.createImageData(w, h);
+  if (hmCanvas.width !== w || hmCanvas.height !== h) {
+    hmCanvas.width = w; hmCanvas.height = h;
+    hmImageData = null;  // invalidate on resize
+  }
+  if (!hmImageData) hmImageData = hmCtx.createImageData(w, h);
+  const imageData = hmImageData;
   const data      = imageData.data;
+  data.fill(0);  // clear previous frame (pixels below threshold aren't written)
   const isEIE     = mode === 'eie';
 
   for (let py = 0; py < h; py++) {
