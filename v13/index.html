@@ -2141,16 +2141,22 @@ function renderAtFrac(frac) {
     // Neutron flying zone
     if (showElec) drawElectricHeatmap(animParent.particles, 0.5, 1.0, parentMask);
     if (!showParticles) drawCloudOutline(animParent.cx, animParent.cy, animParent.sphereR);
-    if (neutronState === 'bouncing') {
+    if (neutronState === 'passing') {
+      // Pass-through: nucleus particles first so the neutron renders in front of them
+      if (showParticles) drawParticles(animParent.particles, 0.85);
       drawNeutron(neutronX, neutronY);
-    } else if (neutronState === 'idle') {
-      drawNeutron(-PARTICLE_RADIUS - 5, animParent.cy);
     } else {
-      const nf = frac / NEUTRON_FRAC;
-      const nx = (-PARTICLE_RADIUS - 5) + nf * (neutronImpactX() - (-PARTICLE_RADIUS - 5));
-      drawNeutron(nx, animParent.cy);
+      if (neutronState === 'bouncing') {
+        drawNeutron(neutronX, neutronY);
+      } else if (neutronState === 'idle') {
+        drawNeutron(-PARTICLE_RADIUS - 5, animParent.cy);
+      } else {
+        const nf = frac / NEUTRON_FRAC;
+        const nx = (-PARTICLE_RADIUS - 5) + nf * (neutronImpactX() - (-PARTICLE_RADIUS - 5));
+        drawNeutron(nx, animParent.cy);
+      }
+      if (showParticles) drawParticles(animParent.particles, 0.85);
     }
-    if (showParticles) drawParticles(animParent.particles, 0.85);
   } else {
     // Fission zone
     const ff = (frac - NEUTRON_FRAC) / (1 - NEUTRON_FRAC);
@@ -3044,21 +3050,16 @@ function neutronTick(now) {
     const speedVal = parseFloat(document.getElementById('neutronSpeed').value);
     const bounceThreshold = 0.2 + 0.9 * (8.0 - 0.2); // = 7.22
     if (currentTab === 'fission' && speedVal > bounceThreshold) {
-      // Random deflection angle: leftward ±60° from horizontal
-      const angle = Math.PI + (Math.random() - 0.5) * (2 * Math.PI / 3);
-      bounceVX = Math.cos(angle);
-      bounceVY = Math.sin(angle);
-      // Start neutron at the nucleus surface so the bounce origin is visible
+      // Too fast for fission — neutron passes straight through the nucleus.
       neutronX = animParent.cx - animParent.sphereR - PARTICLE_RADIUS;
       neutronY = animParent.cy;
       currentScrubFrac = 0;
-      // Stop prerender frame capture — accumulated createImageBitmap calls
-      // from the neutron flight hold GPU memory and cause a canvas eviction
-      // flash after ~16 s. Resetting here frees them immediately.
       resetPrerender();
-      neutronState = 'bouncing';
+      consecutiveBounces = 0;
+      document.getElementById('neutronSpeedWrap').classList.remove('bounce-warn');
+      neutronState = 'passing';
       neutronLast  = null;
-      neutronRAF   = requestAnimationFrame(bounceTick);
+      neutronRAF   = requestAnimationFrame(passTick);
       return;
     }
     staticNeutronIX  = animParent.cx - animParent.sphereR * 0.85;
@@ -3130,6 +3131,33 @@ function bounceTick(now) {
   renderAtFrac(0);  // nucleus at rest; bouncing neutron drawn via renderAtFrac's bouncing branch
   drawForceViz();
   neutronRAF = requestAnimationFrame(bounceTick);
+}
+
+function passTick(now) {
+  if (neutronState !== 'passing') return;
+  const dt    = neutronLast ? now - neutronLast : 16;
+  neutronLast = now;
+  const speed = parseFloat(document.getElementById('neutronSpeed').value);
+  neutronX += speed * 0.25 * dt;  // continue straight through and out the other side
+
+  if (neutronX > canvas.width + PARTICLE_RADIUS + 5) {
+    neutronRAF   = null;
+    neutronState = 'idle';
+    const gbtn = document.getElementById('goBtn');
+    gbtn.textContent = '▶ GO';
+    gbtn.classList.remove('running');
+    currentScrubFrac = 0;
+    document.getElementById('scrubSlider').value = 0;
+    document.getElementById('scrubPct').textContent = '0';
+    renderAtFrac(0);
+    return;
+  }
+
+  updateParticleJitter(animParent.particles.length, 1, true);
+  syncForceVizVisibility();
+  renderAtFrac(0);  // nucleus at rest; passing neutron drawn on top inside renderAtFrac
+  drawForceViz();
+  neutronRAF = requestAnimationFrame(passTick);
 }
 
 function fissionTick(now) {
