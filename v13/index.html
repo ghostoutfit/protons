@@ -4609,9 +4609,28 @@ document.getElementById('bugReportBtn').addEventListener('click', e => {
   e.preventDefault();
   const state = encodeURIComponent(JSON.stringify(getBugState()));
   const url   = `../dev/bug-report.html?sim=v13&sourceUrl=${encodeURIComponent(location.href)}&state=${state}`;
-  window.open(url, '_blank');
+  document.getElementById('bugModalFrame').src = url;
+  document.getElementById('bugModal').style.display = 'flex';
+});
+function closeBugModal() {
+  document.getElementById('bugModal').style.display = 'none';
+  document.getElementById('bugModalFrame').src = 'about:blank';
+}
+document.getElementById('bugModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('bugModal')) closeBugModal();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('bugModal').style.display === 'flex') closeBugModal();
 });
 </script>
+
+<!-- Bug report modal -->
+<div id="bugModal" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(2,1,12,0.85);backdrop-filter:blur(6px);align-items:center;justify-content:center;">
+  <div style="position:relative;width:660px;max-width:94vw;height:88vh;background:#05040f;border:1px solid rgba(26,110,255,0.35);border-radius:14px;box-shadow:0 0 0 1px rgba(26,110,255,0.1),0 8px 60px rgba(0,0,0,0.8),0 0 40px rgba(26,110,255,0.12);display:flex;flex-direction:column;overflow:hidden;">
+    <button onclick="closeBugModal()" style="position:absolute;top:10px;right:12px;z-index:1;background:rgba(26,110,255,0.12);border:1px solid rgba(26,110,255,0.3);color:#8090c0;border-radius:6px;width:28px;height:28px;font-size:16px;cursor:pointer;line-height:1;padding:0;" onmouseenter="this.style.background='rgba(26,110,255,0.28)'" onmouseleave="this.style.background='rgba(26,110,255,0.12)'">✕</button>
+    <iframe id="bugModalFrame" src="about:blank" style="flex:1;border:none;border-radius:14px;background:#05040f;"></iframe>
+  </div>
+</div>
 
 </body>
 </html>
