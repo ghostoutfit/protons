@@ -919,7 +919,7 @@
       <button id="clearBtn" class="btn" style="flex:1">Reset</button>
     </div>
 
-    <!-- Pink box: New button + neutron speed + particle counters + Add more fuel -->
+    <!-- Pink box: New button + neutron speed + particle counters + Add fuel material -->
     <div class="ctrl-box-pink">
       <div class="pwheel" id="nucleusWheel">
         <button id="newBtn" class="btn" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;align-self:stretch;padding:6px 12px;">
@@ -968,7 +968,7 @@
             <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.05em;opacity:0.6;">Particle 2&nbsp;</span>P: <span id="p2Protons" style="color:var(--accent1)">0</span>&nbsp;N: <span id="p2Neutrons">1</span>
           </div>
         </div>
-        <button id="enrichBtn" class="btn" style="display:none;">Add more fuel</button>
+        <button id="enrichBtn" class="btn" style="display:none;">Add fuel material</button>
       </div>
     </div>
 
@@ -3752,7 +3752,7 @@ function selectNucleus(key) {
   });
   document.getElementById('nucleusWheel').classList.remove('open');
   document.getElementById('enrichBtn').textContent =
-    key === 'ag107' ? 'Add control material' : 'Add more fuel';
+    key === 'ag107' ? 'Add control material' : 'Add fuel material';
   // Immediately show the selected nucleus centred — only when idle
   if (neutronState === 'idle') {
     currentSeed = Math.floor(Math.random() * 1e9);
