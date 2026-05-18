@@ -2330,9 +2330,7 @@ function updateChain(now) {
     let absorbed = false;
     for (const site of enrichSites) {
       if (site.state !== 'idle') continue;
-      const siteCaptureR = site.isControl
-        ? sphereR * CONTROL_SITE_SCALE + PARTICLE_RADIUS * 2
-        : captureR;
+      const siteCaptureR = site.sphereR + PARTICLE_RADIUS * 2;
       if (Math.hypot(n.x - site.cx, n.y - site.cy) < siteCaptureR) {
         if (!site.isControl) triggerEnrichSite(site);
         // Control material absorbs the neutron silently; fuel triggers fission
@@ -2368,8 +2366,8 @@ function updateChain(now) {
         const spd = 0.55 + Math.random() * 0.20;
         const a = site.angle;
         site.daughters = [
-          { x: site.cx, y: site.cy, vx:  Math.cos(a) * spd, vy:  Math.sin(a) * spd, r: sphereR * 0.7, viewAngle: Math.random() * Math.PI * 2 },
-          { x: site.cx, y: site.cy, vx: -Math.cos(a) * spd, vy: -Math.sin(a) * spd, r: sphereR * 0.6, viewAngle: Math.random() * Math.PI * 2 },
+          { x: site.cx, y: site.cy, vx:  Math.cos(a) * spd, vy:  Math.sin(a) * spd, r: site.sphereR * 0.7, viewAngle: Math.random() * Math.PI * 2 },
+          { x: site.cx, y: site.cy, vx: -Math.cos(a) * spd, vy: -Math.sin(a) * spd, r: site.sphereR * 0.6, viewAngle: Math.random() * Math.PI * 2 },
         ];
       }
       if (site.fissT >= ANIM_T_END) site.state = 'done';
@@ -2407,10 +2405,10 @@ function updateChain(now) {
     if (site.vx === undefined) { site.vx = 0; site.vy = 0; }
     site.cx += site.vx * dt;
     site.cy += site.vy * dt;
-    if (site.cx - sphereR < b.x)       { site.cx = b.x + sphereR;       site.vx =  Math.abs(site.vx); }
-    if (site.cx + sphereR > b.x + b.w) { site.cx = b.x + b.w - sphereR; site.vx = -Math.abs(site.vx); }
-    if (site.cy - sphereR < b.y)       { site.cy = b.y + sphereR;       site.vy =  Math.abs(site.vy); }
-    if (site.cy + sphereR > b.y + b.h) { site.cy = b.y + b.h - sphereR; site.vy = -Math.abs(site.vy); }
+    if (site.cx - site.sphereR < b.x)       { site.cx = b.x + site.sphereR;       site.vx =  Math.abs(site.vx); }
+    if (site.cx + site.sphereR > b.x + b.w) { site.cx = b.x + b.w - site.sphereR; site.vx = -Math.abs(site.vx); }
+    if (site.cy - site.sphereR < b.y)       { site.cy = b.y + site.sphereR;       site.vy =  Math.abs(site.vy); }
+    if (site.cy + site.sphereR > b.y + b.h) { site.cy = b.y + b.h - site.sphereR; site.vy = -Math.abs(site.vy); }
   }
 
   // ── KMT elastic collisions ────────────────────────────────────────────────────
@@ -2428,7 +2426,7 @@ function updateChain(now) {
     if (!(site.state === 'done' && site.wobbleMode === 'stable')) continue;
     if (site.vx === undefined) { site.vx = 0; site.vy = 0; }
     const proxy = { x: site.cx, y: site.cy, vx: site.vx, vy: site.vy };
-    movables.push({ p: proxy, r: sphereR, m: 235, _site: site });
+    movables.push({ p: proxy, r: site.sphereR, m: 235, _site: site });
   }
 
   // Pairwise elastic collisions between all movables (neutron–neutron, neutron–daughter, daughter–daughter)
@@ -2483,7 +2481,7 @@ function updateChain(now) {
       if (!daughterFuelCollide && !d.bounced) continue;
       const dx = d.x - site.cx, dy = d.y - site.cy;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      const minD = d.r + sphereR;
+      const minD = d.r + site.sphereR;
       if (dist >= minD || dist < 0.001) continue;
       const nx = dx / dist, ny = dy / dist;
       d.x = site.cx + nx * minD;  d.y = site.cy + ny * minD;
@@ -2500,7 +2498,7 @@ function updateChain(now) {
       if (neutronAbsorb && n._absorb) continue;
       const dx = n.x - site.cx, dy = n.y - site.cy;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      const minD = PARTICLE_RADIUS + (site.isControl ? sphereR * CONTROL_SITE_SCALE : sphereR);
+      const minD = PARTICLE_RADIUS + site.sphereR;
       if (dist >= minD || dist < 0.001) continue;
       if (neutronAbsorb) { n._absorb = true; continue; }
       const nx = dx / dist, ny = dy / dist;
@@ -2547,14 +2545,14 @@ function drawChainOverlay() {
       const cosA = Math.cos(site.angle), sinA = Math.sin(site.angle);
       const pts = offsets.map(p => {
         // Apply viewAngle rotation first, then fission-axis deformation
-        const rx = (p.ox * cosV - p.oy * sinV) * sphereR;
-        const ry = (p.ox * sinV + p.oy * cosV) * sphereR;
+        const rx = (p.ox * cosV - p.oy * sinV) * site.sphereR;
+        const ry = (p.ox * sinV + p.oy * cosV) * site.sphereR;
         const along = rx * cosA + ry * sinA;
         const perp  = -rx * sinA + ry * cosA;
         return {
           x: cx + along * scaleAlong * cosA - perp * scalePerp * sinA,
           y: cy + along * scaleAlong * sinA + perp * scalePerp * cosA,
-          z: p.oz * sphereR,
+          z: p.oz * site.sphereR,
           type: p.type,
         };
       });
@@ -2563,7 +2561,7 @@ function drawChainOverlay() {
       ctx.save();
       ctx.translate(cx, cy); ctx.rotate(site.angle);
       ctx.scale(scaleAlong, scalePerp); ctx.rotate(-site.angle); ctx.translate(-cx, -cy);
-      drawCloudOutline(cx, cy, sphereR);
+      drawCloudOutline(cx, cy, site.sphereR);
       ctx.restore();
     }
     // Excited glow ring
@@ -2571,7 +2569,7 @@ function drawChainOverlay() {
     ctx.save();
     ctx.translate(cx, cy); ctx.rotate(site.angle);
     ctx.scale(scaleAlong, scalePerp); ctx.rotate(-site.angle); ctx.translate(-cx, -cy);
-    ctx.beginPath(); ctx.arc(cx, cy, sphereR * (1 + ph2 * 0.08), 0, Math.PI * 2);
+    ctx.beginPath(); ctx.arc(cx, cy, site.sphereR * (1 + ph2 * 0.08), 0, Math.PI * 2);
     ctx.strokeStyle = _LIGHT ? `rgba(40,40,40,${0.3 + ph2 * 0.5})` : `rgba(255,45,120,${0.3 + ph2 * 0.5})`;
     ctx.lineWidth = 3 + ph2 * 5;
     ctx.shadowBlur  = _LIGHT ? 0 : 18 * ph2;
@@ -2603,7 +2601,7 @@ function drawChainOverlay() {
   }
 
   // Control sites (Ag-107) render at 75% the radius of fuel sites
-  const siteR = (site) => site.isControl ? sphereR * CONTROL_SITE_SCALE : sphereR;
+  const siteR = (site) => site.sphereR;
 
   // ── BACKGROUND LAYER: stable (failed) sites, bounced daughters, bounced neutrons ──
   // Outline mode: fade with globalAlpha. Particle mode: draw full-bright then overlay a grey circle.
@@ -2662,7 +2660,7 @@ function drawChainOverlay() {
       if (t <= PH2_END) {
         drawFissionWobble(site);
       } else if (site.wobbleMode === 'stable') {
-        drawChainNucleus(site.cx, site.cy, sphereR, site.viewAngle);
+        drawChainNucleus(site.cx, site.cy, site.sphereR, site.viewAngle);
       } else if (site.daughters) {
         // Draw each daughter in foreground only until it bounces
         for (const d of site.daughters) { if (!d.bounced) drawChainDaughter(d); }
@@ -3894,7 +3892,8 @@ document.getElementById('enrichBtn').addEventListener('click', () => {
       enrichSites.push({ cx, cy, vx: 0, vy: 0, state: 'idle', fissStart: 0, fissT: PH1_END,
                          angle: 0, shakeDur: 600, neutronsEmitted: false,
                          viewAngle: Math.random() * Math.PI * 2,
-                         isControl: isCtrl });
+                         isControl: isCtrl,
+                         sphereR: isCtrl ? animParent.sphereR * CONTROL_SITE_SCALE : animParent.sphereR });
       if (!isCtrl) { totalFuelAdded++; energyInFields++; }
     }
   }
@@ -4072,7 +4071,7 @@ function pickChainSite(clientX, clientY) {
     if (dx*dx + dy*dy <= r*r) return { target: animParent, isParent: true, offX: animParent.cx - wx, offY: animParent.cy - wy };
   }
   for (const site of enrichSites) {
-    const sr = site.isControl ? r * CONTROL_SITE_SCALE : r;
+    const sr = site.sphereR;
     const dx = wx - site.cx, dy = wy - site.cy;
     if (dx*dx + dy*dy <= sr*sr) return { target: site, offX: site.cx - wx, offY: site.cy - wy };
   }
