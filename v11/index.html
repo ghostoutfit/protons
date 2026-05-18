@@ -3710,17 +3710,21 @@ function drawCRT() {
 //  AMBIENT LOOP  (always-on: specks + jitter, even when stopped)
 // ============================================================
 let ambientId = null;
+let _ambientDrawSkip = 0;
 function ambientLoop() {
   noiseFrame++;
   refreshParticleGrain();
-  updateJitter(); // always update, applied in draw() regardless of running state
+  updateJitter(); // always update every RAF so jitter state stays smooth
   if (!running) {
-    // When showing a historical frame, re-render it so jitter stays live.
-    // When no history is loaded, just draw the current particle state.
-    if (scrubFrame >= 0) {
-      renderFrame(scrubFrame);
-    } else {
-      draw();
+    // Throttle idle redraws to ~15 fps (every 4th RAF) — full canvas repaint
+    // (incl. heatmaps) is expensive; jitter is imperceptible above ~12 fps.
+    _ambientDrawSkip = (_ambientDrawSkip + 1) % 4;
+    if (_ambientDrawSkip === 0) {
+      if (scrubFrame >= 0) {
+        renderFrame(scrubFrame);
+      } else {
+        draw();
+      }
     }
   }
   ambientId = requestAnimationFrame(ambientLoop);

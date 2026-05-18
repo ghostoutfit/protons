@@ -3363,17 +3363,21 @@ function updateJitter() {
 // Skips redraw when scrubbing (scrubFrame >= 0) so the historical frame isn't overwritten.
 // Only redraws on the fusion tab — the temp tab manages its own canvas, and calling
 // fusion's draw() while on the temp tab would clobber the temp UI (including while paused).
+let _idleDrawSkip = 0;
 (function idleJitter() {
-  updateJitter();
+  updateJitter(); // always update every RAF so jitter state stays smooth
+  // Throttle idle redraws to ~15 fps (every 4th RAF).
+  // Jitter position updates still run every RAF above; only the canvas repaint is gated.
+  _idleDrawSkip = (_idleDrawSkip + 1) % 4;
   if (currentTab === 'temp' && !tempRunning && !tempPaused) {
     for (const p of tempProtons) {
       if (p._jx === undefined) { p._jx = 0; p._jy = 0; }
       p._jx += (Math.random() - 0.5) * 0.7; p._jx *= 0.78;
       p._jy += (Math.random() - 0.5) * 0.7; p._jy *= 0.78;
     }
-    drawTemp();
+    if (_idleDrawSkip === 0) drawTemp();
   }
-  if (currentTab === 'fusion' && !running) {
+  if (currentTab === 'fusion' && !running && _idleDrawSkip === 0) {
     if (scrubFrame >= 0) {
       renderFrame(scrubFrame); // keep showing the scrubbed frame with fresh jitter
     } else {
