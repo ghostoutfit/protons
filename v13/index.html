@@ -398,6 +398,24 @@
 
   /* ── Neutron speed bounce warning ────────────────────────────────────── */
   #neutronSpeedWrap { position: relative; display: flex; align-items: center; }
+  #neutronSpeedWrap.bounce-warn::before {
+    content: '←';
+    position: absolute;
+    top: -24px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 20px;
+    font-weight: 700;
+    color: #ff2626;
+    text-shadow:
+      0 0 6px #ff2626,
+      0 0 16px rgba(255,38,38,0.9),
+      0 0 32px rgba(255,38,38,0.6);
+    pointer-events: none;
+    animation: neutronWarnPulse 0.75s ease-in-out infinite;
+    white-space: nowrap;
+    line-height: 1;
+  }
   #neutronSpeedWrap.bounce-warn::after {
     content: '';
     position: absolute;
@@ -717,6 +735,7 @@
     text-transform: uppercase;
   }
   #scrubSlider { flex: 1; }
+  #scrubSlider:disabled { opacity: 0.18; cursor: not-allowed; }
   #scrubPct { display: none; }
 
   .theme-btn {
@@ -1027,7 +1046,7 @@
         <div class="phase-seg" id="phaseSeg-after"  style="flex:26;background:rgba(26,110,255,0.28);color:#4d9fff;opacity:0.5;">After</div>
       </div>
       <div id="scrubRow">
-        <input type="range" id="scrubSlider" min="0" max="1000" value="0">
+        <input type="range" id="scrubSlider" min="0" max="1000" value="0" disabled>
       </div>
     </div>
     <div id="scrubRowRight">
@@ -1041,14 +1060,14 @@
       </div>
       <div id="scrubButtons">
         <button id="energyGraphToggle" class="btn">SHOW LINE<br>GRAPH</button>
-        <a href="https://bscs.org/" target="_blank" rel="noopener" style="display:block;line-height:0;flex-shrink:0;"><img src="../images/bscs-logo.png" alt="built by BSCS" style="height:60px;width:auto;opacity:0.85;display:block;border-radius:4px;"></a>
+        <img src="../images/bscs-logo.png" alt="built by BSCS" style="height:60px;width:auto;opacity:0.85;display:block;border-radius:4px;flex-shrink:0;">
       </div>
     </div>
   </div>
 </div>
 
 <div id="chainLogoBar">
-  <a href="https://bscs.org/" target="_blank" rel="noopener" style="display:block;line-height:0;"><img src="../images/bscs-logo.png" alt="built by BSCS" style="height:60px;width:auto;opacity:0.85;display:block;border-radius:4px;"></a>
+  <img src="../images/bscs-logo.png" alt="built by BSCS" style="height:60px;width:auto;opacity:0.85;display:block;border-radius:4px;">
 </div>
 
 <script>
@@ -1557,7 +1576,8 @@ function drawChainSiteParticles(cx, cy, r, rotAngle = 0) {
     z: p.oz * r,
     type: p.type,
   }));
-  drawParticles(pts, 0);   // no jitter in chain mode
+  const radiusScale = animParent ? r / animParent.sphereR : 1;
+  drawParticles(pts, 0, radiusScale);   // no jitter in chain mode
 }
 
 // ─── v11-style particle renderer — stochastic jitter + fuzzy glow ────────────
@@ -1576,8 +1596,8 @@ function updateParticleJitter(count, strength = 1, slow = false) {
   }
 }
 
-function drawParticles(particles, jitterScale = 1) {
-  const R = PARTICLE_RADIUS;
+function drawParticles(particles, jitterScale = 1, radiusScale = 1) {
+  const R = PARTICLE_RADIUS * radiusScale;
   // z ascending = back to front; protons after neutrons at same depth
   const sorted = [...particles].sort((a, b) =>
     ((a.z || 0) - (b.z || 0)) || ((a.type === 'proton') - (b.type === 'proton'))
@@ -1614,10 +1634,10 @@ function drawParticles(particles, jitterScale = 1) {
     // + label on protons
     if (isProton) {
       ctx.fillStyle = 'rgba(255,255,255,0.88)';
-      ctx.font = 'bold 11px Lexend, sans-serif';
+      ctx.font = `bold ${Math.max(6, Math.round(11 * radiusScale))}px Lexend, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('+', px, py + 1);
+      ctx.fillText('+', px, py + 1 * radiusScale);
     }
   }
 }
@@ -1773,6 +1793,7 @@ function applyTab(tab) {
   document.getElementById('scrubBar').classList.toggle('visible', tab !== 'chain');
   document.getElementById('chainLogoBar').classList.toggle('visible', tab === 'chain');
   document.getElementById('scrubSlider').value = 0;
+  document.getElementById('scrubSlider').disabled = true;
   document.getElementById('scrubPct').textContent = '0';
 
   currentTab = tab;
@@ -2556,7 +2577,8 @@ function drawChainOverlay() {
           type: p.type,
         };
       });
-      drawParticles(pts, 0);
+      const wobbleRadiusScale = animParent ? site.sphereR / animParent.sphereR : 1;
+      drawParticles(pts, 0, wobbleRadiusScale);
     } else {
       ctx.save();
       ctx.translate(cx, cy); ctx.rotate(site.angle);
@@ -3053,8 +3075,6 @@ function neutronTick(now) {
       neutronY = animParent.cy;
       currentScrubFrac = 0;
       resetPrerender();
-      consecutiveBounces = 0;
-      document.getElementById('neutronSpeedWrap').classList.remove('bounce-warn');
       neutronState = 'passing';
       neutronLast  = null;
       neutronRAF   = requestAnimationFrame(passTick);
@@ -3119,6 +3139,7 @@ function bounceTick(now) {
     }
     currentScrubFrac = 0;
     document.getElementById('scrubSlider').value = 0;
+    document.getElementById('scrubSlider').disabled = true;
     document.getElementById('scrubPct').textContent = '0';
     renderAtFrac(0);
     return;
@@ -3144,8 +3165,13 @@ function passTick(now) {
     const gbtn = document.getElementById('goBtn');
     gbtn.textContent = '▶ GO';
     gbtn.classList.remove('running');
+    consecutiveBounces++;
+    if (consecutiveBounces >= 2) {
+      document.getElementById('neutronSpeedWrap').classList.add('bounce-warn');
+    }
     currentScrubFrac = 0;
     document.getElementById('scrubSlider').value = 0;
+    document.getElementById('scrubSlider').disabled = true;
     document.getElementById('scrubPct').textContent = '0';
     renderAtFrac(0);
     return;
@@ -3714,6 +3740,7 @@ document.getElementById('goBtn').addEventListener('click', () => {
   maxRevealedFrac = 0;
   egZoomStart = 0; egZoomEnd = 1;  // will be narrowed to 0.70 if stable, once wobbleMode is known at impact
   document.getElementById('scrubSlider').max = 1000;
+  document.getElementById('scrubSlider').disabled = false;
   if (currentTab !== 'chain') document.getElementById('scrubBar').classList.add('visible');
   document.getElementById('chainLogoBar').classList.toggle('visible', currentTab === 'chain');
   document.getElementById('scrubSlider').value = 0;
@@ -3832,6 +3859,7 @@ document.getElementById('newBtn').addEventListener('click', (e) => {
   document.getElementById('scrubReplayBtn').disabled = true;
   document.getElementById('scrubBar').classList.toggle('visible', currentTab !== 'chain');
   document.getElementById('chainLogoBar').classList.toggle('visible', currentTab === 'chain');
+  document.getElementById('scrubSlider').disabled = true;
   heatmapDirty = true;
   drawStaticFrame();
 });
@@ -3865,6 +3893,7 @@ document.getElementById('clearBtn').addEventListener('click', () => {
   document.getElementById('scrubBar').classList.toggle('visible', currentTab !== 'chain');
   document.getElementById('chainLogoBar').classList.toggle('visible', currentTab === 'chain');
   document.getElementById('scrubSlider').value = 0;
+  document.getElementById('scrubSlider').disabled = true;
   document.getElementById('scrubPct').textContent = '0';
   drawStaticFrame();
 });
@@ -3893,7 +3922,7 @@ document.getElementById('enrichBtn').addEventListener('click', () => {
                          angle: 0, shakeDur: 600, neutronsEmitted: false,
                          viewAngle: Math.random() * Math.PI * 2,
                          isControl: isCtrl,
-                         sphereR: isCtrl ? animParent.sphereR * CONTROL_SITE_SCALE : animParent.sphereR });
+                         sphereR: animParent.sphereR });
       if (!isCtrl) { totalFuelAdded++; energyInFields++; }
     }
   }
