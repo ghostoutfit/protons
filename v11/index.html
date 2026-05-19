@@ -696,7 +696,7 @@
     right: 0;
     top: 200px;
     border-radius: 12px 0 0 12px;
-    width: 440px;
+    width: 480px;
     background: rgba(8,6,24,0.90);
     border: 1px solid var(--accent2);
     border-radius: 12px;
@@ -731,7 +731,7 @@
     display: flex;
     flex-direction: row;
     flex-wrap: wrap;
-    gap: 4px 14px;
+    gap: 4px 7px;
     font-size: 17px;
     letter-spacing: 1px;
     margin-bottom: 8px;
@@ -888,6 +888,7 @@
     box-shadow: none !important;
   }
   body.screenshot-mode #timeSlider { accent-color: #000 !important; }
+  body.screenshot-mode img[alt="logo"] { display: none !important; }
 
   /* ========================================
      STATS & MISC
@@ -923,7 +924,7 @@
 </head>
 <body>
 
-<div id="lagAlert">*lag detected - try hiding fields*</div>
+<div id="lagAlert">Lag detected - try hiding fields<br>to increase performance.</div>
 
 <!-- ========================================
      TOOLBAR HTML
@@ -1043,6 +1044,10 @@
   <div id="forcePanelKey">
     <span><span style="color:#46a5ff">■</span><span style="color:#46a5ff;text-shadow:0 0 4px #46a5ff,0 0 10px rgba(70,165,255,0.5)">Electric force</span></span>
     <span id="forcePanelKeyStrong"><span style="color:#ffb946">■</span><span style="color:#ffb946;text-shadow:0 0 4px #ffb946,0 0 10px rgba(255,185,70,0.5)">Strong force</span></span>
+    <span style="display:inline-flex;align-items:center;gap:3px;margin-left:auto;">
+      <input type="range" id="fpZoomSlider" min="0.1" max="2.2" step="0.05" value="1" style="width:64px;cursor:pointer;" title="Zoom force panel">
+      <span class="slider-icon" style="font-size:18px;">🔍</span>
+    </span>
   </div>
   <canvas id="forcePanelCanvas" width="400" height="400"></canvas>
 </div>
@@ -2618,7 +2623,7 @@ function getParticleLabels() {
   if (arrowMode !== 1 || groupSelectMode) return labels;
   let protonCount = 0;
   for (let i = 0; i < N; i++) if (particles[i].type === 'proton') protonCount++;
-  if (currentTab === 'nucleus' && protonCount > 10) return labels;
+  if (protonCount > 10) return labels;
   let pIdx = 0;
   for (let i = 0; i < N; i++) {
     if (particles[i].type === 'proton') {
@@ -2700,6 +2705,8 @@ function drawArrowOnCtx(c, fromX, fromY, nx, ny, len, color, lw = 2) {
 const forcePanelEl  = document.getElementById('forcePanel');
 const forcePanelCv  = document.getElementById('forcePanelCanvas');
 const forcePanelCtx = forcePanelCv.getContext('2d');
+let fpZoom = 1.0;
+let _fpAutoScaleSel = null;
 
 // ---- Force panel resize ----
 let _fpResize = null;
@@ -2737,13 +2744,91 @@ window.addEventListener('mousemove', e => {
 
 window.addEventListener('mouseup', () => { _fpResize = null; });
 
+document.getElementById('fpZoomSlider').addEventListener('input', function() {
+  fpZoom = parseFloat(this.value);
+});
+
 function drawForcePanel() {
   if (arrowMode === 0) { forcePanelEl.style.display = 'none'; return; }
   forcePanelEl.style.display = 'block';
 
   const W = forcePanelCv.width, H = forcePanelCv.height;
   const cx = W / 2, cy = H / 2;
+  const MAX_LEN = 36;
+  const refDist = PARTICLE_RADIUS * 2;
+
+  // Center on largest cluster (world coords)
+  const _clust = particles.length > 0 ? findBiggestCluster() : [];
+  const clusterCx = _clust.length ? _clust.reduce((s,p)=>s+p.x,0)/_clust.length : canvas.width/2;
+  const clusterCy = _clust.length ? _clust.reduce((s,p)=>s+p.y,0)/_clust.length : canvas.height/2;
+
+  // Deselect particles that have flown >50% off-canvas
+  const _cw = canvas.width, _ch = canvas.height;
+  const _offScreen = p => p.x < -_cw*0.5 || p.x > _cw*1.5 || p.y < -_ch*0.5 || p.y > _ch*1.5;
+  if (selectedParticle !== null && selectedParticle < particles.length && _offScreen(particles[selectedParticle])) {
+    selectedParticle = null;
+  }
+  if (selectedGroup.length > 0) {
+    selectedGroup = selectedGroup.filter(i => i < particles.length && !_offScreen(particles[i]));
+  }
+
+  // Autoscale fpZoom when selection or mode changes; user can then drag slider to override
+  const _selKey = (groupSelectMode ? 'g' : 's' + arrowMode) + ':' + (groupSelectMode ? selectedGroup.join(',') : selectedParticle);
+  if (_selKey !== _fpAutoScaleSel) {
+    _fpAutoScaleSel = _selKey;
+    const _avail = Math.min(W, H) / 2 - 16;
+    if (!groupSelectMode && arrowMode === 1) {
+      // Single, All forces: no autoscale — match main canvas zoom so particle appears same size
+      fpZoom = Math.max(0.1, Math.min(2.0, zoom));
+      document.getElementById('fpZoomSlider').value = fpZoom;
+    } else if (!groupSelectMode && arrowMode === 2 && selectedParticle !== null && selectedParticle < particles.length) {
+      // Single, Total force: autoscale based on actual net arrow magnitudes
+      const _pi = particles[selectedParticle];
+      const _cut = strongCutoff();
+      let _cFx = 0, _cFy = 0, _sFx = 0, _sFy = 0;
+      for (let _j = 0; _j < particles.length; _j++) {
+        if (_j === selectedParticle) continue;
+        const _pj = particles[_j];
+        const _dx = _pi.x - _pj.x, _dy = _pi.y - _pj.y;
+        const _d = Math.sqrt(_dx*_dx + _dy*_dy);
+        if (_d === 0) continue;
+        const _nx = _dx/_d, _ny = _dy/_d;
+        if (_pi.type === 'proton' && _pj.type === 'proton') {
+          const _l = MAX_LEN * (refDist / Math.max(_d, refDist)) * 2.4;
+          _cFx += _nx * _l; _cFy += _ny * _l;
+        }
+        if (!currentTabIsProton && _d < _cut) {
+          const _sl = MAX_LEN * (1 - _d/_cut) * 0.85 * 10;
+          _sFx -= _nx * _sl; _sFy -= _ny * _sl;
+        }
+      }
+      const _cMag = Math.sqrt(_cFx*_cFx + _cFy*_cFy);
+      const _sMag = Math.sqrt(_sFx*_sFx + _sFy*_sFy);
+      // Bounding box of particle + arrow tips (relative to particle center)
+      const _bxs = [-PARTICLE_RADIUS, PARTICLE_RADIUS], _bys = [-PARTICLE_RADIUS, PARTICLE_RADIUS];
+      if (_cMag > 0) { _bxs.push(_cFx/_cMag*(PARTICLE_RADIUS+_cMag)); _bys.push(_cFy/_cMag*(PARTICLE_RADIUS+_cMag)); }
+      if (_sMag > 0) { _bxs.push(_sFx/_sMag*(PARTICLE_RADIUS+_sMag)); _bys.push(_sFy/_sMag*(PARTICLE_RADIUS+_sMag)); }
+      const _bbMinX = Math.min(..._bxs), _bbMaxX = Math.max(..._bxs);
+      const _bbMinY = Math.min(..._bys), _bbMaxY = Math.max(..._bys);
+      const _hwX = (_bbMaxX - _bbMinX) / 2 + 8, _hwY = (_bbMaxY - _bbMinY) / 2 + 8;
+      fpZoom = Math.max(0.1, Math.min(2.0, Math.min((W/2 - 16) / _hwX, (H/2 - 16) / _hwY)));
+      document.getElementById('fpZoomSlider').value = fpZoom;
+    } else if (groupSelectMode && selectedGroup.length > 0) {
+      // Group mode: center on largest nucleus, autoscale to fit all particles + arrow estimate
+      const _extent = selectedGroup.filter(i => i < particles.length).reduce((m, i) =>
+        Math.max(m, Math.hypot(particles[i].x - clusterCx, particles[i].y - clusterCy) + PARTICLE_RADIUS + 80), PARTICLE_RADIUS + 80);
+      fpZoom = Math.max(0.1, Math.min(2.0, _avail / _extent));
+      document.getElementById('fpZoomSlider').value = fpZoom;
+    }
+  }
+
+  // Pivot always at canvas center — single-particle mode draws its particle at (cx, cy)
+  const pivotX = cx, pivotY = cy;
+
   forcePanelCtx.clearRect(0, 0, W, H);
+  forcePanelCtx.save();
+  forcePanelCtx.translate(pivotX * (1 - fpZoom), pivotY * (1 - fpZoom));
+  forcePanelCtx.scale(fpZoom, fpZoom);
 
   // ---- Group selection mode ----
   if (groupSelectMode) {
@@ -2754,12 +2839,11 @@ function drawForcePanel() {
       forcePanelCtx.textAlign = 'center';
       forcePanelCtx.textBaseline = 'middle';
       forcePanelCtx.fillText('drag to select group', cx, cy);
+      forcePanelCtx.restore();
       return;
     }
 
     const t = currentTheme;
-    const MAX_LEN = 36;
-    const refDist = PARTICLE_RADIUS * 2;
     const cutoff = strongCutoff();
 
     // Centroid of group (world coords)
@@ -2767,41 +2851,15 @@ function drawForcePanel() {
     for (const i of group) { gcx += particles[i].x; gcy += particles[i].y; }
     gcx /= group.length; gcy /= group.length;
 
-    // Compute max extent of particles + arrows from panel center, derive vizScale to fit
-    const baseRadius = PARTICLE_RADIUS * zoom;
-    let maxExtentG = baseRadius;
-    for (const i of group) {
-      const p = particles[i];
-      const pdx = (p.x - gcx) * zoom, pdy = (p.y - gcy) * zoom;
-      const pDist = Math.sqrt(pdx * pdx + pdy * pdy) + baseRadius;
-      for (let j = 0; j < particles.length; j++) {
-        if (new Set(group).has(j)) continue;
-        const pj = particles[j];
-        const dx2 = p.x - pj.x, dy2 = p.y - pj.y;
-        const dist = Math.sqrt(dx2 * dx2 + dy2 * dy2);
-        if (dist === 0) continue;
-        if (p.type === 'proton' && pj.type === 'proton') {
-          const len = MAX_LEN * (refDist / Math.max(dist, refDist)) * 2.4 * zoom;
-          maxExtentG = Math.max(maxExtentG, pDist + len);
-        }
-        if (dist < cutoff) {
-          const slen = MAX_LEN * (1 - dist / cutoff) * 0.85 * 5 * zoom;
-          maxExtentG = Math.max(maxExtentG, pDist + slen);
-        }
-      }
-      maxExtentG = Math.max(maxExtentG, pDist);
-    }
-    const GPAD = 10;
-    const availRG = Math.min(W, H) / 2 - GPAD;
-    const vizScaleG = maxExtentG > availRG ? availRG / maxExtentG : 1;
-    const drawnRadius = baseRadius * vizScaleG;
+    const baseRadius = PARTICLE_RADIUS;
+    const drawnRadius = baseRadius;
 
-    // Draw each particle at its zoom-scaled position relative to the centroid
+    // Draw each particle positioned relative to the cluster centroid
     const groupSet = new Set(group);
     for (const i of group) {
       const p = particles[i];
-      const px = cx + (p.x - gcx) * zoom * vizScaleG;
-      const py = cy + (p.y - gcy) * zoom * vizScaleG;
+      const px = cx + (p.x - clusterCx);
+      const py = cy + (p.y - clusterCy);
       const isP = p.type === 'proton';
       const PR = drawnRadius;
       const baseGrad = forcePanelCtx.createRadialGradient(px, py, 0, px, py, PR * 1.1);
@@ -2831,8 +2889,8 @@ function drawForcePanel() {
       // Per-source arrows anchored at each individual group particle
       for (const i of group) {
         const pi = particles[i];
-        const px = cx + (pi.x - gcx) * zoom * vizScaleG;
-        const py = cy + (pi.y - gcy) * zoom * vizScaleG;
+        const px = cx + (pi.x - clusterCx);
+        const py = cy + (pi.y - clusterCy);
         for (let j = 0; j < particles.length; j++) {
           if (groupSet.has(j)) continue;
           const pj = particles[j];
@@ -2841,11 +2899,11 @@ function drawForcePanel() {
           if (dist === 0) continue;
           const nx = dx / dist, ny = dy / dist;
           if (pi.type === 'proton' && pj.type === 'proton') {
-            const len = MAX_LEN * (refDist / Math.max(dist, refDist)) * 2.4 * zoom * vizScaleG;
+            const len = MAX_LEN * (refDist / Math.max(dist, refDist)) * 2.4;
             drawArrowOnCtx(forcePanelCtx, px + nx * drawnRadius, py + ny * drawnRadius, nx, ny, len, ELEC_ARROW_COLOR, 2);
           }
           if (!currentTabIsProton && dist < cutoff) {
-            const slen = MAX_LEN * (1 - dist / cutoff) * 0.85 * 10 * zoom * vizScaleG;
+            const slen = MAX_LEN * (1 - dist / cutoff) * 0.85 * 10;
             drawArrowOnCtx(forcePanelCtx, px - nx * drawnRadius, py - ny * drawnRadius, -nx, -ny, slen, STRONG_ARROW_COLOR, 2);
           }
         }
@@ -2874,17 +2932,19 @@ function drawForcePanel() {
       }
       const cMag = Math.sqrt(cFx * cFx + cFy * cFy);
       const sMag = Math.sqrt(sFx * sFx + sFy * sFy);
-      // Both arrows originate from centroid (cx,cy), offset perpendicular so they don't overlap
+      // Both arrows originate from group centroid in panel space
+      const gPx = cx + (gcx - clusterCx);
+      const gPy = cy + (gcy - clusterCy);
       if (cMag > 0.5) {
         const cnx = cFx / cMag, cny = cFy / cMag;
         const ox = -cny * SIDE_OFF, oy = cnx * SIDE_OFF;
-        const cLen = Math.sqrt(cMag) * 6 * zoom * vizScaleG;
-        drawArrowOnCtx(forcePanelCtx, cx + cnx * drawnRadius + ox, cy + cny * drawnRadius + oy, cnx, cny, cLen, ELEC_ARROW_COLOR, 3);
+        const cLen = cMag;
+        drawArrowOnCtx(forcePanelCtx, gPx + cnx * drawnRadius + ox, gPy + cny * drawnRadius + oy, cnx, cny, cLen, ELEC_ARROW_COLOR, 3);
       }
       if (sMag > 0.5) {
         const snx = sFx / sMag, sny = sFy / sMag;
         const ox = sny * SIDE_OFF, oy = -snx * SIDE_OFF;
-        drawArrowOnCtx(forcePanelCtx, cx + snx * drawnRadius + ox, cy + sny * drawnRadius + oy, snx, sny, sMag * zoom * vizScaleG, STRONG_ARROW_COLOR, 3);
+        drawArrowOnCtx(forcePanelCtx, gPx + snx * drawnRadius + ox, gPy + sny * drawnRadius + oy, snx, sny, sMag, STRONG_ARROW_COLOR, 3);
       }
     }
 
@@ -2893,6 +2953,7 @@ function drawForcePanel() {
     forcePanelCtx.font = '9px Lexend, sans-serif';
     forcePanelCtx.textAlign = 'center'; forcePanelCtx.textBaseline = 'top';
     forcePanelCtx.fillText(`group (${group.length})`, cx, 6);
+    forcePanelCtx.restore();
     return;
   }
 
@@ -2903,15 +2964,14 @@ function drawForcePanel() {
     forcePanelCtx.textAlign = 'center';
     forcePanelCtx.textBaseline = 'middle';
     forcePanelCtx.fillText('click a particle', cx, cy);
+    forcePanelCtx.restore();
     return;
   }
 
   const pi = particles[selectedParticle];
   const isProton = pi.type === 'proton';
   const t = currentTheme;
-  const PR = PARTICLE_RADIUS * zoom;
-  const MAX_LEN = 36;
-  const refDist = PARTICLE_RADIUS * 2;
+  const PR = PARTICLE_RADIUS;
 
   // Collect jitter offset (tiny, but keep for consistency)
   const jx = jitter[selectedParticle] ? jitter[selectedParticle].x : 0;
@@ -2938,55 +2998,29 @@ function drawForcePanel() {
     }
   }
 
-  // On Tab A: no autoscale — proton always full size, arrows clip freely.
-  // On Tab B: autoscale so everything fits within the panel.
-  let vizScaleS;
-  if (currentTabIsProton) {
-    vizScaleS = 1;
-  } else {
-    const SPAD = 10;
-    const availRS = Math.min(W, H) / 2 - SPAD;
-    let maxExtentS = PR * 1.1;
-    if (arrowMode === 1) {
-      coulombVecs.forEach(v => { maxExtentS = Math.max(maxExtentS, PR + v.len * zoom); });
-      strongVecs.forEach(v  => { maxExtentS = Math.max(maxExtentS, PR + v.len * zoom); });
-    } else {
-      const cSum = coulombVecs.reduce((a, v) => ({ x: a.x + v.nx * v.len, y: a.y + v.ny * v.len }), { x: 0, y: 0 });
-      const sSum = strongVecs.reduce((a, v)  => ({ x: a.x + v.nx * v.len, y: a.y + v.ny * v.len }), { x: 0, y: 0 });
-      const cMag = Math.sqrt(cSum.x * cSum.x + cSum.y * cSum.y);
-      const sMag = Math.sqrt(sSum.x * sSum.x + sSum.y * sSum.y);
-      if (cMag > 0.5) maxExtentS = Math.max(maxExtentS, PR + Math.sqrt(cMag) * 6 * zoom);
-      if (sMag > 0.5) maxExtentS = Math.max(maxExtentS, PR + sMag * zoom);
-    }
-    vizScaleS = maxExtentS > availRS ? availRS / maxExtentS : 1;
-  }
-  const sPR = PR * vizScaleS;
+  const sPR = PR;
 
-  // Centering offset:
-  // All Forces (mode 1) — center particle only, arrows radiate outward freely.
-  // Total Force (mode 2) — center the bbox of particle + net arrow so the whole viz is centered.
-  let offX = 0, offY = 0;
+  // In total force mode, shift the particle so the bounding box of (particle + arrows) is centered
+  let _bbOX = 0, _bbOY = 0;
   if (arrowMode === 2) {
-    let bbMinX = -sPR, bbMaxX = sPR, bbMinY = -sPR, bbMaxY = sPR;
-    const sumVecs = (vecs) => vecs.reduce((a, v) => ({ x: a.x + v.nx * v.len, y: a.y + v.ny * v.len }), { x: 0, y: 0 });
-    const addNetTip = (vec, scale = x => x) => {
-      const mag = Math.sqrt(vec.x * vec.x + vec.y * vec.y);
-      if (mag < 0.5) return;
-      const len = scale(mag) * zoom * vizScaleS;
-      const tx = (vec.x / mag) * (sPR + len), ty = (vec.y / mag) * (sPR + len);
-      bbMinX = Math.min(bbMinX, tx); bbMaxX = Math.max(bbMaxX, tx);
-      bbMinY = Math.min(bbMinY, ty); bbMaxY = Math.max(bbMaxY, ty);
-    };
-    addNetTip(sumVecs(coulombVecs), x => Math.sqrt(x) * 6);
-    if (!currentTabIsProton) addNetTip(sumVecs(strongVecs));
-    offX = -((bbMinX + bbMaxX) / 2);
-    offY = -((bbMinY + bbMaxY) / 2);
+    const _cSX = coulombVecs.reduce((s, v) => s + v.nx * v.len, 0);
+    const _cSY = coulombVecs.reduce((s, v) => s + v.ny * v.len, 0);
+    const _sSX = strongVecs.reduce((s, v) => s + v.nx * v.len, 0);
+    const _sSY = strongVecs.reduce((s, v) => s + v.ny * v.len, 0);
+    const _cM = Math.sqrt(_cSX*_cSX + _cSY*_cSY);
+    const _sM = Math.sqrt(_sSX*_sSX + _sSY*_sSY);
+    const _bx = [-PR, PR], _by = [-PR, PR];
+    if (_cM > 0) { _bx.push(_cSX/_cM*(PR+_cM)); _by.push(_cSY/_cM*(PR+_cM)); }
+    if (_sM > 0) { _bx.push(_sSX/_sM*(PR+_sM)); _by.push(_sSY/_sM*(PR+_sM)); }
+    _bbOX = (Math.min(..._bx) + Math.max(..._bx)) / 2;
+    _bbOY = (Math.min(..._by) + Math.max(..._by)) / 2;
   }
 
-  const sppx = cx + offX + jx * vizScaleS, sppy = cy + offY + jy * vizScaleS;
+  // Selected particle draws at panel center minus bounding box offset
+  const sppx = cx - _bbOX + jx;
+  const sppy = cy - _bbOY + jy;
 
-  // Redraw particle at scaled size (overwrite earlier drawing)
-  forcePanelCtx.clearRect(0, 0, W, H);
+  // Draw particle at scaled size
   const baseR2 = sPR * 1.1;
   const baseGrad2 = forcePanelCtx.createRadialGradient(sppx, sppy, 0, sppx, sppy, baseR2);
   if (isProton) {
@@ -3018,7 +3052,7 @@ function drawForcePanel() {
   if (arrowMode === 1) {
     const labelItems = [];
     coulombVecs.forEach(v => {
-      const drawnLen = v.len * zoom * vizScaleS;
+      const drawnLen = v.len;
       if (drawnLen < 5) return;
       const fx = sppx + v.nx * sPR, fy = sppy + v.ny * sPR;
       drawArrowOnCtx(forcePanelCtx, fx, fy, v.nx, v.ny, drawnLen, ELEC_ARROW_COLOR, 3);
@@ -3030,7 +3064,7 @@ function drawForcePanel() {
       });
     });
     if (!currentTabIsProton) strongVecs.forEach(v => {
-      const drawnLen = v.len * zoom * vizScaleS;
+      const drawnLen = v.len;
       const fx = sppx + v.nx * sPR, fy = sppy + v.ny * sPR;
       drawArrowOnCtx(forcePanelCtx, fx, fy, v.nx, v.ny, drawnLen, STRONG_ARROW_COLOR, 3);
       const lbl = __spLabels[v.srcIdx];
@@ -3068,14 +3102,15 @@ function drawForcePanel() {
     const sum = (vecs) => vecs.reduce((a, v) => ({ x: a.x + v.nx * v.len, y: a.y + v.ny * v.len }), { x: 0, y: 0 });
     const drawNet = (vec, color, scale = x => x) => {
       const mag = Math.sqrt(vec.x * vec.x + vec.y * vec.y);
-      const len = scale(mag) * zoom * vizScaleS;
+      const len = scale(mag);
       if (len < 1) return;
       drawArrowOnCtx(forcePanelCtx, sppx + (vec.x/mag) * sPR, sppy + (vec.y/mag) * sPR, vec.x/mag, vec.y/mag, len, color, 3);
     };
     const cSum = sum(coulombVecs), sSum = sum(strongVecs);
-    drawNet(cSum, ELEC_ARROW_COLOR, x => Math.sqrt(x) * 6);
+    drawNet(cSum, ELEC_ARROW_COLOR);
     if (!currentTabIsProton) drawNet(sSum, STRONG_ARROW_COLOR);
   }
+  forcePanelCtx.restore();
 }
 
 // ============================================================

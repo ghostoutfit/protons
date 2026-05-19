@@ -708,6 +708,7 @@
   }
   body.screenshot-mode .field-label-electric { color: #46a5ff !important; }
   body.screenshot-mode .field-label-strong   { color: #ffb946 !important; }
+  body.screenshot-mode img[alt="logo"] { display: none !important; }
   #lagAlert {
     display: none; position: fixed; right: 8px; bottom: 86px;
     font-size: 11px; color: rgba(255,215,0,0.5); font-style: italic;
@@ -717,7 +718,7 @@
 </head>
 <body>
 
-<div id="lagAlert">*lag detected - try hiding fields*</div>
+<div id="lagAlert">Lag detected - try hiding fields<br>to increase performance.</div>
 
 <div id="portrait-overlay">
   <div class="rotate-icon">&#x1F4F1;&#x21BB;</div>
@@ -741,7 +742,7 @@
   </div>
   <div style="display:flex;align-items:stretch;gap:12px;">
   <div style="display:flex;flex-direction:column;align-self:stretch;gap:6px;padding:10px 0">
-    <button class="btn" id="goBtn" style="flex:1">&#9654;</button>
+    <button class="btn" id="goBtn" style="flex:1">&#9654; GO</button>
     <button class="btn" id="replayBtn" disabled style="flex:1">&#8634;</button>
     <button class="btn" id="clearBtn" style="flex:1">Reset</button>
   </div>
@@ -2808,7 +2809,7 @@ function resetAndSetup() {
   running = false;
   paused  = false;
   cancelAnimationFrame(animId);
-  goBtn.textContent = '▶';
+  goBtn.textContent = '▶ GO';
   goBtn.classList.remove('running');
   resetState();
   snapshot = null;
@@ -2828,7 +2829,7 @@ goBtn.addEventListener('click', () => {
   if (currentTab !== 'fusion') return;   // temp tab handled separately
   if (replayRAF) {
     cancelAnimationFrame(replayRAF); replayRAF = null;
-    goBtn.textContent = '▶';
+    goBtn.textContent = '▶ GO';
     goBtn.classList.remove('running');
     setScrubReplayDisabled(false);
     return;
@@ -2838,7 +2839,7 @@ goBtn.addEventListener('click', () => {
     running = false;
     paused  = true;
     cancelAnimationFrame(animId);
-    goBtn.textContent = '▶';
+    goBtn.textContent = '▶ GO';
     goBtn.classList.remove('running');
     logAction('Paused (FUSION)');
   } else if (paused) {
@@ -2898,7 +2899,7 @@ function doReplay() {
     if (scrubFrame >= particleHistory.length - 1) {
       scrubFrame = -1;
       timeSlider.value = Math.max(0, particleHistory.length - 1);
-      goBtn.textContent = '▶';
+      goBtn.textContent = '▶ GO';
       goBtn.classList.remove('running');
       setScrubReplayDisabled(false);
       replayRAF = null;
@@ -3579,7 +3580,7 @@ function loop() {
       strongRangeMult = 1.0; coulombMult = 1.0;
       running = false;
       paused  = false;
-      goBtn.textContent = '▶';
+      goBtn.textContent = '▶ GO';
       goBtn.classList.remove('running');
       setScrubReplayDisabled(false);
       draw();
@@ -3795,7 +3796,7 @@ function loop() {
     if (photonEscapeFrames > 90) {
       running = false;
       paused  = false;
-      goBtn.textContent = '▶';
+      goBtn.textContent = '▶ GO';
       goBtn.classList.remove('running');
       setScrubReplayDisabled(false);
       draw();
@@ -3863,7 +3864,7 @@ function switchTab(name) {
   if (animId)    { cancelAnimationFrame(animId);     animId    = null; }
   if (replayRAF) { cancelAnimationFrame(replayRAF);  replayRAF = null; }
   running = false; paused = false; tempRunning = false; tempPaused = false;
-  goBtn.textContent = '▶';
+  goBtn.textContent = '▶ GO';
   goBtn.classList.remove('running');
   // Clear playback state (particleHistory, scrubFrame, timeSlider, collisionPhase,
   // photon, escape state) so the time slider doesn't scrub the previous tab's
@@ -4259,7 +4260,7 @@ goBtn.addEventListener('click', (e) => {
   if (tempRunning) {
     cancelAnimationFrame(tempRAF); tempRAF = null;
     tempRunning = false; tempPaused = true;
-    goBtn.textContent = '▶'; goBtn.classList.remove('running');
+    goBtn.textContent = '▶ GO'; goBtn.classList.remove('running');
     logAction('Paused (TEMPERATURE)');
   } else {
     if (!tempProtons.length || !tempPaused) initTempProtons();
@@ -4277,7 +4278,7 @@ document.getElementById('clearBtn').addEventListener('click', (e) => {
   logAction('Pressed Reset (TEMPERATURE)');
   cancelAnimationFrame(tempRAF); tempRAF = null;
   tempRunning = false; tempPaused = false;
-  goBtn.textContent = '▶'; goBtn.classList.remove('running');
+  goBtn.textContent = '▶ GO'; goBtn.classList.remove('running');
   initTempProtons();
   drawTemp();
 }, true);
