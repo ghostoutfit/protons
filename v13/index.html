@@ -2036,10 +2036,10 @@ function drawAnimContent(t) {
   const cosA = Math.cos(staticFissAngle), sinA = Math.sin(staticFissAngle);
   // Scale shoot distance so daughters exit the visible area at any zoom level
   const exitDiag = Math.sqrt(W * W + H * H);
-  const base1 = Math.max(cx + prod1R + PARTICLE_RADIUS + 30 + W * 0.2,
-                         exitDiag / (2 * viewZoom) + prod1R + PARTICLE_RADIUS + 30);
-  const base2 = Math.max(cx + prod2R + PARTICLE_RADIUS + 30 + W * 0.2,
-                         exitDiag / (2 * viewZoom) + prod2R + PARTICLE_RADIUS + 30);
+  const base1 = Math.max(cx + prod1R + PARTICLE_RADIUS + 60 + W * 0.2,
+                         exitDiag / (2 * viewZoom) + prod1R + PARTICLE_RADIUS + 60);
+  const base2 = Math.max(cx + prod2R + PARTICLE_RADIUS + 60 + W * 0.2,
+                         exitDiag / (2 * viewZoom) + prod2R + PARTICLE_RADIUS + 60);
   const sh1dx = -cosA * base1, sh1dy = -sinA * base1;
   const sh2dx =  cosA * base2, sh2dy =  sinA * base2;
 
@@ -2164,10 +2164,10 @@ function renderAtFrac(frac) {
       if (neutronState === 'bouncing') {
         drawNeutron(neutronX, neutronY);
       } else if (neutronState === 'idle') {
-        drawNeutron(-PARTICLE_RADIUS - 5, animParent.cy);
+        drawNeutron(PARTICLE_RADIUS + 60, animParent.cy);
       } else {
         const nf = frac / NEUTRON_FRAC;
-        const nx = (-PARTICLE_RADIUS - 5) + nf * (neutronImpactX() - (-PARTICLE_RADIUS - 5));
+        const nx = (PARTICLE_RADIUS + 60) + nf * (neutronImpactX() - (PARTICLE_RADIUS + 60));
         drawNeutron(nx, animParent.cy);
       }
       if (showParticles) drawParticles(animParent.particles, 0.85);
@@ -3032,8 +3032,8 @@ function neutronTick(now) {
   const speed = parseFloat(document.getElementById('neutronSpeed').value);
   neutronX   += speed * 0.25 * dt;
 
-  const nf = Math.max(0, Math.min(1, (neutronX - (-PARTICLE_RADIUS - 5)) /
-                                     (neutronImpactX() - (-PARTICLE_RADIUS - 5))));
+  const nf = Math.max(0, Math.min(1, (neutronX - (PARTICLE_RADIUS + 60)) /
+                                     (neutronImpactX() - (PARTICLE_RADIUS + 60))));
   currentScrubFrac = nf * NEUTRON_FRAC;
   document.getElementById('scrubSlider').value = scrubVal(currentScrubFrac);
   document.getElementById('scrubPct').textContent = scrubPct(currentScrubFrac);
@@ -3652,7 +3652,7 @@ document.getElementById('goBtn').addEventListener('click', () => {
     const now  = performance.now();
     if (frac < NEUTRON_FRAC) {
       const nf = frac / NEUTRON_FRAC;
-      neutronX    = (-PARTICLE_RADIUS - 5) + nf * (neutronImpactX() - (-PARTICLE_RADIUS - 5));
+      neutronX    = (PARTICLE_RADIUS + 60) + nf * (neutronImpactX() - (PARTICLE_RADIUS + 60));
       neutronY    = animParent.cy;
       neutronLast = 0;
     } else {
@@ -3700,7 +3700,7 @@ document.getElementById('goBtn').addEventListener('click', () => {
   staticFissAngle = 0;
   genFissionNeutrons();
   neutronState = 'flying';
-  neutronX     = -PARTICLE_RADIUS - 5;
+  neutronX     = PARTICLE_RADIUS + 60;
   neutronY     = animParent.cy;
   neutronLast  = 0;
   egCtx.clearRect(0, 0, egCanvas.width, egCanvas.height);
