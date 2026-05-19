@@ -914,9 +914,16 @@
     font-size: 12px;
     width: 46px;
   }
+  #lagAlert {
+    display: none; position: fixed; right: 8px; bottom: 82px;
+    font-size: 11px; color: rgba(255,215,0,0.5); font-style: italic;
+    pointer-events: none; z-index: 20;
+  }
 </style>
 </head>
 <body>
+
+<div id="lagAlert">*lag detected*</div>
 
 <!-- ========================================
      TOOLBAR HTML
@@ -936,7 +943,7 @@
       <button class="theme-btn" id="themeB" title="Industrial"></button>
       <button class="theme-btn" id="themeC" title="Neon Blue"></button>
       <button class="theme-btn" id="themeLight" title="Light mode"></button>
-      <input type="color" id="bgColorPicker" value="#ffffff" title="Background color">
+<input type="color" id="bgColorPicker" value="#ffffff" title="Background color">
       <a id="bugReportBtn" title="Report a bug" style="cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;"><span class="slider-icon" style="background:white;border-radius:50%;padding:2px;filter:drop-shadow(0 0 5px rgba(255,50,50,0.95)) drop-shadow(0 0 14px rgba(255,30,30,0.7)) drop-shadow(0 0 28px rgba(220,0,0,0.45));">🐞</span></a>
     </div>
   </div>
@@ -953,6 +960,7 @@
       <!-- Left col: particle counts stacked + center button -->
       <div style="display:flex;flex-direction:column;align-items:flex-start;gap:6px;align-self:center;min-width:120px">
         <div style="display:flex;flex-direction:column;gap:3px">
+          <span id="largestNucleusLabel" style="display:none;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:rgba(255,255,255,0.35);margin-bottom:1px;">Largest Nucleus:</span>
           <span id="statProtons" style="color:var(--accent1);text-shadow:0 0 8px var(--accent1-glow)">Protons: 0</span>
           <span id="statNeutrons" style="visibility:hidden;color:var(--neutron-core);text-shadow:0 0 8px var(--neutron-mid)">Neutrons: 0</span>
         </div>
@@ -1079,6 +1087,9 @@ const timeSlider  = document.getElementById('timeSlider');
 let particles = [];
 let running = false;
 let animId = null;
+
+// ── Perf / lag detection ──────────────────────────────────────────────────────
+let _lagEma = 0, _lagDetected = false, _lagSkip = 0;
 let speed = 1.5;  // Internal dt per frame (display speed = speed * 2)
 let recordedSpeed = 1.5;  // speed at which the current recording was made; used to normalise replay rate
 
@@ -1817,6 +1828,7 @@ function applyTab(tab) {
   currentTabIsProton = isProtonOnly;
   currentTab = isProtonOnly ? 'proton' : 'nucleus';
   logAction('Switched to ' + (isProtonOnly ? 'PROTONS' : 'INVESTIGATE STABILITY') + ' tab');
+  document.getElementById('largestNucleusLabel').style.display = isNucleus ? '' : 'none';
   neutronFrame.style.visibility = isNucleus ? 'visible' : 'hidden';
   document.getElementById('particleBtns').style.display        = isNucleus ? 'none' : 'flex';
   document.getElementById('particleBtnsNucleus').style.display = isNucleus ? 'flex' : 'none';
@@ -2435,13 +2447,7 @@ function drawCombinedHeatmap() {
   const scale = 0.25;
   const w = Math.ceil(fullW * scale), h = Math.ceil(fullH * scale);
 
-  // Every other frame when running: blit cached composite and return
   hmFrameCounter++;
-  if (running && (hmFrameCounter & 1) &&
-      hmComposite.width === fullW && hmComposite.height === fullH) {
-    ctx.drawImage(hmComposite, 0, 0);
-    return;
-  }
 
   // Build electric pairs (proton-proton only)
   const elecPairs = [];
@@ -3103,6 +3109,7 @@ function updateCam() {
 }
 
 function draw() {
+  const _lagDrawT0 = performance.now();
   const LIGHT = document.body.classList.contains('screenshot-mode');
   if (LIGHT) {
     ctx.fillStyle = document.getElementById('bgColorPicker').value || '#ffffff';
@@ -3243,6 +3250,16 @@ function draw() {
 
   ctx.restore();
   drawForcePanel();
+
+  // ── Lag EMA: measure actual draw time ──
+  { const _dt = performance.now() - _lagDrawT0;
+    _lagEma = _lagEma * 0.9 + _dt * 0.1;
+    const det = _lagEma > 40;
+    if (det !== _lagDetected) {
+      _lagDetected = det;
+      document.getElementById('lagAlert').style.display = det ? 'block' : 'none';
+    }
+  }
 }
 
 // ============================================================
@@ -3291,6 +3308,10 @@ timeSlider.addEventListener('input', () => {
 // ============================================================
 function loop() {
   if (!running) return;
+
+  // ── Frame throttle when lag detected (EMA measured in draw()) ──
+  _lagSkip++;
+  if (_lagDetected && _lagSkip % 4 !== 0) { animId = requestAnimationFrame(loop); return; }
 
   // ── Replay mode: play back recorded history automatically ──
   if (replaying) {

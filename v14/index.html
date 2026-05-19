@@ -81,20 +81,43 @@
   }
   .btn:hover { color: rgba(255,255,255,0.38); border-color: rgba(255,255,255,0.12); }
 
-  /* ▶ idle + Clear — neon green */
-  #goBtn, #clearBtn {
-    border-color: #00d060;
+  /* ▶ idle — accent2 themed */
+  #goBtn {
+    border-color: var(--accent2);
     color: rgba(255,255,255,0.5);
-    background: rgba(0,208,96,0.12);
+    background: var(--accent2-dim);
     box-shadow:
-      inset 0 0 6px rgba(0,208,96,0.18),
-      0 0 2px #00d060, 0 0 8px #00d060,
-      0 0 18px rgba(0,208,96,0.5), 0 0 40px rgba(0,208,96,0.2), 0 0 70px rgba(0,208,96,0.1);
+      inset 0 0 6px var(--accent2-dim),
+      0 0 2px var(--accent2),
+      0 0 8px var(--accent2),
+      0 0 18px var(--accent2-glow),
+      0 0 40px var(--accent2-dim),
+      0 0 70px var(--accent2-dim);
     text-shadow:
-      0 0 4px rgba(255,255,255,0.5), 0 0 10px #00d060,
-      0 0 22px rgba(0,208,96,0.6), 0 0 44px rgba(0,208,96,0.2);
+      0 0 4px rgba(255,255,255,0.5),
+      0 0 10px var(--accent2),
+      0 0 22px var(--accent2-glow),
+      0 0 44px var(--accent2-dim);
   }
-  #goBtn:hover, #clearBtn:hover { background: rgba(0,208,96,0.28); }
+  #goBtn:hover { background: var(--accent2-glow); }
+
+  /* Clear — accent2 themed */
+  #clearBtn {
+    border-color: var(--accent2);
+    color: rgba(255,255,255,0.5);
+    background: var(--accent2-dim);
+    box-shadow:
+      inset 0 0 6px var(--accent2-dim),
+      0 0 2px var(--accent2),
+      0 0 8px var(--accent2),
+      0 0 18px var(--accent2-glow),
+      0 0 40px var(--accent2-dim);
+    text-shadow:
+      0 0 4px rgba(255,255,255,0.5),
+      0 0 10px var(--accent2),
+      0 0 22px var(--accent2-glow);
+  }
+  #clearBtn:hover { background: var(--accent2-glow); }
 
   /* ⏸ running — red */
   #goBtn.running {
@@ -685,9 +708,16 @@
   }
   body.screenshot-mode .field-label-electric { color: #46a5ff !important; }
   body.screenshot-mode .field-label-strong   { color: #ffb946 !important; }
+  #lagAlert {
+    display: none; position: fixed; right: 8px; bottom: 86px;
+    font-size: 11px; color: rgba(255,215,0,0.5); font-style: italic;
+    pointer-events: none; z-index: 20;
+  }
 </style>
 </head>
 <body>
+
+<div id="lagAlert">*lag detected*</div>
 
 <div id="portrait-overlay">
   <div class="rotate-icon">&#x1F4F1;&#x21BB;</div>
@@ -705,7 +735,7 @@
       <button class="tab-btn" id="tempTabBtn" onclick="switchTab('temp')">Temperature</button>
       <button class="tab-btn active" id="fusionTabBtn" onclick="switchTab('fusion')">Fusion</button>
     </div>
-    <input type="color" id="bgColorPicker" value="#ffffff" title="Background color">
+<input type="color" id="bgColorPicker" value="#ffffff" title="Background color">
     <!-- themeLight kept hidden for JS sync -->
     <button class="theme-btn" id="themeLight" title="Light mode" style="display:none;"></button>
   </div>
@@ -770,9 +800,6 @@
     <div id="frameCounter"></div>
   </div>
   </div><!-- /fusionControls -->
-  <!-- SIE offset: outside blue box, for tuning combo energy offsets -->
-  <label id="sieOffsetLabel" style="display:none;font-size:11px;color:var(--text-dim);align-items:center;gap:6px;">SIE offset: <input type="number" id="sieOffsetInput" value="0" step="1" style="width:56px;background:rgba(10,8,30,0.8);color:var(--accent2);border:1px solid rgba(26,110,255,0.35);border-radius:6px;padding:2px 4px;font-size:11px;font-family:inherit;outline:none;"></label>
-
   <!-- Temperature tab controls -->
   <div id="tempControls" style="display:flex;align-items:stretch;gap:12px;">
     <div class="ctrl-box-pink">
@@ -982,6 +1009,9 @@ let particles  = [];
 let running    = false;
 let paused     = false;
 let animId     = null;
+
+// ── Perf / lag detection ──────────────────────────────────────────────────────
+let _lagEma = 0, _lagDetected = false, _lagSkip = 0;
 let replayRAF   = null;
 let replayAccum = 0;    // fractional frame accumulator for speed-controlled playback
 
@@ -2562,6 +2592,7 @@ function drawEnergyGraph() {
 //  DRAW
 // ============================================================
 function draw() {
+  const _lagDrawT0 = performance.now();
   const LIGHT = document.body.classList.contains('screenshot-mode');
   if (LIGHT) {
     ctx.fillStyle = getBgColor();
@@ -2633,6 +2664,16 @@ function draw() {
   drawBarChart();
   drawEnergyGraph();
   updateEnergyPct();
+
+  // ── Lag EMA: measure actual draw time ──
+  { const _dt = performance.now() - _lagDrawT0;
+    _lagEma = _lagEma * 0.9 + _dt * 0.1;
+    const det = _lagEma > 40;
+    if (det !== _lagDetected) {
+      _lagDetected = det;
+      document.getElementById('lagAlert').style.display = det ? 'block' : 'none';
+    }
+  }
 }
 
 // ============================================================
@@ -3153,10 +3194,6 @@ document.getElementById('strongFieldToggle').addEventListener('change', function
   logAction('Strong field: ' + (this.checked ? 'on' : 'off'));
   if (!running) draw();
 });
-document.getElementById('sieOffsetInput').addEventListener('input', function() {
-  sieOffset = parseFloat(this.value) || 0;
-  if (!running) draw();
-});
 document.getElementById('scaledEnergyToggle').addEventListener('change', function() {
   scaledEnergy = this.checked;
   applyComboSieOffset();
@@ -3167,7 +3204,6 @@ function applyComboSieOffset() {
   if (entry) {
     sieOffset = (!scaledEnergy && entry.sieOffsetUnscaled != null)
                 ? entry.sieOffsetUnscaled : entry.sieOffset;
-    document.getElementById('sieOffsetInput').value = sieOffset;
   }
 }
 // ============================================================
@@ -3407,6 +3443,10 @@ function effectiveFrames(base) {
 
 function loop() {
   if (!running) return;
+
+  // ── Frame throttle when lag detected (EMA measured in draw()) ──
+  _lagSkip++;
+  if (_lagDetected && _lagSkip % 4 !== 0) { animId = requestAnimationFrame(loop); return; }
 
   if (scrubFrame >= 0) {
     timeLabelEl.textContent = `${scrubFrame + 1} / ${particleHistory.length}`;
@@ -3813,7 +3853,6 @@ function switchTab(name) {
   document.getElementById('tempTabBtn').classList.toggle('active', name === 'temp');
   document.getElementById('fusionControls').style.display = name === 'fusion' ? 'flex' : 'none';
   document.getElementById('tempControls').style.display   = name === 'temp'   ? 'flex' : 'none';
-  document.getElementById('sieOffsetLabel').style.display = name === 'fusion' ? 'flex' : 'none';
   const v14ColorRow = document.getElementById('v14ColorRow');
   v14ColorRow.style.display = name === 'fusion' ? 'flex' : 'none';
   document.getElementById('scrubBar').style.display       = name === 'fusion' ? ''     : 'none';
