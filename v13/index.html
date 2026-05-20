@@ -1042,8 +1042,8 @@
     <div id="scrubRowRight">
       <div id="scrubPercents">
         <div id="energyPctNums">
-          <span id="energyPctKE" style="color:#ff2060;text-shadow:0 0 8px rgba(255,20,80,0.7);">62%</span>
-          <span id="energyPctIE" style="color:#7b6fff;text-shadow:0 0 8px rgba(120,100,255,0.7);">38%</span>
+          <span id="energyPctKE" style="color:#ff2060;text-shadow:0 0 8px rgba(255,20,80,0.7);">45%</span>
+          <span id="energyPctIE" style="color:#7b6fff;text-shadow:0 0 8px rgba(120,100,255,0.7);">55%</span>
         </div>
         <div id="energyPctNote">Energy changes are not to scale</div>
         <div id="egZoomHint">Click and drag on the line graph to zoom in</div>
@@ -1970,8 +1970,8 @@ function drawAnimContent(t) {
     //   eie above baseline → how oblong (field energy stored as deformation)
     //   ke relative to baseline → how jittery (KE = particle motion)
     const { ke, eie } = computeEnergy(currentScrubFrac);  // currentScrubFrac is the global; frac not in scope here
-    const EIE_BASE   = 0.38;   // pre-neutron field energy
-    const EIE_RANGE  = 0.47;   // 0.85 − 0.38 = full fission swing
+    const EIE_BASE   = 0.55;   // pre-neutron field energy
+    const EIE_RANGE  = 0.30;   // 0.85 − 0.55 = full fission swing
     const DEFORM_MAX = 0.15;
     const stableMult = wobbleMode === 'stable' ? 0.70 : 1.0;
 
@@ -1979,7 +1979,7 @@ function drawAnimContent(t) {
     const wobble     = DEFORM_MAX * normWobble * stableMult;
     const scaleAlong = 1 + wobble;
     const scalePerp  = 1 / (1 + wobble * 0.7);
-    const jitterS    = 0.85 * Math.min(1, ke / 0.626);  // jitter tracks KE exactly
+    const jitterS    = 0.85 * Math.min(1, ke / 0.45);  // jitter tracks KE exactly
 
     // ph2Frac only for the nucleus-center outAmp ramp at the very start of phase 2
     const ph2Frac = (t - PH1_END) / (PH2_END - PH1_END);
@@ -4206,7 +4206,7 @@ window.addEventListener('mouseup', () => {
 //   AFTER fission             : symmetric S-curve KE 0.15 → 0.72
 //   AFTER stable (no fission) : smooth return KE → 0.62
 function computeEnergy(frac) {
-  if (frac < NEUTRON_FRAC) return { ke: 0.62, eie: 0.38 };
+  if (frac < NEUTRON_FRAC) return { ke: 0.45, eie: 0.55 };
 
   const ff = (frac - NEUTRON_FRAC) / (1 - NEUTRON_FRAC);
   const t  = PH1_END + ff * (ANIM_T_END - PH1_END);
@@ -4218,18 +4218,18 @@ function computeEnergy(frac) {
   if (t <= E_PH2) {
     const ph2        = (t - PH1_END) / (E_PH2 - PH1_END);
     const normWobble = wobbleSignal(ph2, wobbleMode);
-    // keHigh: circular baseline drifts down gently (0.626 → 0.566)
-    // keLow:  oblong floor (0.626 → 0.15).  Polynomial f = 2ph2−ph2² has f(0)=0, f(1)=1,
+    // keHigh: circular baseline drifts down gently (0.45 → 0.39)
+    // keLow:  oblong floor (0.45 → 0.15).  Polynomial f = 2ph2−ph2² has f(0)=0, f(1)=1,
     //         f'(1)=0 — so the descent flattens to zero slope right at the minimum,
     //         rounding the bottom of the dip.
-    const keHigh = 0.626 - 0.06 * ph2;
+    const keHigh = 0.45 - 0.06 * ph2;
     // stable: per-cycle amplitude table — step at cycle boundaries is invisible because
     // normWobble=0 there (keLow has no effect when the nucleus is at rest between cycles).
     const stableAmps = [0.20, 0.40, 0.20];  // cycle 1: small, cycle 2: large, cycle 3: small
     const stableCycle = ph2 < 0.2 ? 0 : ph2 < 0.4 ? 1 : 2;
     const keLow  = wobbleMode === 'stable'
-                   ? 0.626 - stableAmps[stableCycle]
-                   : 0.626 - 0.476 * (2 * ph2 - ph2 * ph2);          // fission: → 0.15, zero slope at ph2=1
+                   ? 0.45 - stableAmps[stableCycle]
+                   : 0.45 - 0.30 * (2 * ph2 - ph2 * ph2);            // fission: → 0.15, zero slope at ph2=1
     const t01 = (1 - Math.cos(normWobble * Math.PI)) / 2;
     const ke  = keHigh - (keHigh - keLow) * t01;
     return { ke, eie: 1 - ke };
@@ -4238,16 +4238,16 @@ function computeEnergy(frac) {
   const ph3 = (t - E_PH2) / (ANIM_T_END - E_PH2);
   if (wobbleMode === 'stable') {
     // Flat after the 3rd wobble ends — nucleus at rest, no energy change
-    return { ke: 0.566, eie: 0.434 };
+    return { ke: 0.39, eie: 0.61 };
   }
   // Fission: KE stays flat at 0.15 until frame 680, then Coulomb ramp begins.
   // Daughters are created at ANIM_T_END but fly apart — KE only rises visibly
   // once they've cleared the strong-force well (~frame 680).
-  const KE_RAMP_START = 0.680;
+  const KE_RAMP_START = 0.580;
   if (frac < KE_RAMP_START) return { ke: 0.15, eie: 0.85 };
   const rph = (frac - KE_RAMP_START) / (1.0 - KE_RAMP_START);
-  const s  = 1 - Math.exp(-rph * rph * 12.5);
-  const ke = 0.15 + 0.78 * s;       // 0.15 → 0.93
+  const s  = 1 - Math.exp(-rph * rph * 6.0);
+  const ke = 0.15 + 0.65 * s;       // 0.15 → ~0.80, smooth U-shaped rise
   return { ke, eie: Math.max(0.05, 1 - ke) };
 }
 
