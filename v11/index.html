@@ -2814,11 +2814,74 @@ function drawForcePanel() {
       fpZoom = Math.max(0.1, Math.min(2.0, Math.min((W/2 - 16) / _hwX, (H/2 - 16) / _hwY)));
       document.getElementById('fpZoomSlider').value = fpZoom;
     } else if (groupSelectMode && selectedGroup.length > 0) {
-      // Group mode: center on largest nucleus, autoscale to fit all particles + arrow estimate
-      const _extent = selectedGroup.filter(i => i < particles.length).reduce((m, i) =>
-        Math.max(m, Math.hypot(particles[i].x - clusterCx, particles[i].y - clusterCy) + PARTICLE_RADIUS + 80), PARTICLE_RADIUS + 80);
-      fpZoom = Math.max(0.1, Math.min(2.0, _avail / _extent));
-      document.getElementById('fpZoomSlider').value = fpZoom;
+      const _grp = selectedGroup.filter(i => i < particles.length);
+      if (arrowMode === 2 && _grp.length > 0) {
+        // Group total force: compute actual arrow magnitudes (including override) for autoscale
+        const _cZ = _clust.filter(p => p.type === 'proton').length;
+        const _cN = _clust.filter(p => p.type === 'neutron').length;
+        const _gZ = _grp.filter(i => particles[i].type === 'proton').length;
+        const _gN = _grp.filter(i => particles[i].type === 'neutron').length;
+        const _gSet = new Set(_grp), _cut2 = strongCutoff();
+        let _cFx2 = 0, _cFy2 = 0, _sFx2 = 0, _sFy2 = 0;
+        for (const i of _grp) {
+          const _pi2 = particles[i];
+          for (let j = 0; j < particles.length; j++) {
+            if (_gSet.has(j)) continue;
+            const _pj2 = particles[j];
+            const _dx2 = _pi2.x - _pj2.x, _dy2 = _pi2.y - _pj2.y;
+            const _d2 = Math.sqrt(_dx2*_dx2 + _dy2*_dy2);
+            if (_d2 === 0) continue;
+            const _nx2 = _dx2/_d2, _ny2 = _dy2/_d2;
+            if (_pi2.type === 'proton' && _pj2.type === 'proton') {
+              const _l2 = MAX_LEN * (refDist / Math.max(_d2, refDist)) * 2.4;
+              _cFx2 += _nx2 * _l2; _cFy2 += _ny2 * _l2;
+            }
+            if (!currentTabIsProton && _d2 < _cut2) {
+              const _sl2 = MAX_LEN * (1 - _d2/_cut2) * 0.85 * 10;
+              _sFx2 -= _nx2 * _sl2; _sFy2 -= _ny2 * _sl2;
+            }
+          }
+        }
+        // Apply same half-protons override
+        const _isHP2 = _cZ >= 2 && _gZ >= Math.round(_cZ*0.35) && _gZ <= Math.round(_cZ*0.65);
+        if (_isHP2) {
+          const _cML2 = Math.sqrt(_cFx2*_cFx2 + _cFy2*_cFy2);
+          const _wr2 = NUCLEUS_TABLE[_cZ];
+          if (_wr2 && _cN >= _wr2.minN && _cN <= _wr2.maxN) {
+            _sFx2 = -_cFx2; _sFy2 = -_cFy2;
+          } else if (_cML2 > 0) {
+            const _gr2 = NUCLEUS_TABLE[_gZ];
+            let _sc2 = 1.0;
+            if (_gr2) {
+              if (_gN < _gr2.minN) _sc2 = 1 - 2 * (_gr2.minN - _gN) / _cZ;
+              else if (_gN > _gr2.maxN) _sc2 = 1 + 2 * (_gN - _gr2.maxN) / _cZ;
+            }
+            _sFx2 = -_cFx2 * Math.max(0, _sc2); _sFy2 = -_cFy2 * Math.max(0, _sc2);
+          }
+        }
+        const _cM2 = Math.sqrt(_cFx2*_cFx2 + _cFy2*_cFy2);
+        const _sM2 = Math.sqrt(_sFx2*_sFx2 + _sFy2*_sFy2);
+        const _dL2 = (m) => _cZ > 2 ? Math.sqrt(m) * 6 : m;
+        // Group centroid in world space
+        let _gcx2 = 0, _gcy2 = 0;
+        for (const i of _grp) { _gcx2 += particles[i].x; _gcy2 += particles[i].y; }
+        _gcx2 /= _grp.length; _gcy2 /= _grp.length;
+        const _gcDist2 = Math.hypot(_gcx2 - clusterCx, _gcy2 - clusterCy);
+        // Extent = max of (particle positions) and (group centroid + arrow tip)
+        let _extent2 = PARTICLE_RADIUS;
+        for (const i of _grp)
+          _extent2 = Math.max(_extent2, Math.hypot(particles[i].x - clusterCx, particles[i].y - clusterCy) + PARTICLE_RADIUS);
+        if (_cM2 > 0.5) _extent2 = Math.max(_extent2, _gcDist2 + PARTICLE_RADIUS + _dL2(_cM2));
+        if (_sM2 > 0.5) _extent2 = Math.max(_extent2, _gcDist2 + PARTICLE_RADIUS + _dL2(_sM2));
+        fpZoom = Math.max(0.1, Math.min(2.0, (_avail - 8) / _extent2));
+        document.getElementById('fpZoomSlider').value = fpZoom;
+      } else {
+        // Group all-forces: particle positions + arrow estimate
+        const _extent = _grp.reduce((m, i) =>
+          Math.max(m, Math.hypot(particles[i].x - clusterCx, particles[i].y - clusterCy) + PARTICLE_RADIUS + 80), PARTICLE_RADIUS + 80);
+        fpZoom = Math.max(0.1, Math.min(2.0, _avail / _extent));
+        document.getElementById('fpZoomSlider').value = fpZoom;
+      }
     }
   }
 
@@ -2930,30 +2993,94 @@ function drawForcePanel() {
           }
         }
       }
+      // ── Half-protons balance override ──────────────────────────────────────
+      // If the selected group contains roughly half the cluster's protons,
+      // override the strong arrow so it reflects stability rather than raw physics.
+      const _clusterZ = _clust.filter(p => p.type === 'proton').length;
+      const _clusterN = _clust.filter(p => p.type === 'neutron').length;
+      const _groupZ   = group.filter(i => particles[i].type === 'proton').length;
+      const _groupN   = group.filter(i => particles[i].type === 'neutron').length;
+      const _isHalfP  = _clusterZ >= 2 &&
+                        _groupZ >= Math.round(_clusterZ * 0.35) &&
+                        _groupZ <= Math.round(_clusterZ * 0.65);
+      if (_isHalfP) {
+        const _cMagL    = Math.sqrt(cFx * cFx + cFy * cFy);
+        const _wholeRow = NUCLEUS_TABLE[_clusterZ];
+        const _wholeStable = _wholeRow &&
+                             _clusterN >= _wholeRow.minN && _clusterN <= _wholeRow.maxN;
+        if (_wholeStable) {
+          // Whole nucleus is stable: strong exactly opposes Coulomb
+          sFx = -cFx; sFy = -cFy;
+        } else if (_cMagL > 0) {
+          // Whole nucleus is unstable: scale based on partial group's Z/N vs table
+          const _groupRow = NUCLEUS_TABLE[_groupZ];
+          let _scale = 1.0;
+          if (_groupRow) {
+            if (_groupN < _groupRow.minN) {
+              _scale = 1 - 2 * (_groupRow.minN - _groupN) / _clusterZ;   // neutron-deficient → shorter (2× effect)
+            } else if (_groupN > _groupRow.maxN) {
+              _scale = 1 + 2 * (_groupN - _groupRow.maxN) / _clusterZ;   // neutron-excess → longer (2× effect)
+            }
+            // group itself in stable band → _scale stays 1.0
+          }
+          _scale = Math.max(0, _scale);
+          sFx = -cFx * _scale; sFy = -cFy * _scale;
+        }
+      }
+      // ── end override ───────────────────────────────────────────────────────
+
       const cMag = Math.sqrt(cFx * cFx + cFy * cFy);
       const sMag = Math.sqrt(sFx * sFx + sFy * sFy);
       // Both arrows originate from group centroid in panel space
       const gPx = cx + (gcx - clusterCx);
       const gPy = cy + (gcy - clusterCy);
+      // For nuclei with >2 protons, compress display lengths with sqrt to keep
+      // arrows proportionate — ratio between arrows is preserved so balance still reads correctly.
+      const _dispLen = (mag) => _clusterZ > 2 ? Math.sqrt(mag) * 6 : mag;
       if (cMag > 0.5) {
         const cnx = cFx / cMag, cny = cFy / cMag;
         const ox = -cny * SIDE_OFF, oy = cnx * SIDE_OFF;
-        const cLen = cMag;
-        drawArrowOnCtx(forcePanelCtx, gPx + cnx * drawnRadius + ox, gPy + cny * drawnRadius + oy, cnx, cny, cLen, ELEC_ARROW_COLOR, 3);
+        drawArrowOnCtx(forcePanelCtx, gPx + cnx * drawnRadius + ox, gPy + cny * drawnRadius + oy, cnx, cny, _dispLen(cMag), ELEC_ARROW_COLOR, 3);
       }
       if (sMag > 0.5) {
         const snx = sFx / sMag, sny = sFy / sMag;
         const ox = sny * SIDE_OFF, oy = -snx * SIDE_OFF;
-        drawArrowOnCtx(forcePanelCtx, gPx + snx * drawnRadius + ox, gPy + sny * drawnRadius + oy, snx, sny, sMag, STRONG_ARROW_COLOR, 3);
+        drawArrowOnCtx(forcePanelCtx, gPx + snx * drawnRadius + ox, gPy + sny * drawnRadius + oy, snx, sny, _dispLen(sMag), STRONG_ARROW_COLOR, 3);
       }
     }
 
-    // Label
-    forcePanelCtx.fillStyle = 'rgba(100,220,255,0.5)';
-    forcePanelCtx.font = '9px Lexend, sans-serif';
-    forcePanelCtx.textAlign = 'center'; forcePanelCtx.textBaseline = 'top';
-    forcePanelCtx.fillText(`group (${group.length})`, cx, 6);
     forcePanelCtx.restore();
+    // Group label: draw in screen coords so it doesn't zoom, positioned just above the group
+    const _sGcx = cx + fpZoom * (gcx - clusterCx);
+    const _minGy = group.reduce((m, i) => Math.min(m, particles[i].y), Infinity);
+    const _sGty = cy + fpZoom * (_minGy - clusterCy - PARTICLE_RADIUS) - 4;
+    // Draw colored group counter: (pink Zp + grey Nn = blue total)
+    const _gZ2 = group.filter(i => particles[i].type === 'proton').length;
+    const _gN2 = group.length - _gZ2;
+    forcePanelCtx.font = '9px Lexend, sans-serif';
+    forcePanelCtx.textBaseline = 'bottom'; forcePanelCtx.textAlign = 'left';
+    const _glParts = [
+      { text: '(', color: 'rgba(150,150,180,0.6)' },
+      { text: `${_gZ2}p`, color: 'rgba(255,100,150,0.85)' },
+      { text: ' + ', color: 'rgba(150,150,180,0.6)' },
+      { text: `${_gN2}n`, color: 'rgba(170,170,170,0.8)' },
+      { text: ' = ', color: 'rgba(150,150,180,0.6)' },
+      { text: `${group.length}`, color: 'rgba(100,220,255,0.85)' },
+      { text: ')', color: 'rgba(150,150,180,0.6)' },
+    ];
+    const _glW = _glParts.reduce((s, p) => s + forcePanelCtx.measureText(p.text).width, 0);
+    let _glX = _sGcx - _glW / 2;
+    for (const _glP of _glParts) {
+      forcePanelCtx.fillStyle = _glP.color;
+      forcePanelCtx.fillText(_glP.text, _glX, _sGty);
+      _glX += forcePanelCtx.measureText(_glP.text).width;
+    }
+    if (arrowMode === 2) {
+      forcePanelCtx.fillStyle = 'rgba(150,150,180,0.5)';
+      forcePanelCtx.font = '8px Lexend, sans-serif';
+      forcePanelCtx.textAlign = 'right'; forcePanelCtx.textBaseline = 'bottom';
+      forcePanelCtx.fillText('total arrow length not to scale', W - 5, H - 4);
+    }
     return;
   }
 
@@ -3111,6 +3238,12 @@ function drawForcePanel() {
     if (!currentTabIsProton) drawNet(sSum, STRONG_ARROW_COLOR);
   }
   forcePanelCtx.restore();
+  if (arrowMode === 2) {
+    forcePanelCtx.fillStyle = 'rgba(150,150,180,0.5)';
+    forcePanelCtx.font = '8px Lexend, sans-serif';
+    forcePanelCtx.textAlign = 'right'; forcePanelCtx.textBaseline = 'bottom';
+    forcePanelCtx.fillText('total arrow length not to scale', W - 5, H - 4);
+  }
 }
 
 // ============================================================
