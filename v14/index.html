@@ -774,7 +774,7 @@
       <canvas id="speedLinesL" width="36" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;margin-right:-11px;"></canvas>
       <canvas class="psel-icon pslider-icon" data-side="left"  width="44" height="36" style="margin-right:5px;"></canvas>
       <div style="flex:1;min-width:80px;display:flex;flex-direction:column;align-items:stretch;gap:1px;">
-        <input type="range" id="v9SpeedSlider" min="0.1" max="2.1" step="0.05" value="1.05" style="width:100%;accent-color:var(--accent1);">
+        <input type="range" id="v9SpeedSlider" min="0.1" max="2.1" step="0.05" value="1.15" style="width:100%;accent-color:var(--accent1);">
         <div style="display:flex;justify-content:center;align-items:center;font-size:12px;color:var(--text-dim);padding:0 2px;margin-top:10px;">
           <span id="speedKeV" style="font-size:20px;font-family:'Lexend', sans-serif;color:var(--accent1);text-align:center;text-shadow:0 0 4px var(--accent1),0 0 10px var(--accent1-glow),0 0 22px var(--accent1-dim);"></span>
         </div>
@@ -797,7 +797,6 @@
   </div>
   <!-- Hidden dev elements kept for JS compatibility -->
   <div style="display:none;">
-    <input type="checkbox" id="scaledEnergyToggle">
     <div id="frameCounter"></div>
   </div>
   </div><!-- /fusionControls -->
@@ -813,9 +812,9 @@
       <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--text-dim);padding:0 2px;margin-top:3px;">
         <span style="text-align:center;">1<br>Million °C</span>
         <span id="tempTempVal" style="color:var(--accent1);font-size:20px;text-shadow:0 0 4px var(--accent1),0 0 10px var(--accent1-glow),0 0 22px var(--accent1-dim);"></span>
-        <span style="text-align:center;">15<br>Million °C</span>
+        <span style="text-align:center;">200<br>Million °C</span>
       </div>
-      <div style="text-align:center;font-size:20px;color:var(--accent1);margin-top:-7px;font-family:'Lexend',sans-serif;text-shadow:0 0 4px var(--accent1),0 0 10px var(--accent1-glow),0 0 22px var(--accent1-dim);">
+      <div style="text-align:center;font-size:17px;color:var(--accent1);margin-top:-7px;font-family:'Lexend',sans-serif;text-shadow:0 0 4px var(--accent1),0 0 10px var(--accent1-glow),0 0 22px var(--accent1-dim);">
         <span id="tempKeVVal"></span>
       </div>
     </div>
@@ -873,6 +872,7 @@
         <span id="energyPctIE" style="color:#7b6fff;text-shadow:0 0 8px rgba(120,100,255,0.7);">—%</span>
       </div>
       <div id="energyPctNote">Energy changes are not to scale</div>
+      <label id="scaledEnergyLabel" style="display:flex;align-items:center;gap:5px;font-size:10px;color:rgba(180,180,220,0.6);cursor:pointer;margin-top:2px;white-space:nowrap;"><input type="checkbox" id="scaledEnergyToggle" onchange="document.getElementById('energyPctNote').style.color=this.checked?'#000000':''"> Show energy to scale</label>
       <div id="egZoomHint">Click and drag on the line graph to zoom in</div>
     </div>
     <div id="scrubButtons">
@@ -972,7 +972,7 @@ const COMBO_TABLE = {
   'he+n':  { sieOffset: 100, immediateKE: 60, keOut: 10, gammaKE:  0 },
   'n+t':   { sieOffset: 100, immediateKE: 58, keOut:  8, gammaKE:  0 },
   // Cat 2 — productive fusion
-  'd+t':   { sieOffset: 178, sieOffsetUnscaled: 178, immediateKE: 86, keOut: 84, keInScaled: 17600, keOutScaled: 16700, gammaKE:  0 },
+  'd+t':   { sieOffset: 178, sieOffsetUnscaled: 178, immediateKE: 86, keOut: 84, keInScaled: 17600, keOutScaled: 16700, sieOffsetScaled: 18000, gammaKE:  0 },
   'd+d':   { sieOffset: 100, sieOffsetUnscaled: 100, immediateKE: 20, keOut: 18, gammaKE:  0 },
   't+t':   { sieOffset: 258, sieOffsetUnscaled: 258, immediateKE: 47, keOut: 41, gammaKE:  0 },
   // Cat 3 — gamma emission
@@ -1001,7 +1001,7 @@ function speedScale() { return (approachSpeed / 2.0) ** 2; }
 // ============================================================
 let coulombStrength = 400;
 const COULOMB_CUTOFF_SQ = (PARTICLE_RADIUS * 40) ** 2;  // Skip pairs beyond this distance
-let approachSpeed   = 1.05;
+let approachSpeed   = 1.15;
 
 // ============================================================
 //  SIMULATION STATE
@@ -1088,7 +1088,8 @@ let cameraSiteX = null, cameraSiteY = null;
 let showElectricField = true;
 let showStrongField   = true;
 let barYRange = 24;
-let barYRangeScaled = null;  // null = auto (use combo max); set by drag when scaledEnergy
+let barYRangeScaled = null;  // null = auto; set by drag when scaledEnergy
+let scaledAutoRange = 1.5;   // keV — starts at 1500 eV, ratchets up as bar values grow
 let barScaleDrag = null;     // { startY, startRange } while dragging the scale
 let splitIE   = false;
 let sieOffset = 0;
@@ -2186,9 +2187,10 @@ function drawStrongHeatmap() {
 //  stays constant by construction.
 // ============================================================
 // Convert a value to a fraction [0,1] of chart height — linear or log.
-function fmtMeV(keV) {
-  // Convert keV → MeV, at most 2 significant figures
-  return String(parseFloat((keV / 1000).toPrecision(2)));
+function fmtKeV(keV) {
+  if (keV >= 1000) return Math.round(keV) + ' keV';
+  if (keV >= 10)   return parseFloat(keV.toPrecision(3)) + ' keV';
+  return parseFloat(keV.toPrecision(2)) + ' keV';
 }
 
 function valToFrac(v, maxVal, useLog) {
@@ -2268,9 +2270,12 @@ function drawBarChart() {
   const chartX   = gx + yAxisW;
   const chartW   = W - yAxisW - padR;
   const comboEntry = getComboEntry();
-  const autoMax  = Math.max(comboEntry?.keInScaled ?? 0, comboEntry?.keOutScaled ?? 0) || speedToKeV(approachSpeed);
+  // When showing to scale: ratchet scaledAutoRange up from current bar values (starts at 1.5 keV)
+  if (scaledEnergy && !barScaleDrag && !noData) {
+    scaledAutoRange = Math.max(scaledAutoRange, displayKE);
+  }
   const maxVal   = scaledEnergy
-    ? (barYRangeScaled ?? autoMax)
+    ? (barYRangeScaled ?? scaledAutoRange)
     : barYRange;
 
   // ── Horizontal gridlines — dynamic count, fixed spacing in energy units ──
@@ -2296,6 +2301,18 @@ function drawBarChart() {
       ctx.shadowBlur  = LIGHT ? 0 : 8;
     } else { ctx.shadowBlur = 0; }
     ctx.beginPath(); ctx.moveTo(gx, py); ctx.lineTo(gx + W, py); ctx.stroke();
+    // Y-axis keV label (scaled mode only, skip baseline)
+    if (scaledEnergy && i > 0) {
+      const tickVal = (i / gridCount) * maxVal;
+      ctx.save();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle  = LIGHT ? 'rgba(0,0,0,0.5)' : 'rgba(180,180,220,0.55)';
+      ctx.font       = '9px Lexend, sans-serif';
+      ctx.textAlign  = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(fmtKeV(tickVal), chartX - 3, py);
+      ctx.restore();
+    }
   }
   ctx.restore();
 
@@ -2351,7 +2368,9 @@ function drawBarChart() {
 
       // Value label (only when showing to scale)
       if (scaledEnergy) {
-        const valStr = fmtMeV(bar.value) + ' MeV';
+        const valStr = (i === 0 && collisionPhase === 'approach')
+          ? speedToKeV(approachSpeed) + ' keV'
+          : fmtKeV(bar.value);
         const clipped = barTop < chartTop;  // bar taller than chart area
         ctx.save();
         ctx.shadowColor = bar.glow; ctx.shadowBlur = 6;
@@ -2377,7 +2396,7 @@ function drawBarChart() {
     // For negative bars: show value just above the label
     if (scaledEnergy && bar.value < 0) {
       ctx.font = 'bold 15px Lexend, sans-serif';
-      ctx.fillText(fmtMeV(bar.value) + ' MeV', x + bw / 2, baseline + 3);
+      ctx.fillText(fmtKeV(bar.value), x + bw / 2, baseline + 3);
       ctx.font = 'bold 18px Lexend, sans-serif';
     }
     ctx.fillText(words.slice(0, 2).join(' '), x + bw / 2, baseline + 22);
@@ -2755,6 +2774,7 @@ window.addEventListener('resize', resize);
 //  RESET & SETUP
 // ============================================================
 let hasRunOnce = false;
+let simHasStarted = false;
 
 function resetState() {
   collisionPhase     = 'approach';
@@ -2805,6 +2825,14 @@ function resetState() {
   timeLabelEl.textContent = '–';
 }
 
+function syncScaledEnergyToggle() {
+  const el  = document.getElementById('scaledEnergyToggle');
+  const lbl = document.getElementById('scaledEnergyLabel');
+  const ok  = !simHasStarted;
+  el.disabled = !ok;
+  if (lbl) lbl.style.opacity = ok ? '' : '0.38';
+}
+
 function resetAndSetup() {
   running = false;
   paused  = false;
@@ -2817,8 +2845,11 @@ function resetAndSetup() {
   initialTotal  = 0;
   initialKE     = 0;
   keVPerSimUnit = 1;
+  barYRangeScaled = null; scaledAutoRange = 1.5;
+  simHasStarted = false;
 
   setupScenario();
+  syncScaledEnergyToggle();
   draw();
 }
 
@@ -2855,6 +2886,7 @@ goBtn.addEventListener('click', () => {
     if (hasRunOnce) resetAndSetup();
     else setupScenario();
     hasRunOnce = true;
+    simHasStarted = true; syncScaledEnergyToggle();
     paused     = false;
     running    = true;
     logAction('Pressed Go — ' + leftChoice.toUpperCase() + ' + ' + rightChoice.toUpperCase() + ' (FUSION)');
@@ -3064,9 +3096,7 @@ function inBarChartPanel(e) {
 canvas.addEventListener('mousedown', e => {
   if (currentTab !== 'fusion') return;
   if (!inBarChartPanel(e)) return;
-  const comboEntry = getComboEntry();
-  const autoMax = comboEntry?.keOutScaled ?? speedToKeV(approachSpeed);
-  const startRange = scaledEnergy ? (barYRangeScaled ?? autoMax) : barYRange;
+  const startRange = scaledEnergy ? (barYRangeScaled ?? scaledAutoRange) : barYRange;
   barScaleDrag = { startY: e.clientY, startRange, scaled: scaledEnergy };
   e.preventDefault();
 });
@@ -3148,19 +3178,19 @@ document.getElementById('fullTimelineBtn').addEventListener('click', () => {
   resize();
 });
 function speedToKeV(speed) {
-  return Math.round(10 + (speed - 0.1) / (2.1 - 0.1) * (120 - 10));
+  return Math.max(1, Math.ceil((speed - 0.1) / (2.1 - 0.1) * 75));
 }
 function speedToMillionC(speed) {
   return Math.round(1 + (speed - 0.1) / (2.1 - 0.1) * 14);
 }
 function tempSliderToMillionC(val) {
-  return Math.round(1 + val / 100 * 14);
+  return Math.round(1 + val / 100 * 199);
 }
 function speedToKeVDisplay(speed) {
-  return (0.1 + (speed - 0.1) / (2.1 - 0.1) * 1.2).toFixed(1);
+  return Math.max(1, Math.ceil((speed - 0.1) / (2.1 - 0.1) * 75));
 }
 function tempSliderToKeV(val) {
-  return (0.1 + (val / 100) * 1.2).toFixed(1);
+  return Math.round(1 + (val / 100) * 99);
 }
 function updateSpeedKeV() {
   const el = document.getElementById('speedKeV');
@@ -3170,7 +3200,7 @@ function updateTempTempVal() {
   const el = document.getElementById('tempTempVal');
   if (el) el.textContent = tempSliderToMillionC(parseFloat(document.getElementById('tempSlider').value)) + ' Million °C';
   const el2 = document.getElementById('tempKeVVal');
-  if (el2) el2.textContent = tempSliderToKeV(parseFloat(document.getElementById('tempSlider').value)) + ' keV';
+  if (el2) el2.textContent = '0 to ' + tempSliderToKeV(parseFloat(document.getElementById('tempSlider').value)) + ' keV';
 }
 let _v9SpeedLogTimer = null;
 document.getElementById('v9SpeedSlider').addEventListener('input', function() {
@@ -3179,9 +3209,11 @@ document.getElementById('v9SpeedSlider').addEventListener('input', function() {
   updateSpeedKeV();
   clearTimeout(_v9SpeedLogTimer);
   _v9SpeedLogTimer = setTimeout(() => logAction('Set approach speed to ' + parseFloat(this.value).toFixed(2)), 400);
+  if (!running && collisionPhase === 'approach') { setupScenario(); draw(); }
 });
 updateSpeedKeV();    // seed on load
 updateTempTempVal(); // seed on load
+syncScaledEnergyToggle(); // seed on load
 document.getElementById('simSpeedSlider').addEventListener('input', function() {
   simSpeed = parseInt(this.value);
 });
@@ -3197,14 +3229,18 @@ document.getElementById('strongFieldToggle').addEventListener('change', function
 });
 document.getElementById('scaledEnergyToggle').addEventListener('change', function() {
   scaledEnergy = this.checked;
+  if (scaledEnergy) { barYRangeScaled = null; scaledAutoRange = 1.5; }
   applyComboSieOffset();
+  if (scaledEnergy && !running && collisionPhase === 'approach') setupScenario();
   if (!running) draw();
 });
 function applyComboSieOffset() {
   const entry = getComboEntry();
   if (entry) {
-    sieOffset = (!scaledEnergy && entry.sieOffsetUnscaled != null)
-                ? entry.sieOffsetUnscaled : entry.sieOffset;
+    sieOffset = (scaledEnergy && entry.sieOffsetScaled != null)
+                ? entry.sieOffsetScaled
+                : (!scaledEnergy && entry.sieOffsetUnscaled != null)
+                  ? entry.sieOffsetUnscaled : entry.sieOffset;
   }
 }
 // ============================================================
@@ -3328,6 +3364,7 @@ pselIcons.forEach(canvas => {
     canvas.closest('.pwheel').classList.remove('open');
     applyComboSieOffset();
     barYRangeScaled = null;  // reset scaled axis to auto for new combo
+    scaledAutoRange = 1.5;   // restart auto-zoom from 1500 eV
     resetAndSetup();
   });
 });
