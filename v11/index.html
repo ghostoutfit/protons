@@ -1015,7 +1015,7 @@
         </div>
         <div style="display:flex;flex-direction:column;gap:3px">
           <label class="toggle-label"><input type="checkbox" id="electricFieldToggle" checked> <span class="field-label-electric">Show electric field</span></label>
-          <label class="toggle-label" id="strongFieldLabel"><input type="checkbox" id="strongFieldToggle" checked> <span class="field-label-strong">Show strong field</span></label>
+          <label class="toggle-label" id="strongFieldLabel"><input type="checkbox" id="strongFieldToggle" checked> <span class="field-label-strong">Show nuclear field</span></label>
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:5px;justify-content:flex-start;align-self:stretch">
@@ -1044,7 +1044,7 @@
   <div id="forcePanelLabel"></div>
   <div id="forcePanelKey">
     <span><span style="color:#46a5ff">■</span><span style="color:#46a5ff;text-shadow:0 0 4px #46a5ff,0 0 10px rgba(70,165,255,0.5)">Electric force</span></span>
-    <span id="forcePanelKeyStrong"><span style="color:#ffb946">■</span><span style="color:#ffb946;text-shadow:0 0 4px #ffb946,0 0 10px rgba(255,185,70,0.5)">Strong force</span></span>
+    <span id="forcePanelKeyStrong"><span style="color:#ffb946">■</span><span style="color:#ffb946;text-shadow:0 0 4px #ffb946,0 0 10px rgba(255,185,70,0.5)">Nuclear force</span></span>
     <span style="display:inline-flex;align-items:center;gap:3px;margin-left:auto;">
       <input type="range" id="fpZoomSlider" min="0.1" max="2.2" step="0.05" value="1" style="width:64px;cursor:pointer;" title="Zoom force panel">
       <span class="slider-icon" style="font-size:18px;">🔍</span>
@@ -2918,7 +2918,9 @@ function drawForcePanel() {
       forcePanelCtx.font = '10px Lexend, sans-serif';
       forcePanelCtx.textAlign = 'center';
       forcePanelCtx.textBaseline = 'middle';
-      forcePanelCtx.fillText('drag to select group', cx, cy);
+      const lines = ['click and drag to draw', 'a box around', 'a group of particles'];
+      const lineH = 16;
+      lines.forEach((ln, i) => forcePanelCtx.fillText(ln, cx, cy + (i - 1) * lineH));
       forcePanelCtx.restore();
       return;
     }

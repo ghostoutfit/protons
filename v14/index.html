@@ -796,7 +796,7 @@
     </div>
     <div style="border-top:1px solid rgba(255,255,255,0.08);margin-top:6px;padding-top:6px;width:100%;display:flex;flex-direction:column;gap:4px;">
       <label class="toggle-label"><input type="checkbox" id="electricFieldToggle" checked> <span class="field-label-electric">Show electric field</span></label>
-      <label class="toggle-label"><input type="checkbox" id="strongFieldToggle" checked> <span class="field-label-strong">Show strong field</span></label>
+      <label class="toggle-label"><input type="checkbox" id="strongFieldToggle" checked> <span class="field-label-strong">Show nuclear field</span></label>
     </div>
   </div>
   <!-- Hidden dev elements kept for JS compatibility -->
@@ -2271,7 +2271,7 @@ function drawBarChart() {
     ? [
         { label: 'Energy of Motion', value: displayKE,  color: '#ff2060', glow: 'rgba(255,20,80,0.9)'   },
         { label: 'Electric',         value: displayEIE, color: '#00e5ff', glow: 'rgba(0,220,255,0.9)',   dashed: true },
-        { label: 'Strong',           value: displaySIE, color: '#ff8040', glow: 'rgba(255,128,64,0.9)',  dashed: true },
+        { label: 'Nuclear',          value: displaySIE, color: '#ff8040', glow: 'rgba(255,128,64,0.9)',  dashed: true },
       ]
     : [
         { label: 'Energy of Motion', value: displayKE,  color: '#ff2060', glow: 'rgba(255,20,80,0.9)'   },
@@ -2284,7 +2284,7 @@ function drawBarChart() {
       if      (b.label === 'Energy of Motion') b.color = '#222';
       else if (b.label === 'Energy in Fields') b.color = '#666';
       else if (b.label === 'Electric')         b.color = '#555';
-      else if (b.label === 'Strong')           b.color = '#999';
+      else if (b.label === 'Nuclear')          b.color = '#999';
     });
   }
 
@@ -3919,7 +3919,7 @@ function switchTab(name) {
   document.getElementById('fusionControls').style.display = name === 'fusion' ? 'flex' : 'none';
   document.getElementById('tempControls').style.display   = name === 'temp'   ? 'flex' : 'none';
   const v14ColorRow = document.getElementById('v14ColorRow');
-  v14ColorRow.style.display = name === 'fusion' ? 'flex' : 'none';
+  v14ColorRow.style.display = 'flex';
   document.getElementById('scrubBar').style.display       = name === 'fusion' ? ''     : 'none';
   document.getElementById('tempLogoBar').classList.toggle('visible', name === 'temp');
   setScrubReplayDisabled(true);
