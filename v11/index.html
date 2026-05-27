@@ -971,6 +971,7 @@
       <div style="display:flex;flex-direction:column;gap:8px;justify-content:center;align-self:stretch">
         <div style="display:flex;align-items:center;gap:6px">
           <canvas id="protonIconCanvas" class="particle-icon-canvas" width="40" height="40"></canvas>
+          <!-- Two rows: proton tab (numeric labels) and nucleus tab (element-symbol labels); applyTab() toggles which is visible -->
           <div id="particleBtns" style="display:flex;gap:6px">
             <button class="btn particle-add-btn" data-count="1">1</button>
             <button class="btn particle-add-btn" data-count="2">2</button>
@@ -1080,9 +1081,12 @@ const goBtn = document.getElementById('goBtn');
 const replayBtn = document.getElementById('replayBtn');
 const scrubReplayBtn = document.getElementById('scrubReplayBtn');
 const speedSlider = document.getElementById('speedSlider');
+const zoomSlider  = document.getElementById('zoomSlider');
 const statProtons = document.getElementById('statProtons');
 const statNeutrons = document.getElementById('statNeutrons');
 const timeSlider  = document.getElementById('timeSlider');
+const protonIconCanvas  = document.getElementById('protonIconCanvas');
+const neutronIconCanvas = document.getElementById('neutronIconCanvas');
 
 // ============================================================
 //  SIMULATION STATE
@@ -1386,6 +1390,7 @@ function resize() {
   const scrubH = document.getElementById('scrubBar').offsetHeight;
   canvas.width  = window.innerWidth;
   canvas.height = window.innerHeight - scrubH;
+  _forcePanelWidth = forcePanelEl.offsetWidth;
   updateCam();
   if (!running) draw();
 }
@@ -1491,10 +1496,11 @@ canvas.addEventListener('mousedown', (e) => {
   }
 });
 
+let _lastCursorCheck = 0;
 window.addEventListener('mousemove', (e) => {
   const pos = getCanvasPos(e);
   if (dragging !== null) {
-    // Dragging a particle — works in both modes
+    // Dragging a particle — works in both modes; always process drag events
     const p = particles[dragging];
     didDrag = true;
     p.x = pos.x + dragOffsetX;
@@ -1510,10 +1516,19 @@ window.addEventListener('mousemove', (e) => {
       didDrag = true;
       if (!running) draw();
     }
-    const hover = findParticleAt(pos.x, pos.y);
-    canvas.style.cursor = hover >= 0 ? 'grab' : 'crosshair';
+    // Throttle cursor-update scan to ~60fps
+    const _now = Date.now();
+    if (_now - _lastCursorCheck >= 16) {
+      _lastCursorCheck = _now;
+      const hover = findParticleAt(pos.x, pos.y);
+      canvas.style.cursor = hover >= 0 ? 'grab' : 'crosshair';
+    }
     return;
   }
+  // Throttle cursor-update scan to ~60fps
+  const _now = Date.now();
+  if (_now - _lastCursorCheck < 16) return;
+  _lastCursorCheck = _now;
   const hover = findParticleAt(pos.x, pos.y);
   canvas.style.cursor = hover >= 0 ? 'grab' : 'default';
 });
@@ -1675,7 +1690,6 @@ function placeCluster(numProtons, numNeutrons, spacing) {
   updateStats();
   computeEnergy();
   draw();
-  hideInstructions();
 }
 
 function selectRightmostProton() {
@@ -1697,7 +1711,6 @@ function placeProtons(n) {
   computeEnergy();
   selectRightmostProton();
   draw();
-  hideInstructions();
 }
 
 let lastNucleusProtonCount = 2;  // tracks last Add N button pressed in Tab B
@@ -1752,7 +1765,7 @@ function doReplay() {
   if (!particleHistory.length) return;
   // Snap current slider values so replay uses whatever zoom/speed are set now
   applySpeedSlider();
-  zoom = parseInt(document.getElementById('zoomSlider').value) / 10;
+  zoom = parseInt(zoomSlider.value) / 10;
   cancelAnimationFrame(animId);
   running = false;
   replaying = false;
@@ -1802,7 +1815,7 @@ speedSlider.addEventListener('input', function() {
 
 // Zoom: scale the canvas transform centered on the midpoint.
 // Physics coordinates are unchanged — only the view scales.
-document.getElementById('zoomSlider').addEventListener('input', function() {
+zoomSlider.addEventListener('input', function() {
   zoom = parseInt(this.value) / 10;
   if (!running) draw();
 });
@@ -2015,8 +2028,9 @@ function setForceModeActive(mode) {
   if ((arrowMode > 0) !== wasVisible) {
     draw();
     updateCam();
+  } else if (!running) {
+    draw();
   }
-  if (!running) draw();
 }
 
 // Show/Hide forces toggle
@@ -2045,7 +2059,6 @@ document.querySelectorAll('.force-mode-btn[data-selmode]').forEach(btn => {
 // ============================================================
 //  UI HELPERS
 // ============================================================
-function hideInstructions() { /* removed */ }
 
 function updateStats() {
   let np, nn;
@@ -2705,6 +2718,9 @@ function drawArrowOnCtx(c, fromX, fromY, nx, ny, len, color, lw = 2) {
 const forcePanelEl  = document.getElementById('forcePanel');
 const forcePanelCv  = document.getElementById('forcePanelCanvas');
 const forcePanelCtx = forcePanelCv.getContext('2d');
+// Cached force-panel width — read at init and after each resize, to avoid
+// forcing a synchronous layout inside updateCam() which runs every frame.
+let _forcePanelWidth = forcePanelEl.offsetWidth;
 let fpZoom = 1.0;
 let _fpAutoScaleSel = null;
 
@@ -2732,6 +2748,7 @@ window.addEventListener('mousemove', e => {
   if (dir.includes('n')) h = Math.max(140, Math.min(canvas.height, oh - dy));
   forcePanelEl.style.width  = w + 'px';
   forcePanelEl.style.height = h + 'px';
+  _forcePanelWidth = w;
   // Resize canvas to fill panel minus header
   const keyH = document.getElementById('forcePanelKey').offsetHeight;
   const cw = Math.max(80, (w - 20)) | 0;
@@ -3268,7 +3285,7 @@ function updateCam() {
   for (const p of cluster) { cx += p.x; cy += p.y; }
   cx /= cluster.length; cy /= cluster.length;
 
-  const fpW = (arrowMode > 0) ? forcePanelEl.offsetWidth : 0;
+  const fpW = (arrowMode > 0) ? _forcePanelWidth : 0;
   const availW = canvas.width - fpW;
   const toolbarH   = document.getElementById('toolbar').offsetHeight;
   const visibleCy  = toolbarH + (canvas.height - toolbarH) / 2;
@@ -3471,7 +3488,8 @@ timeSlider.addEventListener('input', () => {
 //  ANIMATION LOOP
 //  Three modes:
 //    replaying  — auto-advance scrubFrame through recorded history
-//    scrubFrame >= 0 (unused in normal flow; kept for safety)
+//    scrubFrame >= 0 — user is scrubbing; prevents live history from advancing
+//                      (scrubFrame is set by the time-slider input handler)
 //    live physics — step sim, record history, auto-stop when empty
 // ============================================================
 function loop() {
@@ -3519,9 +3537,10 @@ function loop() {
   particleHistory.push({ p: particles.map(p => ({ ...p })) });
   if (particleHistory.length > MAX_HISTORY) particleHistory.shift();
 
-  timeSlider.disabled = false;
-  timeSlider.max = particleHistory.length - 1;
-  timeSlider.value = timeSlider.max;
+  if (timeSlider.disabled !== false) timeSlider.disabled = false;
+  const _newMax = String(particleHistory.length - 1);
+  if (timeSlider.max !== _newMax) timeSlider.max = _newMax;
+  if (timeSlider.value !== _newMax) timeSlider.value = _newMax;
 
   draw();
 
@@ -3534,14 +3553,23 @@ function loop() {
     const mh   = canvas.height * 0.3;
     const mhDn = mh * 2.0;   // 2× margin before culling particles that exit downward
     if (currentTab === 'nucleus') {
-      // Never remove bound (non-ejected) nucleus particles even if they drift off-screen
-      particles = particles.filter(p => {
-        if (!p.ejected) return true;
+      // Never remove bound (non-ejected) nucleus particles even if they drift off-screen.
+      // Only allocate a new array when at least one ejected particle is actually out of bounds.
+      const hasOutOfBounds = particles.some(p => {
+        if (!p.ejected) return false;
         const sx = zoom * (p.x - cx) + cx;
         const sy = zoom * (p.y - cy) + cy;
-        return sx > -mw && sx < canvas.width  + mw &&
-               sy > -mh && sy < canvas.height + mhDn;
+        return !(sx > -mw && sx < canvas.width + mw && sy > -mh && sy < canvas.height + mhDn);
       });
+      if (hasOutOfBounds) {
+        particles = particles.filter(p => {
+          if (!p.ejected) return true;
+          const sx = zoom * (p.x - cx) + cx;
+          const sy = zoom * (p.y - cy) + cy;
+          return sx > -mw && sx < canvas.width  + mw &&
+                 sy > -mh && sy < canvas.height + mhDn;
+        });
+      }
     } else {
       const kept = [];
       let newDragging = null;
@@ -3680,10 +3708,8 @@ function iconAnimLoop() {
     j.x *= 0.78;
     j.y *= 0.78;
   }
-  const pCv = document.getElementById('protonIconCanvas');
-  const nCv = document.getElementById('neutronIconCanvas');
-  if (pCv) drawParticleIcon(pCv, 'proton');
-  if (nCv) drawParticleIcon(nCv, 'neutron');
+  if (protonIconCanvas)  drawParticleIcon(protonIconCanvas,  'proton');
+  if (neutronIconCanvas) drawParticleIcon(neutronIconCanvas, 'neutron');
   requestAnimationFrame(iconAnimLoop);
 }
 
@@ -3785,6 +3811,7 @@ function drawSpecks() {
 // (declaration moved above applyTheme call to avoid TDZ crash)
 function ensureJitter() {
   while (jitter.length < particles.length) jitter.push({ x: 0, y: 0 });
+  if (jitter.length > particles.length) jitter.length = particles.length;
 }
 function updateJitter() {
   ensureJitter();
@@ -3806,16 +3833,17 @@ const GRAIN_SIZE = 64;
 const grainBuf = document.createElement('canvas');
 grainBuf.width = grainBuf.height = GRAIN_SIZE;
 const grainBufCtx = grainBuf.getContext('2d');
+// Cached ImageData — allocated once; reused every frame to avoid ~16 KB/frame GC pressure.
+let _grainImgData = grainBufCtx.createImageData(GRAIN_SIZE, GRAIN_SIZE);
 
 function refreshParticleGrain() {
-  const img = grainBufCtx.createImageData(GRAIN_SIZE, GRAIN_SIZE);
-  const d = img.data;
+  const d = _grainImgData.data;
   for (let i = 0; i < d.length; i += 4) {
     const v = (Math.random() * 255) | 0;
     d[i] = d[i+1] = d[i+2] = v;
     d[i+3] = (Math.random() * 210) | 0;  // dense — up to 82% opaque
   }
-  grainBufCtx.putImageData(img, 0, 0);
+  grainBufCtx.putImageData(_grainImgData, 0, 0);
 }
 
 function drawParticleGrain(cx, cy) {
@@ -3958,10 +3986,8 @@ applyHash();
 window.addEventListener('hashchange', applyHash);
 
 // Apply force mode AFTER tab is set so currentTabIsProton is correct.
+// setForceModeActive calls draw() itself when !running, so no extra draw() needed here.
 setForceModeActive(arrowMode);
-
-// Initial draw to populate the canvas before Go is pressed
-draw();
 
 // ── Dev recording menu (right-click replay button) ───────────────────────────
 (function() {

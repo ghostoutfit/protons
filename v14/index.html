@@ -709,6 +709,10 @@
   body.screenshot-mode .field-label-electric { color: #46a5ff !important; }
   body.screenshot-mode .field-label-strong   { color: #ffb946 !important; }
   body.screenshot-mode img[alt="logo"] { display: none !important; }
+  body.screenshot-mode .pwheel-drop { background: rgba(255,255,255,0.97) !important; border-color: rgba(200,30,60,0.25) !important; }
+  body.screenshot-mode .psel-icon { border-color: transparent !important; background: transparent !important; }
+  body.screenshot-mode .psel-icon:hover { border-color: rgba(200,30,60,0.3) !important; background: rgba(255,180,190,0.25) !important; }
+  body.screenshot-mode .psel-icon.selected { border-color: rgba(200,30,60,0.55) !important; background: rgba(255,180,190,0.4) !important; }
   #lagAlert {
     display: none; position: fixed; right: 8px; bottom: 86px;
     font-size: 11px; color: rgba(255,215,0,0.5); font-style: italic;
@@ -774,7 +778,7 @@
       <canvas id="speedLinesL" width="36" height="36" style="display:block;flex-shrink:0;image-rendering:pixelated;margin-right:-11px;"></canvas>
       <canvas class="psel-icon pslider-icon" data-side="left"  width="44" height="36" style="margin-right:5px;"></canvas>
       <div style="flex:1;min-width:80px;display:flex;flex-direction:column;align-items:stretch;gap:1px;">
-        <input type="range" id="v9SpeedSlider" min="0.1" max="2.1" step="0.05" value="1.15" style="width:100%;accent-color:var(--accent1);">
+        <input type="range" id="fusionSpeedSlider" min="0.1" max="2.1" step="0.05" value="1.15" style="width:100%;accent-color:var(--accent1);">
         <div style="display:flex;justify-content:center;align-items:center;font-size:12px;color:var(--text-dim);padding:0 2px;margin-top:10px;">
           <span id="speedKeV" style="font-size:20px;font-family:'Lexend', sans-serif;color:var(--accent1);text-align:center;text-shadow:0 0 4px var(--accent1),0 0 10px var(--accent1-glow),0 0 22px var(--accent1-dim);"></span>
         </div>
@@ -953,6 +957,9 @@ const ESCAPE_ANIM_FRAMES  = 5;     // frames to lerp into escape geometry
 const FRAME_SPEED         = 1.5;   // dt per frame
 const CAT2_KE_RAMP_FRAMES = 4;     // collision frames over which Cat2 KE ramps to peak
 
+// View
+const ZOOM_SCALE = 1.5;            // canvas zoom; hardcoded in draw(), heatmap, auto-stop check
+
 // Photon capture (Cat3)
 const PHOTON_SPEED    = 18;        // px per frame
 const PHOTON_MAX_AGE  = 90;        // frames until fully faded
@@ -1117,6 +1124,11 @@ let leftClusterSize = 1;
 const hmCanvas = document.createElement('canvas');
 const hmCtx    = hmCanvas.getContext('2d');
 let   hmImageData = null;  // reused across frames; reallocated only on resize
+
+// Heatmap pair caches — rebuilt when particles array reference changes (i.e. on reset/setup)
+let _heatmapParticles = null;
+let _hmEiePairs       = null;
+let _hmSiePairs       = null;
 
 // ============================================================
 //  GEOMETRY SNAP
@@ -2048,7 +2060,7 @@ function drawFieldHeatmap(pairs, colormap, mode) {
   const w = Math.ceil(fullW * scale), h = Math.ceil(fullH * scale);
   const invScale = 1 / scale;
   const cxH = fullW / 2, cyH = fullH / 2;
-  const zoomScale = 1.5;
+  const zoomScale = ZOOM_SCALE;
   const midX = cameraSiteX ?? canvas.width  / 2;
   const midY = cameraSiteY ?? canvas.height / 2;
 
@@ -2115,7 +2127,16 @@ function drawFieldHeatmap(pairs, colormap, mode) {
 //  EIE HEATMAP  (Coulomb field, proton-proton pairs)
 // ============================================================
 function drawHeatmap() {
-  const protonList = particles.filter(p => p.type === 'proton');
+  if (particles !== _heatmapParticles) {
+    _heatmapParticles = particles;
+    _hmEiePairs = null;
+    _hmSiePairs = null;
+  }
+  if (_hmEiePairs === null) {
+    const protonList = particles.filter(p => p.type === 'proton');
+    _hmEiePairs = { protonList };
+  }
+  const protonList = _hmEiePairs.protonList;
   if (protonList.length < 2) return;
 
   const refEnergy = coulombStrength / (PARTICLE_RADIUS * 2);
@@ -2143,6 +2164,14 @@ function drawHeatmap() {
 //  SIE HEATMAP  (strong nuclear field, all nucleon pairs)
 // ============================================================
 function drawStrongHeatmap() {
+  if (particles !== _heatmapParticles) {
+    _heatmapParticles = particles;
+    _hmEiePairs = null;
+    _hmSiePairs = null;
+  }
+  if (_hmSiePairs === null) {
+    _hmSiePairs = { nucleonIndices: particles.map((_, i) => i).filter(i => particles[i].type !== 'gamma') };
+  }
   const n = particles.length;
   if (n < 2) return;
 
@@ -2152,11 +2181,12 @@ function drawStrongHeatmap() {
   if (span <= 0) return;
   const maxBinding = strongForceStrength * span / 2;
 
+  const nucleonIndices = _hmSiePairs.nucleonIndices;
   const pairs = [];
-  for (let i = 0; i < n; i++) {
-    if (particles[i].type === 'gamma') continue;
-    for (let j = i + 1; j < n; j++) {
-      if (particles[j].type === 'gamma') continue;
+  for (let ii = 0; ii < nucleonIndices.length; ii++) {
+    const i = nucleonIndices[ii];
+    for (let jj = ii + 1; jj < nucleonIndices.length; jj++) {
+      const j = nucleonIndices[jj];
       const a = particles[i], b = particles[j];
       const dx = b.x - a.x, dy = b.y - a.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
@@ -2623,7 +2653,7 @@ function draw() {
 
   const midX      = cameraSiteX ?? canvas.width  / 2;
   const midY      = cameraSiteY ?? canvas.height / 2;
-  const zoomScale = 1.5;
+  const zoomScale = ZOOM_SCALE;
   const cx        = canvas.width  / 2;
   const cy        = canvas.height / 2;
 
@@ -2773,7 +2803,6 @@ window.addEventListener('resize', resize);
 // ============================================================
 //  RESET & SETUP
 // ============================================================
-let hasRunOnce = false;
 let simHasStarted = false;
 
 function resetState() {
@@ -2789,7 +2818,7 @@ function resetState() {
   collisionOnsetKE      = 0;
   collisionOnsetEIE     = 0;
   collisionPeakEIE      = 0;
-  if (typeof updatePhaseTimeline !== 'undefined') updatePhaseTimeline();
+  updatePhaseTimeline();
   escapeAnimFrame    = 0;
   escapeAnimStartPos  = null;
   escapeAnimTargetPos = null;
@@ -2883,9 +2912,8 @@ goBtn.addEventListener('click', () => {
     loop();
   } else {
     // Fresh start
-    if (hasRunOnce) resetAndSetup();
+    if (snapshot !== null) resetAndSetup();
     else setupScenario();
-    hasRunOnce = true;
     simHasStarted = true; syncScaledEnergyToggle();
     paused     = false;
     running    = true;
@@ -2952,7 +2980,6 @@ document.getElementById('scrubReplayBtn').addEventListener('click', doReplay);
 document.getElementById('clearBtn').addEventListener('click', () => {
   if (currentTab !== 'fusion') return;   // temp tab handled separately
   logAction('Pressed Reset (FUSION)');
-  hasRunOnce = false;
   paused = false;
   resetAndSetup();
 });
@@ -3102,7 +3129,7 @@ canvas.addEventListener('mousedown', e => {
 });
 
 canvas.addEventListener('mousemove', e => {
-  canvas.style.cursor = inBarChartPanel(e) ? 'ns-resize' : '';
+  canvas.style.cursor = (currentTab === 'fusion' && inBarChartPanel(e)) ? 'ns-resize' : '';
   if (!barScaleDrag) return;
   const dy = e.clientY - barScaleDrag.startY;
   // drag down = bigger range (zoom out), drag up = smaller range (zoom in)
@@ -3146,7 +3173,7 @@ timeSlider.addEventListener('input', () => {
 document.getElementById('separateFieldsChk').addEventListener('change', function() {
   splitIE = this.checked;
   logAction('Separate fields: ' + (this.checked ? 'on' : 'off'));
-  if (!running) draw();
+  if (currentTab === 'fusion' && !running) draw();
 });
 function updateGraphBtn() {
   const btn = document.getElementById('fullTimelineBtn');
@@ -3203,7 +3230,7 @@ function updateTempTempVal() {
   if (el2) el2.textContent = '0 to ' + tempSliderToKeV(parseFloat(document.getElementById('tempSlider').value)) + ' keV';
 }
 let _v9SpeedLogTimer = null;
-document.getElementById('v9SpeedSlider').addEventListener('input', function() {
+document.getElementById('fusionSpeedSlider').addEventListener('input', function() {
   approachSpeed = parseFloat(this.value);
   drawSpeedLines();
   updateSpeedKeV();
@@ -3220,19 +3247,19 @@ document.getElementById('simSpeedSlider').addEventListener('input', function() {
 document.getElementById('electricFieldToggle').addEventListener('change', function() {
   showElectricField = this.checked;
   logAction('Electric field: ' + (this.checked ? 'on' : 'off'));
-  if (!running) draw();
+  if (currentTab === 'fusion' && !running) draw();
 });
 document.getElementById('strongFieldToggle').addEventListener('change', function() {
   showStrongField = this.checked;
   logAction('Strong field: ' + (this.checked ? 'on' : 'off'));
-  if (!running) draw();
+  if (currentTab === 'fusion' && !running) draw();
 });
 document.getElementById('scaledEnergyToggle').addEventListener('change', function() {
   scaledEnergy = this.checked;
   if (scaledEnergy) { barYRangeScaled = null; scaledAutoRange = 1.5; }
   applyComboSieOffset();
   if (scaledEnergy && !running && collisionPhase === 'approach') setupScenario();
-  if (!running) draw();
+  if (currentTab === 'fusion' && !running) draw();
 });
 function applyComboSieOffset() {
   const entry = getComboEntry();
@@ -3386,7 +3413,7 @@ function drawSpeedLines() {
     if (!canvas) return;
     const c = canvas.getContext('2d');
     const w = canvas.width, h = canvas.height;
-    const slider = document.getElementById('v9SpeedSlider');
+    const slider = document.getElementById('fusionSpeedSlider');
     const t = (parseFloat(slider.value) - parseFloat(slider.min))
             / (parseFloat(slider.max) - parseFloat(slider.min));
     c.clearRect(0, 0, w, h);
@@ -3604,7 +3631,7 @@ function loop() {
     updateCamera();
 
     // Auto-stop when all particles are off-screen
-    const zoomScale = 1.5;
+    const zoomScale = ZOOM_SCALE;
     const cx = canvas.width / 2, cy = canvas.height / 2;
     const margin = PARTICLE_RADIUS * zoomScale * 2;
     const allGone = particles.every(p => {
