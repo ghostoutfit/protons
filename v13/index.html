@@ -1027,7 +1027,10 @@
     </div>
     <div id="scrubControls">
       <button id="scrubReplayBtn" class="btn" disabled>&#8634;</button>
-      <span class="slider-icon" style="font-size:32px">⏱</span>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
+        <span class="slider-icon" style="font-size:32px">⏱</span>
+        <div id="frameCounter" style="font-size:9px;color:rgba(180,180,220,0.5);text-align:center;line-height:1;"></div>
+      </div>
     </div>
   </div>
   <div id="scrubRightPanel">
@@ -3021,6 +3024,18 @@ function drawStaticFrame() {
 
 function scrubVal(frac) { return Math.round(frac * 1000); }
 function scrubPct(frac) { return Math.round(frac * 1000); }
+
+const frameCounterEl = document.getElementById('frameCounter');
+const _scrubSliderEl = document.getElementById('scrubSlider');
+new MutationObserver(() => {
+  const v     = parseInt(document.getElementById('scrubPct').textContent) || 0;
+  const tot   = parseInt(_scrubSliderEl.max) || 0;
+  const playing = neutronRAF !== null || playbackRAF !== null || chainRAF !== null;
+  if (v <= 0)          frameCounterEl.textContent = '';
+  else if (playing)    frameCounterEl.textContent = `${v}`;
+  else if (v >= tot)   frameCounterEl.textContent = `${tot}`;
+  else                 frameCounterEl.textContent = `${v} / ${tot}`;
+}).observe(document.getElementById('scrubPct'), { childList: true, characterData: true, subtree: true });
 
 
 // Returns true if the current frame's draw calls should be skipped (lag throttle).

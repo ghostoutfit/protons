@@ -1065,7 +1065,10 @@
 
 <div id="scrubBar">
   <button id="scrubReplayBtn" class="btn" disabled>&#8634;</button>
-  <span class="slider-icon" style="font-size:32px">⏱</span>
+  <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
+    <span class="slider-icon" style="font-size:32px">⏱</span>
+    <div id="frameCounter" style="font-size:9px;color:rgba(180,180,220,0.5);text-align:center;line-height:1;"></div>
+  </div>
   <input type="range" id="timeSlider" min="0" max="0" value="0" disabled>
 
 </div>
@@ -1080,6 +1083,10 @@ const ctx = canvas.getContext('2d');
 const goBtn = document.getElementById('goBtn');
 const replayBtn = document.getElementById('replayBtn');
 const scrubReplayBtn = document.getElementById('scrubReplayBtn');
+const frameCounterEl = document.getElementById('frameCounter');
+function updateFrameCounter(current, total) {
+  frameCounterEl.textContent = current != null ? `${current} / ${total}` : total;
+}
 const speedSlider = document.getElementById('speedSlider');
 const zoomSlider  = document.getElementById('zoomSlider');
 const statProtons = document.getElementById('statProtons');
@@ -1104,7 +1111,53 @@ let recordedSpeed = 1.5;  // speed at which the current recording was made; used
 
 // ---- Time scrubber ----
 const MAX_HISTORY = 4000;
-let particleHistory = [];
+// Ring buffer for particle history (fixes O(n) shift and per-frame object allocation).
+// Each slot holds {n, data: Float32Array} where data = [x,y,vx,vy,type(0/1), ...] per particle.
+const _histBuf = new Array(MAX_HISTORY);
+let _histHead = 0;   // index of the oldest entry in _histBuf
+let _histLen  = 0;   // number of valid entries
+// Compact helpers so call sites can use a particleHistory-like API:
+// particleHistory.length  → _histLen
+// particleHistory[idx]    → _histGet(idx)   (0 = oldest)
+// particleHistory.push()  → _histPush(frame)
+// particleHistory = []    → _histReset()
+function _histGet(idx) { return _histBuf[(_histHead + idx) % MAX_HISTORY]; }
+function _histReset() { _histHead = 0; _histLen = 0; }
+function _histPush(frame) {
+  if (_histLen < MAX_HISTORY) {
+    _histBuf[(_histHead + _histLen) % MAX_HISTORY] = frame;
+    _histLen++;
+  } else {
+    // Buffer full: overwrite oldest slot and advance head
+    _histBuf[_histHead] = frame;
+    _histHead = (_histHead + 1) % MAX_HISTORY;
+  }
+}
+// Snapshot helpers: serialize particles to a compact typed buffer (avoids N object allocations per frame).
+const HIST_FIELDS = 5; // x, y, vx, vy, type(0=proton,1=neutron)
+function _snapshotParticles(ps) {
+  const n = ps.length;
+  const data = new Float32Array(n * HIST_FIELDS);
+  for (let i = 0; i < n; i++) {
+    const p = ps[i], o = i * HIST_FIELDS;
+    data[o]   = p.x;
+    data[o+1] = p.y;
+    data[o+2] = p.vx;
+    data[o+3] = p.vy;
+    data[o+4] = p.type === 'proton' ? 0 : 1;
+  }
+  return { n, data };
+}
+function _restoreParticles(frame) {
+  const { n, data } = frame;
+  const ps = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const o = i * HIST_FIELDS;
+    ps[i] = { x: data[o], y: data[o+1], vx: data[o+2], vy: data[o+3],
+               type: data[o+4] === 0 ? 'proton' : 'neutron' };
+  }
+  return ps;
+}
 let scrubFrame = -1;
 let replaying = false;  // true while auto-playing back recorded history
 let replayAccum = 0;    // fractional frame accumulator for speed-slider-controlled playback
@@ -1298,6 +1351,10 @@ function updateQuantumStability() {
   }
 }
 
+// Cached result of findBiggestCluster() — set by applyBiggestClusterStability() each
+// frame so updateStats() can reuse it without a second O(n²) traversal (issue #44).
+let _cachedBiggestCluster = null;
+
 // Watch the biggest cluster; if N < minN for its Z, drop strong force to the
 // table value and re-evaluate after 5 frames to let loose particles drift away.
 function applyBiggestClusterStability() {
@@ -1309,6 +1366,7 @@ function applyBiggestClusterStability() {
   }
 
   const cluster = findBiggestCluster();
+  _cachedBiggestCluster = cluster;
   if (cluster.length === 0) return;
 
   const Z = cluster.filter(p => p.type === 'proton').length;
@@ -1671,10 +1729,12 @@ function resetSim() {
   snapshot = null;
   replayBtn.disabled = true;
   scrubReplayBtn.disabled = true;
-  particleHistory = [];
+  _histReset();
+  _cachedBiggestCluster = null;
   scrubFrame = -1;
   timeSlider.value = 0;
   timeSlider.max = 0;
+  updateFrameCounter(null, 0);
   timeSlider.disabled = true;
   selectedGroup = [];
   selBox = null;
@@ -1747,7 +1807,7 @@ goBtn.addEventListener('click', () => {
   goBtn.textContent = running ? '⏸' : '▶ GO';
   goBtn.classList.toggle('running', running);
   if (running) {
-    particleHistory = [];
+    _histReset();
     scrubFrame = -1;
     recordedSpeed = speed;  // snapshot the speed this recording is made at
     timeSlider.disabled = true;
@@ -1762,7 +1822,7 @@ goBtn.addEventListener('click', () => {
 //  REPLAY BUTTON
 // ============================================================
 function doReplay() {
-  if (!particleHistory.length) return;
+  if (!_histLen) return;
   // Snap current slider values so replay uses whatever zoom/speed are set now
   applySpeedSlider();
   zoom = parseInt(zoomSlider.value) / 10;
@@ -1871,6 +1931,9 @@ function applyTab(tab) {
     document.getElementById('showHideForces').classList.toggle('show-forces-large', arrowMode === 0);
     document.querySelector('.force-mode-btn[data-mode="1"]').textContent = 'All Forces';
     document.querySelector('.force-mode-btn[data-mode="2"]').textContent = 'Total Force';
+    // Turn off center tracking
+    centerTracking = false;
+    document.getElementById('centerBtn').classList.remove('active');
     // Default to single-particle mode, no group
     groupSelectMode = false;
     selectedGroup = [];
@@ -2063,7 +2126,9 @@ document.querySelectorAll('.force-mode-btn[data-selmode]').forEach(btn => {
 function updateStats() {
   let np, nn;
   if (currentTab === 'nucleus') {
-    const cluster = findBiggestCluster();
+    // Reuse the cluster computed by applyBiggestClusterStability() this frame (issue #44).
+    // Fall back to a fresh call when the cache is stale (e.g. renderFrame / direct calls).
+    const cluster = _cachedBiggestCluster !== null ? _cachedBiggestCluster : findBiggestCluster();
     np = cluster.filter(p => p.type === 'proton').length;
     nn = cluster.filter(p => p.type === 'neutron').length;
   } else {
@@ -3453,12 +3518,12 @@ function draw() {
 //  TIME SCRUBBER
 // ============================================================
 function renderFrame(idx) {
-  const frame = particleHistory[idx];
+  const frame = _histGet(idx);
   if (!frame) return;
   const savedParticles = particles;
   const savedDragging  = dragging;
   const savedFlashes   = quantumFlashes;
-  particles = frame.p.map(p => ({ ...p }));
+  particles = _restoreParticles(frame);
   dragging  = null;
   quantumFlashes = [];
   // Match live behavior: when centerTracking is on, recenter the camera on the
@@ -3466,10 +3531,12 @@ function renderFrame(idx) {
   // time-slider scrubbing instead of being frozen at the last live camera pos.
   if (centerTracking) updateCam();
   draw();
+  _cachedBiggestCluster = null; // particles changed; cache is stale
   updateStats();
   particles      = savedParticles;
   dragging       = savedDragging;
   quantumFlashes = savedFlashes;
+  _cachedBiggestCluster = null; // restored to live particles; invalidate again
 }
 
 timeSlider.addEventListener('input', () => {
@@ -3483,6 +3550,7 @@ timeSlider.addEventListener('input', () => {
   }
   const val = parseInt(timeSlider.value);
   scrubFrame = val;
+  updateFrameCounter(val + 1, _histLen);
   renderFrame(val);
 });
 
@@ -3509,8 +3577,8 @@ function loop() {
     replayAccum += speed / recordedSpeed;
     const steps = Math.floor(replayAccum);
     replayAccum -= steps;
-    scrubFrame = Math.min(scrubFrame + steps, particleHistory.length - 1);
-    if (scrubFrame >= particleHistory.length - 1) {
+    scrubFrame = Math.min(scrubFrame + steps, _histLen - 1);
+    if (scrubFrame >= _histLen - 1) {
       // Reached end of recording — stop
       running = false;
       replaying = false;
@@ -3518,10 +3586,12 @@ function loop() {
       goBtn.textContent = '▶ GO';
       goBtn.classList.remove('running');
       timeSlider.value = scrubFrame;
+      updateFrameCounter(scrubFrame + 1, _histLen);
         renderFrame(scrubFrame);
       return;
     }
     timeSlider.value = scrubFrame;
+    updateFrameCounter(scrubFrame + 1, _histLen);
     renderFrame(scrubFrame);
     animId = requestAnimationFrame(loop);
     return;
@@ -3536,13 +3606,13 @@ function loop() {
   computeEnergy();
   updateStats();
 
-  particleHistory.push({ p: particles.map(p => ({ ...p })) });
-  if (particleHistory.length > MAX_HISTORY) particleHistory.shift();
+  _histPush(_snapshotParticles(particles));
 
   if (timeSlider.disabled !== false) timeSlider.disabled = false;
-  const _newMax = String(particleHistory.length - 1);
+  const _newMax = String(_histLen - 1);
   if (timeSlider.max !== _newMax) timeSlider.max = _newMax;
   if (timeSlider.value !== _newMax) timeSlider.value = _newMax;
+  updateFrameCounter(null, _histLen);
 
   draw();
 
@@ -3592,6 +3662,14 @@ function loop() {
 
   // Auto-stop when all particles have escaped off-screen
   if (particles.length === 0) {
+    running = false;
+    goBtn.textContent = '▶ GO';
+    goBtn.classList.remove('running');
+    return;
+  }
+
+  // Auto-stop when history is full so the beginning is never overwritten
+  if (_histLen >= MAX_HISTORY) {
     running = false;
     goBtn.textContent = '▶ GO';
     goBtn.classList.remove('running');
@@ -3816,8 +3894,14 @@ function ensureJitter() {
   if (jitter.length > particles.length) jitter.length = particles.length;
 }
 function updateJitter() {
-  ensureJitter();
-  for (let i = 0; i < particles.length; i++) {
+  // When live particles are gone but a historical frame is displayed, size jitter
+  // to the historical frame so replayed particles can still jitter.
+  const targetLen = (particles.length === 0 && scrubFrame >= 0 && _histLen > 0)
+    ? (_histGet(scrubFrame)?.n ?? 0)
+    : particles.length;
+  while (jitter.length < targetLen) jitter.push({ x: 0, y: 0 });
+  if (jitter.length > targetLen) jitter.length = targetLen;
+  for (let i = 0; i < jitter.length; i++) {
     jitter[i].x += (Math.random() - 0.5) * 0.7;
     jitter[i].y += (Math.random() - 0.5) * 0.7;
     jitter[i].x *= 0.78;
@@ -4011,7 +4095,7 @@ setForceModeActive(arrowMode);
 
   recItem.addEventListener('click', () => {
     menu.style.display = 'none';
-    if (!particleHistory.length) return;
+    if (!_histLen) return;
     const chunks = [];
     const stream = canvas.captureStream(30);
     const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });

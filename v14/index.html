@@ -799,10 +799,6 @@
       <label class="toggle-label"><input type="checkbox" id="strongFieldToggle" checked> <span class="field-label-strong">Show nuclear field</span></label>
     </div>
   </div>
-  <!-- Hidden dev elements kept for JS compatibility -->
-  <div style="display:none;">
-    <div id="frameCounter"></div>
-  </div>
   </div><!-- /fusionControls -->
   <!-- Temperature tab controls -->
   <div id="tempControls" style="display:flex;align-items:stretch;gap:12px;">
@@ -853,7 +849,10 @@
     </div>
     <div id="scrubControls">
       <button id="scrubReplayBtn" class="btn" disabled>&#8634;</button>
-      <span class="slider-icon" style="font-size:32px">⏱</span>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
+        <span class="slider-icon" style="font-size:32px">⏱</span>
+        <div id="frameCounter" style="font-size:9px;color:var(--text-dim);text-align:center;line-height:1;"></div>
+      </div>
     </div>
   </div>
   <div id="scrubLeft">
@@ -933,9 +932,7 @@ const timeSlider  = document.getElementById('timeSlider');
 const timeLabelEl    = { textContent: '' }; // timeLabel element removed; stub to avoid errors
 const frameCounterEl = document.getElementById('frameCounter');
 function updateFrameCounter(current, total) {
-  const cur = current != null ? `${current} / ${total}` : `${total}`;
-  const dur = collisionStartFrame >= 0 ? `  during@${collisionStartFrame + 1}` : '';
-  frameCounterEl.textContent = `frame: ${cur}${dur}`;
+  frameCounterEl.textContent = current != null ? `${current} / ${total}` : total;
 }
 const energyGraph = document.getElementById('energyGraph');
 const egCtx       = energyGraph.getContext('2d');
@@ -1027,7 +1024,17 @@ let replayAccum = 0;    // fractional frame accumulator for speed-controlled pla
 //  HISTORY & SCRUBBER
 // ============================================================
 const MAX_HISTORY = 4000;
-let particleHistory = [];
+// Ring buffer — O(1) push, no shift().
+const _phBuf   = new Array(MAX_HISTORY);
+let   _phStart = 0;   // index of oldest entry
+let   _phLen   = 0;
+function phGet(i)    { return _phBuf[(_phStart + i) % MAX_HISTORY]; }
+function phLen()     { return _phLen; }
+function phReset()   { _phStart = 0; _phLen = 0; }
+function phPush(fr)  {
+  if (_phLen < MAX_HISTORY) { _phBuf[(_phStart + _phLen) % MAX_HISTORY] = fr; _phLen++; }
+  else { _phBuf[_phStart] = fr; _phStart = (_phStart + 1) % MAX_HISTORY; }
+}
 let scrubFrame = -1;
 
 // Graph zoom (frame indices; null end = full history)
@@ -2524,7 +2531,7 @@ function drawEnergyGraph() {
   const _selStroke   = LIGHT ? 'rgba(0,0,0,0.4)'  : 'rgba(120,100,255,0.6)';
   const _selGlow     = LIGHT ? 'rgba(0,0,0,0)'    : 'rgba(120,100,255,0.8)';
 
-  const n = particleHistory.length;
+  const n = phLen();
   if (n < 2) return;
 
   // Zoom window (frame indices)
@@ -2536,7 +2543,7 @@ function drawEnergyGraph() {
   // Autoscale Y over visible window
   let maxY = 0;
   for (let i = zStart; i <= zEnd; i++) {
-    const d = particleHistory[i].edisp || {};
+    const d = phGet(i).edisp || {};
     const topVal = Math.max(d.tot || 0, d.ke || 0, d.ie || 0, d.eie || 0, d.sie || 0);
     if (topVal > maxY) maxY = topVal;
   }
@@ -2561,7 +2568,7 @@ function drawEnergyGraph() {
     const path = new Path2D();
     for (let i = zStart; i <= zEnd; i++) {
       const x = ((i - zStart) / zLen) * W;
-      const v = getValue(particleHistory[i]);
+      const v = getValue(phGet(i));
       const y = H - (v / maxY) * H - 5;
       if (i === zStart) path.moveTo(x, y); else path.lineTo(x, y);
     }
@@ -2730,7 +2737,7 @@ function draw() {
 //  RENDER HISTORICAL FRAME  (scrubber)
 // ============================================================
 function renderFrame(idx) {
-  const frame = particleHistory[idx];
+  const frame = phGet(idx);
   if (!frame) return;
   const liveP       = particles, livePhase = collisionPhase;
   const liveCDKE    = collisionDisplayKE;
@@ -2841,7 +2848,7 @@ function resetState() {
   escapeKECap = Infinity;
   chargedEscapeEIEBase = 0;
   if (replayRAF) { cancelAnimationFrame(replayRAF); replayRAF = null; }
-  particleHistory  = [];
+  phReset();
   scrubFrame       = -1;
   graphZoomStart   = 0;
   graphZoomEnd     = null;
@@ -2886,7 +2893,22 @@ function resetAndSetup() {
 //  GO BUTTON
 // ============================================================
 goBtn.addEventListener('click', () => {
-  if (currentTab !== 'fusion') return;   // temp tab handled separately
+  if (currentTab === 'temp') {
+    if (tempRunning) {
+      cancelAnimationFrame(tempRAF); tempRAF = null;
+      tempRunning = false; tempPaused = true;
+      goBtn.textContent = '▶ GO'; goBtn.classList.remove('running');
+      logAction('Paused (TEMPERATURE)');
+    } else {
+      if (!tempProtons.length || !tempPaused) initTempProtons();
+      tempPaused = false; tempRunning = true;
+      goBtn.textContent = '⏸'; goBtn.classList.add('running');
+      logAction('Pressed Go (TEMPERATURE)');
+      tempRAF = requestAnimationFrame(tempLoop);
+    }
+    return;
+  }
+  // Fusion tab
   if (replayRAF) {
     cancelAnimationFrame(replayRAF); replayRAF = null;
     goBtn.textContent = '▶ GO';
@@ -2935,7 +2957,7 @@ function setScrubReplayDisabled(val) {
 }
 
 function doReplay() {
-  if (!particleHistory.length) return;
+  if (!phLen()) return;
   // Stop live sim and any existing replay
   running = false; paused = false;
   if (animId)    { cancelAnimationFrame(animId);    animId    = null; }
@@ -2955,10 +2977,10 @@ function doReplay() {
     replayAccum += Math.max(0.05, frameSpeed() / recFS);
     const steps = Math.floor(replayAccum);
     replayAccum -= steps;
-    scrubFrame = Math.min(scrubFrame + steps, particleHistory.length - 1);
-    if (scrubFrame >= particleHistory.length - 1) {
+    scrubFrame = Math.min(scrubFrame + steps, phLen() - 1);
+    if (scrubFrame >= phLen() - 1) {
       scrubFrame = -1;
-      timeSlider.value = Math.max(0, particleHistory.length - 1);
+      timeSlider.value = Math.max(0, phLen() - 1);
       goBtn.textContent = '▶ GO';
       goBtn.classList.remove('running');
       setScrubReplayDisabled(false);
@@ -2978,7 +3000,15 @@ document.getElementById('scrubReplayBtn').addEventListener('click', doReplay);
 //  CLEAR
 // ============================================================
 document.getElementById('clearBtn').addEventListener('click', () => {
-  if (currentTab !== 'fusion') return;   // temp tab handled separately
+  if (currentTab === 'temp') {
+    logAction('Pressed Reset (TEMPERATURE)');
+    cancelAnimationFrame(tempRAF); tempRAF = null;
+    tempRunning = false; tempPaused = false;
+    goBtn.textContent = '▶ GO'; goBtn.classList.remove('running');
+    initTempProtons();
+    drawTemp();
+    return;
+  }
   logAction('Pressed Reset (FUSION)');
   paused = false;
   resetAndSetup();
@@ -2993,7 +3023,7 @@ const segCollision    = document.getElementById('phaseSeg-collision');
 const segEscape       = document.getElementById('phaseSeg-escape');
 
 function updatePhaseTimeline() {
-  const total = particleHistory.length;
+  const total = phLen();
 
   // No history yet — keep the placeholder approach bar visible (no text), hide others.
   if (total === 0 || collisionStartFrame < 0) {
@@ -3043,7 +3073,7 @@ function updatePhaseTimeline() {
 //  GRAPH ZOOM HELPERS
 // ============================================================
 function applyGraphZoom(start, end) {
-  const n = particleHistory.length;
+  const n = phLen();
   graphZoomStart = Math.max(0, start);
   graphZoomEnd   = (end === null || end >= n - 1) ? null : Math.min(n - 1, end);
   const zEnd = graphZoomEnd ?? (n - 1);
@@ -3064,7 +3094,7 @@ function applyGraphZoom(start, end) {
 function resetGraphZoom() {
   graphZoomStart = 0;
   graphZoomEnd   = null;
-  const n = particleHistory.length;
+  const n = phLen();
   timeSlider.min = 0;
   timeSlider.max = Math.max(0, n - 1);
   timeSlider.value = scrubFrame >= 0 ? scrubFrame : Math.max(0, n - 1);
@@ -3075,7 +3105,7 @@ function resetGraphZoom() {
 
 // Drag-to-zoom events on energyGraph
 energyGraph.addEventListener('mousedown', e => {
-  if (!particleHistory.length) return;
+  if (!phLen()) return;
   egDragStartPx = e.offsetX;
   egDragCurPx   = e.offsetX;
   e.preventDefault();
@@ -3092,7 +3122,7 @@ energyGraph.addEventListener('mouseup', e => {
   egDragStartPx = null;
   egDragCurPx   = null;
   const W = energyGraph.width;
-  const n = particleHistory.length;
+  const n = phLen();
   if (n < 2 || x1 - x0 < 4) { if (!running) draw(); return; } // too small = ignore
   // Map pixel range to frame indices within current zoom
   const zStart = graphZoomStart;
@@ -3155,14 +3185,14 @@ canvas.addEventListener('mouseleave', e => {
 // ============================================================
 timeSlider.addEventListener('input', () => {
   const val = parseInt(timeSlider.value);
-  if (val >= particleHistory.length - 1) {
+  if (val >= phLen() - 1) {
     scrubFrame = -1;
-    timeLabelEl.textContent = `${particleHistory.length}`;
-    updateFrameCounter(null, particleHistory.length);
+    timeLabelEl.textContent = `${phLen()}`;
+    updateFrameCounter(null, phLen());
   } else {
     scrubFrame = val;
-    timeLabelEl.textContent = `${val + 1} / ${particleHistory.length}`;
-    updateFrameCounter(val + 1, particleHistory.length);
+    timeLabelEl.textContent = `${val + 1} / ${phLen()}`;
+    updateFrameCounter(val + 1, phLen());
     if (!running) renderFrame(val);
   }
 });
@@ -3437,8 +3467,10 @@ function drawSpeedLines() {
 drawSpeedLines();
 
 
+let _iconSkip = 0;
 (function animateIcons() {
-  pselIcons.forEach(c => drawClusterIcon(c));
+  _iconSkip = (_iconSkip + 1) % 4;
+  if (_iconSkip === 0) pselIcons.forEach(c => drawClusterIcon(c));
   requestAnimationFrame(animateIcons);
 })();
 
@@ -3514,8 +3546,8 @@ function loop() {
   if (_lagDetected && _lagSkip % 4 !== 0) { animId = requestAnimationFrame(loop); return; }
 
   if (scrubFrame >= 0) {
-    timeLabelEl.textContent = `${scrubFrame + 1} / ${particleHistory.length}`;
-    updateFrameCounter(scrubFrame + 1, particleHistory.length);
+    timeLabelEl.textContent = `${scrubFrame + 1} / ${phLen()}`;
+    updateFrameCounter(scrubFrame + 1, phLen());
     renderFrame(scrubFrame);
     animId = requestAnimationFrame(loop);
     return;
@@ -3721,7 +3753,7 @@ function loop() {
       if (pnJiggleFrame >= effectiveFrames(PN_JIGGLE_FRAMES)) {
         firePhotonCapture();
         collisionPhase  = 'escape';
-        escapeStartFrame = particleHistory.length;
+        escapeStartFrame = phLen();
         // Switch display KE to keOut (nucleus keeps ~initialKE; gamma carries the rest)
         const pnEscEntry = getComboEntry();
         const pnScale    = speedScale();
@@ -3730,7 +3762,7 @@ function loop() {
       }
     } else if (fireEscape) {
       cat2EscapeFrame = 0;  // start counting AFTER frames for physics assist
-      escapeStartFrame = particleHistory.length;
+      escapeStartFrame = phLen();
       const escEntry = getComboEntry();
       const escScale = speedScale();
       if (isCategory1()) {
@@ -3780,7 +3812,7 @@ function loop() {
     if (!isCoulombOnly() && crossClusterContact()) {
       collisionPhase      = 'collision';
       collisionFrames     = 0;
-      collisionStartFrame = particleHistory.length;
+      collisionStartFrame = phLen();
       const isPN2 = (leftChoice==='p'&&rightChoice==='n') || (leftChoice==='n'&&rightChoice==='p');
       if (isPN2) { pnBound = true; pnJiggleFrame = 0; }
       const colE    = computeEnergy();
@@ -3807,7 +3839,7 @@ function loop() {
         // transition is seamless and always upward (pre-strong-force KE < fusion peak).
         const ds  = scaledEnergy ? 1 : 0.2;
         const kv  = scaledEnergy ? keVPerSimUnit : 1;
-        const prevFr = particleHistory.length > 0 ? particleHistory[particleHistory.length - 1] : null;
+        const prevFr = phLen() > 0 ? phGet(phLen() - 1) : null;
         const prevBarKE  = prevFr ? prevFr.edisp.ke  : 0;
         const prevBarEIE = prevFr ? prevFr.edisp.eie : colE.eie * kv;
         collisionOnsetKE  = prevBarKE / ds;   // collisionDisplayKE units: bar = prevBarKE ✓
@@ -3838,8 +3870,8 @@ function loop() {
           coulombScatterEscape = true;
           if (cdist > strongCutoff() * 2.5 && relV > approachSpeed * 0.5) {
             collisionPhase      = 'escape';
-            collisionStartFrame = particleHistory.length;
-            escapeStartFrame    = particleHistory.length;
+            collisionStartFrame = phLen();
+            escapeStartFrame    = phLen();
           }
         }
       }
@@ -3869,7 +3901,7 @@ function loop() {
   }
 
   // ── Record history ─────────────────────────────────────────
-  particleHistory.push({
+  phPush({
     p: particles.map(p => ({ ...p })),
     collisionPhase,
     collisionFrames,
@@ -3883,16 +3915,15 @@ function loop() {
     camX: cameraSiteX, camY: cameraSiteY,
     edisp: getDisplayEnergy(),
   });
-  if (particleHistory.length > MAX_HISTORY) particleHistory.shift();
 
   timeSlider.disabled = false;
   // Only update slider range if we're not zoomed in
   if (graphZoomEnd === null) {
-    timeSlider.max   = particleHistory.length - 1;
+    timeSlider.max   = phLen() - 1;
     timeSlider.value = timeSlider.max;
   }
-  timeLabelEl.textContent = `${particleHistory.length}`;
-  updateFrameCounter(null, particleHistory.length);
+  timeLabelEl.textContent = `${phLen()}`;
+  updateFrameCounter(null, phLen());
   updatePhaseTimeline();
 
   draw();
@@ -4316,37 +4347,6 @@ function drawTempIcons() {
 }
 drawTempIcons();
 
-// ─── Patch Go button for temperature tab ────────────────────────────────────
-const _origGoBtnHandler = goBtn.onclick;
-goBtn.addEventListener('click', (e) => {
-  if (currentTab !== 'temp') return;   // fusion handled by existing listener
-  e.stopImmediatePropagation();
-  if (tempRunning) {
-    cancelAnimationFrame(tempRAF); tempRAF = null;
-    tempRunning = false; tempPaused = true;
-    goBtn.textContent = '▶ GO'; goBtn.classList.remove('running');
-    logAction('Paused (TEMPERATURE)');
-  } else {
-    if (!tempProtons.length || !tempPaused) initTempProtons();
-    tempPaused = false; tempRunning = true;
-    goBtn.textContent = '⏸'; goBtn.classList.add('running');
-    logAction('Pressed Go (TEMPERATURE)');
-    tempRAF = requestAnimationFrame(tempLoop);
-  }
-}, true);  // capture phase so it runs before existing bubble-phase listener
-
-// ─── Patch Clear button for temperature tab ──────────────────────────────────
-document.getElementById('clearBtn').addEventListener('click', (e) => {
-  if (currentTab !== 'temp') return;
-  e.stopImmediatePropagation();
-  logAction('Pressed Reset (TEMPERATURE)');
-  cancelAnimationFrame(tempRAF); tempRAF = null;
-  tempRunning = false; tempPaused = false;
-  goBtn.textContent = '▶ GO'; goBtn.classList.remove('running');
-  initTempProtons();
-  drawTemp();
-}, true);
-
 // ─── Show Total Force toggle ─────────────────────────────────────────────────
 document.getElementById('showForceBtn').addEventListener('click', () => {
   showTotalForce = !showTotalForce;
@@ -4540,7 +4540,7 @@ function getBugState() {
     tempSpeed,
     showElecField:   document.getElementById('electricFieldToggle')?.checked,
     showStrongField: document.getElementById('strongFieldToggle')?.checked,
-    historyLen:      particleHistory.length,
+    historyLen:      phLen(),
     particles: particles.map(p => ({
       t: p.type, x: Math.round(p.x), y: Math.round(p.y),
       vx: +p.vx.toFixed(3), vy: +p.vy.toFixed(3),
