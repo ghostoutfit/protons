@@ -1003,6 +1003,14 @@
           <input type="checkbox" id="showElectric">
           <span class="field-label-electric">Show electric field</span>
         </label>
+        <label class="toggle-label" id="flatFillRow" style="opacity:0.55;font-style:italic">
+          <input type="checkbox" id="flatFillToggle">
+          <span>Flat fills (perf)</span>
+        </label>
+        <label class="toggle-label" id="chainBlobRow" style="opacity:0.55;font-style:italic;display:none">
+          <input type="checkbox" id="chainBlobToggle">
+          <span>Chain blobs (perf)</span>
+        </label>
       </div>
       <div style="display:flex;gap:10px;align-self:stretch;align-items:center">
         <div style="display:flex;flex-direction:column;gap:4px">
@@ -1093,6 +1101,10 @@ let hmFrameCounter  = 0;
 
 // ── Perf / lag detection ──────────────────────────────────────────────────────
 let _lagEma = 0, _lagDetected = false, _lagSkip = 0;
+
+// ── Dev perf toggles ─────────────────────────────────────────────────────────
+let _flatFill      = false;   // skip gradients+shadowBlur in drawParticles
+let _chainBlobMode = false;   // replace per-site particle clouds with single blobs
 
 function resize() {
   canvas.width   = window.innerWidth;
@@ -1581,6 +1593,18 @@ function drawChainSiteParticles(cx, cy, r, rotAngle = 0) {
   drawParticles(pts, 0, radiusScale);   // no jitter in chain mode
 }
 
+// Single-gradient blob — replaces full particle cloud in chain blob mode
+function drawChainSiteBlob(cx, cy, r, isControl = false) {
+  const inner = isControl ? '#6090d0' : '#e0403a';
+  const outer = isControl ? '#304070' : '#801818';
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+  g.addColorStop(0,    inner);
+  g.addColorStop(0.65, outer);
+  g.addColorStop(1,    'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+}
+
 // ─── v11-style particle renderer — stochastic jitter + fuzzy glow ────────────
 const particleJitter = [];
 // slow=false (default): step=1.8, decay=0.72 — σ≈1.83px, autocorr ~3.6 frames (used during fission/daughters)
@@ -1610,27 +1634,33 @@ function drawParticles(particles, jitterScale = 1, radiusScale = 1) {
     const mid  = isProton ? '#ff1a65' : '#70707f';
     const core = isProton ? '#ff80b0' : '#b0b0c4';
 
-    // Base fill — soft edge fade
-    const baseGrad = ctx.createRadialGradient(px, py, 0, px, py, R * 1.1);
-    baseGrad.addColorStop(0,    mid);
-    baseGrad.addColorStop(0.82, mid);
-    baseGrad.addColorStop(1,    'rgba(0,0,0,0)');
-    ctx.fillStyle = baseGrad;
-    ctx.beginPath(); ctx.arc(px, py, R * 1.1, 0, Math.PI * 2); ctx.fill();
+    if (_flatFill) {
+      // Flat fill — no gradients, no shadowBlur; ~70% faster per particle
+      ctx.fillStyle = mid;
+      ctx.beginPath(); ctx.arc(px, py, R, 0, Math.PI * 2); ctx.fill();
+    } else {
+      // Base fill — soft edge fade
+      const baseGrad = ctx.createRadialGradient(px, py, 0, px, py, R * 1.1);
+      baseGrad.addColorStop(0,    mid);
+      baseGrad.addColorStop(0.82, mid);
+      baseGrad.addColorStop(1,    'rgba(0,0,0,0)');
+      ctx.fillStyle = baseGrad;
+      ctx.beginPath(); ctx.arc(px, py, R * 1.1, 0, Math.PI * 2); ctx.fill();
 
-    // Inner glow with shadowBlur for fuzzy halo
-    const innerGlow = ctx.createRadialGradient(px, py, 0, px, py, R);
-    innerGlow.addColorStop(0,   core);
-    innerGlow.addColorStop(0.5, core);
-    innerGlow.addColorStop(1,   'rgba(0,0,0,0)');
-    ctx.save();
-    ctx.shadowColor = core;
-    ctx.shadowBlur  = 8;
-    ctx.globalAlpha = 0.82;
-    ctx.fillStyle = innerGlow;
-    ctx.beginPath(); ctx.arc(px, py, R, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
-    ctx.globalAlpha = 1;
+      // Inner glow with shadowBlur for fuzzy halo
+      const innerGlow = ctx.createRadialGradient(px, py, 0, px, py, R);
+      innerGlow.addColorStop(0,   core);
+      innerGlow.addColorStop(0.5, core);
+      innerGlow.addColorStop(1,   'rgba(0,0,0,0)');
+      ctx.save();
+      ctx.shadowColor = core;
+      ctx.shadowBlur  = 8;
+      ctx.globalAlpha = 0.82;
+      ctx.fillStyle = innerGlow;
+      ctx.beginPath(); ctx.arc(px, py, R, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
 
     // + label on protons
     if (isProton) {
@@ -1810,6 +1840,7 @@ function applyTab(tab) {
   document.getElementById('playbackSpeedRow').style.display  = isChain ? 'none' : '';
   document.getElementById('zoomSliderRow').style.display     = isChain ? 'none' : '';
   document.getElementById('showElectricRow').style.display   = isChain ? 'none' : '';
+  document.getElementById('chainBlobRow').style.display      = isChain ? '' : 'none';
   document.getElementById('particleCounters').style.display  = isChain ? 'none' : '';
   document.getElementById('forceModeRow').style.display      = isChain ? 'none' : 'flex';
   // Hide fission-only nucleus options on chain tab; show all on fission tab
@@ -2572,7 +2603,7 @@ function drawChainOverlay() {
     const wobble     = deformAmp * wobbleSignal(ph2, site.wobbleMode || 'dip1');
     const scaleAlong = 1 + wobble;
     const scalePerp  = 1 / (1 + wobble * 0.7);
-    if (showParticles) {
+    if (showParticles && !_chainBlobMode) {
       const offsets = getChainParticleOffsets();
       const cosV = Math.cos(site.viewAngle || 0), sinV = Math.sin(site.viewAngle || 0);
       const cosA = Math.cos(site.angle), sinA = Math.sin(site.angle);
@@ -2612,14 +2643,18 @@ function drawChainOverlay() {
     ctx.restore();
   }
 
-  // Helper: draw one nucleus (fuel or daughter) — outline or particles
-  function drawChainNucleus(cx, cy, r, rot = 0) {
-    if (showParticles) drawChainSiteParticles(cx, cy, r, rot);
-    else drawCloudOutline(cx, cy, r);
+  // Helper: draw one nucleus (fuel or daughter) — blob, outline, or particles
+  function drawChainNucleus(cx, cy, r, rot = 0, isControl = false) {
+    if (_chainBlobMode)    drawChainSiteBlob(cx, cy, r, isControl);
+    else if (showParticles) drawChainSiteParticles(cx, cy, r, rot);
+    else                    drawCloudOutline(cx, cy, r);
   }
-  // Helper: draw split daughters — outline uses union shape; particles draw separately
+  // Helper: draw split daughters — blob, outline, or particles
   function drawChainDaughters(d0, d1) {
-    if (showParticles) {
+    if (_chainBlobMode) {
+      drawChainSiteBlob(d0.x, d0.y, d0.r, false);
+      drawChainSiteBlob(d1.x, d1.y, d1.r, false);
+    } else if (showParticles) {
       drawChainSiteParticles(d0.x, d0.y, d0.r, d0.viewAngle || 0);
       drawChainSiteParticles(d1.x, d1.y, d1.r, d1.viewAngle || 0);
     } else {
@@ -2627,11 +2662,9 @@ function drawChainOverlay() {
     }
   }
   function drawChainDaughter(d) {
-    if (showParticles) {
-      drawChainSiteParticles(d.x, d.y, d.r, d.viewAngle || 0);
-    } else {
-      drawCloudOutline(d.x, d.y, d.r);
-    }
+    if (_chainBlobMode)    drawChainSiteBlob(d.x, d.y, d.r, false);
+    else if (showParticles) drawChainSiteParticles(d.x, d.y, d.r, d.viewAngle || 0);
+    else                    drawCloudOutline(d.x, d.y, d.r);
   }
 
   // Control sites (Ag-107) render at 75% the radius of fuel sites
@@ -2645,7 +2678,7 @@ function drawChainOverlay() {
   if (!_PART) { ctx.save(); ctx.globalAlpha = 0.3; }
   for (const site of enrichSites) {
     if (site.state === 'done' && site.wobbleMode === 'stable') {
-      drawChainNucleus(site.cx, site.cy, siteR(site), site.viewAngle);
+      drawChainNucleus(site.cx, site.cy, siteR(site), site.viewAngle, site.isControl);
     }
     if (site.daughters) {
       if (site.state === 'done') {
@@ -2688,13 +2721,13 @@ function drawChainOverlay() {
   // ── FOREGROUND LAYER: idle fuel, actively fissioning sites, fresh neutrons ──
   for (const site of enrichSites) {
     if (site.state === 'idle') {
-      drawChainNucleus(site.cx, site.cy, siteR(site), site.viewAngle);
+      drawChainNucleus(site.cx, site.cy, siteR(site), site.viewAngle, site.isControl);
     } else if (site.state === 'fission') {
       const t = site.fissT;
       if (t <= PH2_END) {
         drawFissionWobble(site);
       } else if (site.wobbleMode === 'stable') {
-        drawChainNucleus(site.cx, site.cy, site.sphereR, site.viewAngle);
+        drawChainNucleus(site.cx, site.cy, site.sphereR, site.viewAngle, site.isControl);
       } else if (site.daughters) {
         // Draw each daughter in foreground only until it bounces
         for (const d of site.daughters) { if (!d.bounced) drawChainDaughter(d); }
@@ -3919,6 +3952,16 @@ document.getElementById('enrichBtn').addEventListener('click', () => {
 document.getElementById('showElectric').addEventListener('change', function() {
   logAction('Electric field: ' + (this.checked ? 'on' : 'off'));
   heatmapDirty = true;
+  drawStaticFrame();
+});
+
+document.getElementById('flatFillToggle').addEventListener('change', function() {
+  _flatFill = this.checked;
+  drawStaticFrame();
+});
+
+document.getElementById('chainBlobToggle').addEventListener('change', function() {
+  _chainBlobMode = this.checked;
   drawStaticFrame();
 });
 
