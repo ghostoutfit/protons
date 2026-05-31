@@ -1147,10 +1147,17 @@ function _applyPerfTier(tier) {
 }
 
 let _toastTimer = null;
-function _showPerfToast(tier) {
-  const msg = tier === 'low'
-    ? 'Minimal render mode — electric field off'
-    : 'Fast render mode — reduced visual quality';
+function _showPerfToast(tier, isLoad = false) {
+  let msg;
+  if (isLoad) {
+    msg = tier === 'low'
+      ? 'Slow device detected — minimal render mode, electric field off'
+      : 'Slow device detected — fast render mode enabled';
+  } else {
+    msg = tier === 'low'
+      ? 'Minimal render mode — electric field off'
+      : 'Fast render mode — reduced visual quality';
+  }
   const el = document.getElementById('perfToast');
   el.textContent = msg;
   el.style.opacity = '1';
@@ -1159,7 +1166,37 @@ function _showPerfToast(tier) {
   _toastTimer = setTimeout(() => {
     el.style.opacity = '0';
     setTimeout(() => { el.style.display = 'none'; }, 420);
-  }, 3500);
+  }, isLoad ? 6000 : 3500);
+}
+
+// Draws 100 gradient+shadowBlur particles to an offscreen canvas and returns ms.
+// getImageData() at the end forces a GPU sync so the time is real.
+// A 15-particle warm-up pass runs first to settle JIT and GPU init cost.
+function _runPerfBenchmark() {
+  const oc = document.createElement('canvas');
+  oc.width = 300; oc.height = 300;
+  const dc = oc.getContext('2d');
+  const R = PARTICLE_RADIUS;
+  for (let i = 0; i < 15; i++) {
+    const x = 15 + (i % 5) * 40, y = 15 + Math.floor(i / 5) * 40;
+    const g = dc.createRadialGradient(x, y, 0, x, y, R);
+    g.addColorStop(0, '#ff1a65'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    dc.fillStyle = g; dc.beginPath(); dc.arc(x, y, R, 0, Math.PI * 2); dc.fill();
+  }
+  const t0 = performance.now();
+  for (let i = 0; i < 100; i++) {
+    const x = 15 + (i % 10) * 27, y = 15 + Math.floor(i / 10) * 27;
+    const g1 = dc.createRadialGradient(x, y, 0, x, y, R * 1.1);
+    g1.addColorStop(0, '#ff1a65'); g1.addColorStop(0.82, '#ff1a65'); g1.addColorStop(1, 'rgba(0,0,0,0)');
+    dc.fillStyle = g1; dc.beginPath(); dc.arc(x, y, R * 1.1, 0, Math.PI * 2); dc.fill();
+    const g2 = dc.createRadialGradient(x, y, 0, x, y, R);
+    g2.addColorStop(0, '#ff80b0'); g2.addColorStop(0.5, '#ff80b0'); g2.addColorStop(1, 'rgba(0,0,0,0)');
+    dc.save(); dc.shadowColor = '#ff80b0'; dc.shadowBlur = 8; dc.globalAlpha = 0.82;
+    dc.fillStyle = g2; dc.beginPath(); dc.arc(x, y, R, 0, Math.PI * 2); dc.fill();
+    dc.restore(); dc.globalAlpha = 1;
+  }
+  dc.getImageData(0, 0, 1, 1); // force GPU flush so timing is real
+  return performance.now() - t0;
 }
 
 function resize() {
@@ -4762,9 +4799,22 @@ drawSpeedLines();
 applyTab(location.hash === '#chain' ? 'chain' : 'fission');
 initNuclei();
 
-// Startup hardware hint — engage medium tier immediately on weak hardware
-// so the first run isn't choppy while the EMA warms up.
-if ((navigator.hardwareConcurrency || 4) <= 2) _applyPerfTier('medium');
+// Startup benchmark — measure actual gradient render cost and set tier before
+// the first frame. Thresholds are per 100 particles; the full nucleus is ~220,
+// so multiply by ~2.2 to project real frame cost.
+//   < 3ms / 100p → full   (< ~7ms projected → fine at 60fps)
+//   3–6ms / 100p → medium (~7–13ms projected → tight but manageable)
+//   > 6ms / 100p → low    (> ~13ms projected → basically the whole frame budget)
+(function _startupBenchmark() {
+  const ms = _runPerfBenchmark();
+  if (ms > 6) {
+    _applyPerfTier('low');
+    _showPerfToast('low', true);
+  } else if (ms > 3) {
+    _applyPerfTier('medium');
+    _showPerfToast('medium', true);
+  }
+}());
 
 drawStaticFrame();
 if (showParticles && !idleParticleRAF) idleParticleLoop();
