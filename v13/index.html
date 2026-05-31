@@ -916,6 +916,11 @@
       <a href="../v14/index.html" class="tab-btn">Fusion</a>
     </div>
     <div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
+      <select id="qualitySelect">
+        <option value="hi-res">Hi-res</option>
+        <option value="detailed">Detailed</option>
+        <option value="simple">Simple</option>
+      </select>
       <button class="theme-btn active" id="themeA" title="Synthwave"></button>
       <button class="theme-btn" id="themeB" title="Industrial"></button>
       <button class="theme-btn" id="themeC" title="Neon Blue"></button>
@@ -1006,18 +1011,6 @@
           <input type="checkbox" id="hmPixelFreezeToggle">
           <span>Field pixel freeze</span>
         </label>
-        <label class="toggle-label" id="hmPrerenderRow" style="opacity:0.55;font-style:italic">
-          <input type="checkbox" id="hmPrerenderToggle">
-          <span>Field pre-render</span>
-        </label>
-        <div id="qualitySelectRow" style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,0.7);margin-top:2px">
-          <span>Quality:</span>
-          <select id="qualitySelect">
-            <option value="hi-res">Hi-res</option>
-            <option value="detailed">Detailed</option>
-            <option value="simple">Simple</option>
-          </select>
-        </div>
 
       </div>
       <div style="display:flex;gap:10px;align-self:stretch;align-items:center">
@@ -1031,6 +1024,7 @@
         </div>
       </div>
     </div>
+    <div id="qualitySummary" style="display:none;align-self:center;font-size:11px;font-style:italic;color:rgba(255,255,255,0.42);line-height:1.7;white-space:nowrap;padding:0 10px"></div>
   </div>
 </div>
 <span id="scrubPct" style="display:none">0</span>
@@ -1107,9 +1101,7 @@ let hmImgElec  = null;
 let heatmapDirty    = true;
 let hmFrameCounter  = 0;
 let _hmLastRenderMs = 0;     // timestamp of last full heatmap recompute
-let _hmAfterFrames  = null;   // pre-rendered AFTER-phase frames [{frac, canvas}]; null = not built
 let _hmPixelFreeze  = false;  // dev toggle: throttle + DURING freeze
-let _hmUsePrerender = false;  // dev toggle: use pre-rendered frames for AFTER phase
 
 // ── Quality selector ──────────────────────────────────────────────────────────
 let _quality = 'hi-res';  // 'hi-res' | 'detailed' | 'simple'
@@ -1122,15 +1114,22 @@ function _applyQuality(level) {
   _quality = level;
   const el = document.getElementById('qualitySelect');
   if (el) el.value = level;
-  // hi-res: all optimizations off (exact pre-perf-work behavior)
-  // detailed: flat fills + pixel freeze, no pre-render
-  // simple: all optimizations on
-  _flatFill       = level !== 'hi-res';
-  _chainBlobMode  = level !== 'hi-res';
-  _hmPixelFreeze  = level !== 'hi-res';
-  _hmUsePrerender = level === 'simple';
+  // hi-res:   all flags off (exact pre-session behavior)
+  // detailed: flat fills + chain blobs
+  // simple:   detailed + field freeze throttle
+  _flatFill      = level !== 'hi-res';
+  _chainBlobMode = level !== 'hi-res';
+  _hmPixelFreeze = level === 'simple';
   document.getElementById('hmPixelFreezeToggle').checked = _hmPixelFreeze;
-  document.getElementById('hmPrerenderToggle').checked   = _hmUsePrerender;
+  const summaryEl = document.getElementById('qualitySummary');
+  if (summaryEl) {
+    const features = [];
+    if (_flatFill)      features.push('Flat fills');
+    if (_chainBlobMode) features.push('Chain blobs');
+    if (_hmPixelFreeze) features.push('Field freeze');
+    summaryEl.textContent = features.join(' · ');
+    summaryEl.style.display = features.length ? '' : 'none';
+  }
 }
 
 // Draws 100 gradient+shadowBlur particles to an offscreen canvas and returns ms.
@@ -1933,9 +1932,8 @@ function applyTab(tab) {
   document.getElementById('replayBtn').style.display         = isChain ? 'none' : '';
   document.getElementById('playbackSpeedRow').style.display  = isChain ? 'none' : '';
   document.getElementById('zoomSliderRow').style.display     = isChain ? 'none' : '';
-  document.getElementById('showElectricRow').style.display    = isChain ? 'none' : '';
+  document.getElementById('showElectricRow').style.display   = isChain ? 'none' : '';
   document.getElementById('hmPixelFreezeRow').style.display  = isChain ? 'none' : '';
-  document.getElementById('hmPrerenderRow').style.display    = isChain ? 'none' : '';
   document.getElementById('particleCounters').style.display  = isChain ? 'none' : '';
   document.getElementById('forceModeRow').style.display      = isChain ? 'none' : 'flex';
   // Hide fission-only nucleus options on chain tab; show all on fission tab
@@ -2082,7 +2080,6 @@ function initNuclei() {
   for (let k = 0; k < n2; k++)  animMap.push({ fromIdx: parentN[n1+k].i,   prod: 2, toIdx: p2N[k] });
 
   buildNucleusImages();
-  _scheduleHeatmapPrerender();
 }
 
 // Pre-render a nucleus to an offscreen canvas using the full gradient renderer.
@@ -2111,102 +2108,7 @@ function buildNucleusImages() {
   _imgProd2  = _prerenderNucleus(animProd2);
 }
 
-// ─── Heatmap pre-render for AFTER phase ──────────────────────────────────────
 
-function _findNearestHmFrame(frac) {
-  if (!_hmAfterFrames || !_hmAfterFrames.length) return null;
-  let best = _hmAfterFrames[0], bestDist = Math.abs(frac - best.frac);
-  for (const f of _hmAfterFrames) {
-    const d = Math.abs(frac - f.frac);
-    if (d < bestDist) { best = f; bestDist = d; }
-  }
-  return best.canvas;
-}
-
-function _buildHeatmapFrame(scrubFrac) {
-  const W = canvas.width, H = canvas.height;
-  const ff = (scrubFrac - NEUTRON_FRAC) / (1 - NEUTRON_FRAC);
-  const t  = PH1_END + ff * (FISS_STOP_T - PH1_END);
-  const cx = W / 2, cy = H / 2;
-  const sepT      = (t - PH2_END) / (1.0 - PH2_END);
-  const shootT    = Math.min(1, sepT / 0.075);
-  const shootEase = Math.min(1, 3 * shootT * shootT * shootT);
-  if (shootEase >= 1) return null;
-  const rearT     = Math.min(1, sepT / 0.05);
-  const rearEase  = rearT * rearT * (3 - 2 * rearT);
-
-  // angle = 0 for all pre-render frames; playback rotates by staticFissAngle
-  const exitDiag = Math.sqrt(W * W + H * H);
-  const base1 = Math.max(cx + prod1R + PARTICLE_RADIUS + 60 + W * 0.2,
-                         exitDiag / (2 * viewZoom) + prod1R + PARTICLE_RADIUS + 60);
-  const base2 = Math.max(cx + prod2R + PARTICLE_RADIUS + 60 + W * 0.2,
-                         exitDiag / (2 * viewZoom) + prod2R + PARTICLE_RADIUS + 60);
-  const grp1cx = cx - base1 * shootEase, grp1cy = cy;
-  const grp2cx = cx + base2 * shootEase, grp2cy = cy;
-
-  const radiusT    = Math.min(1, sepT / 0.0075);
-  const radiusEase = radiusT * radiusT * (3 - 2 * radiusT);
-  const r1 = animParent.sphereR + (prod1R - animParent.sphereR) * radiusEase;
-  const r2 = animParent.sphereR + (prod2R - animParent.sphereR) * radiusEase;
-
-  const pos1 = [], pos2 = [];
-  for (const m of animMap) {
-    const from = animParent.particles[m.fromIdx];
-    const to   = m.prod === 1 ? animProd1.particles[m.toIdx] : animProd2.particles[m.toIdx];
-    const sdx  = m.prod === 1 ? -base1 : base2;
-    const x = from.x + (to.x - from.x) * rearEase + sdx * shootEase;
-    const y = from.y + (to.y - from.y) * rearEase;
-    (m.prod === 1 ? pos1 : pos2).push({ x, y, type: from.type });
-  }
-
-  const oc = document.createElement('canvas');
-  oc.width = W; oc.height = H;
-  const ocCtx = oc.getContext('2d');
-
-  const sh1x = cx - grp1cx, sh1y = 0;
-  const pos1c = pos1.map(p => ({ ...p, x: p.x + sh1x, y: p.y + sh1y }));
-  const mask1 = [{ cx, cy, r: r1 + PARTICLE_RADIUS * 3.5, bleed: PARTICLE_RADIUS * 2.5 }];
-  ocCtx.save(); ocCtx.translate(-sh1x, 0);
-  drawElectricHeatmap(pos1c, 0.5, 1.0, mask1, 50, ocCtx, true);
-  ocCtx.restore();
-
-  const sh2x = cx - grp2cx, sh2y = 0;
-  const pos2c = pos2.map(p => ({ ...p, x: p.x + sh2x, y: p.y + sh2y }));
-  const mask2 = [{ cx, cy, r: r2 + PARTICLE_RADIUS * 3.5, bleed: PARTICLE_RADIUS * 2.5 }];
-  ocCtx.save(); ocCtx.translate(-sh2x, 0);
-  drawElectricHeatmap(pos2c, 0.5, 1.0, mask2, 50, ocCtx, true);
-  ocCtx.restore();
-
-  ocCtx.save(); ocCtx.globalCompositeOperation = 'screen';
-  drawElectricHeatmap([...pos1, ...pos2], 0.5, 1.0, [{
-    type: 'capsule',
-    cx1: grp1cx, cy1: grp1cy, r1: r1 + PARTICLE_RADIUS * 2,
-    cx2: grp2cx, cy2: grp2cy, r2: r2 + PARTICLE_RADIUS * 2,
-    bleed: PARTICLE_RADIUS * 5
-  }], W, ocCtx, true);
-  ocCtx.restore();
-
-  return oc;
-}
-
-function _scheduleHeatmapPrerender() {
-  _hmAfterFrames = null;
-  if (!animParent || !animProd1 || !animProd2 || !animMap.length) return;
-  const N = 8;
-  // Sample evenly across the window where shootEase < 1 (~_FRAC_AFTER_START to 0.95)
-  const fracs = Array.from({ length: N }, (_, i) =>
-    _FRAC_AFTER_START + (i / (N - 1)) * (1 - _FRAC_AFTER_START) * 0.95);
-  const frames = [];
-  let i = 0;
-  function buildNext() {
-    if (i >= fracs.length) { _hmAfterFrames = frames; return; }
-    const oc = _buildHeatmapFrame(fracs[i]);
-    if (oc) frames.push({ frac: fracs[i], canvas: oc });
-    i++;
-    setTimeout(buildNext, 0);
-  }
-  setTimeout(buildNext, 0);
-}
 
 // ─── Frame content renderer — called inside renderAtFrac's zoom transform ─────
 function drawAnimContent(t) {
@@ -2333,43 +2235,32 @@ function drawAnimContent(t) {
   }
 
   if (showElec && shootEase < 1) {
-    // Pre-render path: blit cached frame rotated to match the fission axis angle.
-    const _preFrame = _hmUsePrerender ? _findNearestHmFrame(currentScrubFrac) : null;
-    if (_preFrame) {
-      ctx.save();
-      ctx.translate(W / 2, H / 2);
-      ctx.rotate(staticFissAngle);
-      ctx.drawImage(_preFrame, -W / 2, -H / 2);
-      ctx.restore();
-    } else {
-      // Live path: three heatmap draws with the translate-to-center trick.
-      const sh1x = cx - grp1cx, sh1y = cy - grp1cy;
-      const pos1c = pos1.map(p => ({ ...p, x: p.x + sh1x, y: p.y + sh1y }));
-      const mask1 = [{ cx, cy, r: r1 + PARTICLE_RADIUS * 3.5, bleed: PARTICLE_RADIUS * 2.5 }];
-      heatmapDirty = true;
-      ctx.save(); ctx.translate(-sh1x, -sh1y);
-      drawElectricHeatmap(pos1c, 0.5, 1.0, mask1);
-      ctx.restore();
+    const sh1x = cx - grp1cx, sh1y = cy - grp1cy;
+    const pos1c = pos1.map(p => ({ ...p, x: p.x + sh1x, y: p.y + sh1y }));
+    const mask1 = [{ cx, cy, r: r1 + PARTICLE_RADIUS * 3.5, bleed: PARTICLE_RADIUS * 2.5 }];
+    heatmapDirty = true;
+    ctx.save(); ctx.translate(-sh1x, -sh1y);
+    drawElectricHeatmap(pos1c, 0.5, 1.0, mask1);
+    ctx.restore();
 
-      const sh2x = cx - grp2cx, sh2y = cy - grp2cy;
-      const pos2c = pos2.map(p => ({ ...p, x: p.x + sh2x, y: p.y + sh2y }));
-      const mask2 = [{ cx, cy, r: r2 + PARTICLE_RADIUS * 3.5, bleed: PARTICLE_RADIUS * 2.5 }];
-      heatmapDirty = true;
-      ctx.save(); ctx.translate(-sh2x, -sh2y);
-      drawElectricHeatmap(pos2c, 0.5, 1.0, mask2);
-      ctx.restore();
+    const sh2x = cx - grp2cx, sh2y = cy - grp2cy;
+    const pos2c = pos2.map(p => ({ ...p, x: p.x + sh2x, y: p.y + sh2y }));
+    const mask2 = [{ cx, cy, r: r2 + PARTICLE_RADIUS * 3.5, bleed: PARTICLE_RADIUS * 2.5 }];
+    heatmapDirty = true;
+    ctx.save(); ctx.translate(-sh2x, -sh2y);
+    drawElectricHeatmap(pos2c, 0.5, 1.0, mask2);
+    ctx.restore();
 
-      heatmapDirty = true;
-      ctx.save();
-      ctx.globalCompositeOperation = 'screen';
-      drawElectricHeatmap([...pos1, ...pos2], 0.5, 1.0, [{
-        type: 'capsule',
-        cx1: grp1cx, cy1: grp1cy, r1: r1 + PARTICLE_RADIUS * 2,
-        cx2: grp2cx, cy2: grp2cy, r2: r2 + PARTICLE_RADIUS * 2,
-        bleed: PARTICLE_RADIUS * 5
-      }], canvas.width);
-      ctx.restore();
-    }
+    heatmapDirty = true;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    drawElectricHeatmap([...pos1, ...pos2], 0.5, 1.0, [{
+      type: 'capsule',
+      cx1: grp1cx, cy1: grp1cy, r1: r1 + PARTICLE_RADIUS * 2,
+      cx2: grp2cx, cy2: grp2cy, r2: r2 + PARTICLE_RADIUS * 2,
+      bleed: PARTICLE_RADIUS * 5
+    }], canvas.width);
+    ctx.restore();
   }
 
   // On chain tab, mainDaughters objects take over drawing after the split
@@ -4170,10 +4061,6 @@ document.getElementById('showElectric').addEventListener('change', function() {
 
 document.getElementById('hmPixelFreezeToggle').addEventListener('change', function() {
   _hmPixelFreeze = this.checked;
-  drawStaticFrame();
-});
-document.getElementById('hmPrerenderToggle').addEventListener('change', function() {
-  _hmUsePrerender = this.checked;
   drawStaticFrame();
 });
 
