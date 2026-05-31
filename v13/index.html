@@ -836,6 +836,27 @@
     pointer-events: none; z-index: 20;
   }
 
+  /* ── Perf toast ──────────────────────────────────────────────────────────── */
+  #perfToast {
+    display: none; position: fixed; bottom: 92px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(20,15,40,0.92); border: 1px solid rgba(255,200,50,0.35);
+    color: rgba(255,215,100,0.9); font-size: 12px; padding: 7px 16px;
+    border-radius: 6px; pointer-events: none; z-index: 25;
+    text-align: center; white-space: nowrap;
+    transition: opacity 0.4s;
+    flex-direction: column; align-items: center; gap: 5px;
+  }
+  #perfToast.has-override { pointer-events: auto; }
+  #perfToastOverride {
+    display: none; background: none; border: none;
+    color: rgba(255,215,100,0.6); font-size: 11px; font-style: italic;
+    cursor: pointer; padding: 0; text-decoration: underline;
+    font-family: inherit;
+  }
+  #perfToast.has-override #perfToastOverride { display: block; }
+  #perfToastOverride:hover { color: rgba(255,215,100,1); }
+
   /* ── Force viz panel — exact v11 forcePanel style ─────────────────────────── */
   #forceVizPanel {
     display: none;
@@ -893,6 +914,7 @@
 
 
 <div id="lagAlert">Lag detected - try hiding fields<br>to increase performance.</div>
+<div id="perfToast"><span id="perfToastMsg"></span><button id="perfToastOverride">Use full quality this session</button></div>
 
 <div id="forceVizPanel">
   <div class="fp-rh nw" data-dir="nw"></div><div class="fp-rh ne" data-dir="ne"></div>
@@ -1098,13 +1120,96 @@ let hmDataElec = null;
 let hmImgElec  = null;
 let heatmapDirty    = true;
 let hmFrameCounter  = 0;
+let _hmLastRenderMs = 0;     // timestamp of last full heatmap recompute
+const _HM_THROTTLE_MS = 50; // ~20fps cap in non-full tier
 
-// ── Perf / lag detection ──────────────────────────────────────────────────────
-let _lagEma = 0, _lagDetected = false, _lagSkip = 0;
+// ── Perf / adaptive quality ───────────────────────────────────────────────────
+let _lagEma      = 0;
+let _lagDetected = false;   // kept for _lagTick frame-skip compat
+let _lagSkip     = 0;
+let _perfTier    = 'full';  // 'full' | 'medium' | 'low'
+let _lagSustDown = 0;       // consecutive frames pushing toward a lower tier
+let _lagSustUp   = 0;       // consecutive frames pushing toward a higher tier
 
-// ── Dev perf toggles ─────────────────────────────────────────────────────────
-let _flatFill      = false;   // skip gradients+shadowBlur in drawParticles
-let _chainBlobMode = false;   // replace per-site particle clouds with single blobs
+// ── Dev perf toggles (also driven automatically by _applyPerfTier) ────────────
+let _flatFill      = false;
+let _chainBlobMode = false;
+
+const _TIER_RANK = { full: 0, medium: 1, low: 2 };
+
+function _applyPerfTier(tier) {
+  _perfTier = tier;
+  const wantReduced = tier !== 'full';
+  if (_flatFill !== wantReduced) {
+    _flatFill = wantReduced;
+    document.getElementById('flatFillToggle').checked = wantReduced;
+  }
+  if (_chainBlobMode !== wantReduced) {
+    _chainBlobMode = wantReduced;
+    document.getElementById('chainBlobToggle').checked = wantReduced;
+  }
+  if (tier === 'low') {
+    const el = document.getElementById('showElectric');
+    if (el && el.checked) { el.checked = false; heatmapDirty = true; }
+  }
+  // Only show lagAlert when at full tier and still lagging (pre-engagement window)
+  if (tier !== 'full') document.getElementById('lagAlert').style.display = 'none';
+}
+
+let _toastTimer = null;
+function _showPerfToast(tier, isLoad = false) {
+  let msg;
+  if (isLoad) {
+    msg = tier === 'low'
+      ? 'Optimized for your device — visuals simplified, electric field off'
+      : 'Optimized for your device — visuals adjusted for smooth playback';
+  } else {
+    msg = tier === 'low'
+      ? 'Minimal render mode — electric field off'
+      : 'Fast render mode — reduced visual quality';
+  }
+  const el  = document.getElementById('perfToast');
+  const msg_el = document.getElementById('perfToastMsg');
+  msg_el.textContent = msg;
+  el.style.display = 'flex';
+  el.style.opacity = '1';
+  el.classList.toggle('has-override', isLoad);
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => {
+    el.style.opacity = '0';
+    setTimeout(() => { el.style.display = 'none'; el.classList.remove('has-override'); }, 420);
+  }, isLoad ? 8000 : 3500);
+}
+
+// Draws 100 gradient+shadowBlur particles to an offscreen canvas and returns ms.
+// getImageData() at the end forces a GPU sync so the time is real.
+// A 15-particle warm-up pass runs first to settle JIT and GPU init cost.
+function _runPerfBenchmark() {
+  const oc = document.createElement('canvas');
+  oc.width = 300; oc.height = 300;
+  const dc = oc.getContext('2d');
+  const R = PARTICLE_RADIUS;
+  for (let i = 0; i < 15; i++) {
+    const x = 15 + (i % 5) * 40, y = 15 + Math.floor(i / 5) * 40;
+    const g = dc.createRadialGradient(x, y, 0, x, y, R);
+    g.addColorStop(0, '#ff1a65'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    dc.fillStyle = g; dc.beginPath(); dc.arc(x, y, R, 0, Math.PI * 2); dc.fill();
+  }
+  const t0 = performance.now();
+  for (let i = 0; i < 100; i++) {
+    const x = 15 + (i % 10) * 27, y = 15 + Math.floor(i / 10) * 27;
+    const g1 = dc.createRadialGradient(x, y, 0, x, y, R * 1.1);
+    g1.addColorStop(0, '#ff1a65'); g1.addColorStop(0.82, '#ff1a65'); g1.addColorStop(1, 'rgba(0,0,0,0)');
+    dc.fillStyle = g1; dc.beginPath(); dc.arc(x, y, R * 1.1, 0, Math.PI * 2); dc.fill();
+    const g2 = dc.createRadialGradient(x, y, 0, x, y, R);
+    g2.addColorStop(0, '#ff80b0'); g2.addColorStop(0.5, '#ff80b0'); g2.addColorStop(1, 'rgba(0,0,0,0)');
+    dc.save(); dc.shadowColor = '#ff80b0'; dc.shadowBlur = 8; dc.globalAlpha = 0.82;
+    dc.fillStyle = g2; dc.beginPath(); dc.arc(x, y, R, 0, Math.PI * 2); dc.fill();
+    dc.restore(); dc.globalAlpha = 1;
+  }
+  dc.getImageData(0, 0, 1, 1); // force GPU flush so timing is real
+  return performance.now() - t0;
+}
 
 function resize() {
   canvas.width   = window.innerWidth;
@@ -1263,8 +1368,15 @@ function generateNucleus(nProtons, nNeutrons, cx, cy, seed) {
 function drawElectricHeatmap(particleList, sampleFrac = 0.5, sigmaScale = 1.0, masks = null, boundsExpand = 50) {
   const fullW = canvas.width, fullH = canvas.height;
 
-  if (!heatmapDirty &&
-      hmComposite.width === fullW && hmComposite.height === fullH) {
+  const _hmSizeMatch = hmComposite.width === fullW && hmComposite.height === fullH;
+  if (!heatmapDirty && _hmSizeMatch) {
+    ctx.drawImage(hmComposite, 0, 0);
+    return;
+  }
+  // In non-full tier, reuse stale cache at ~20fps so the pixel loop doesn't
+  // run every frame. Size-mismatch (resize) always forces a full recompute.
+  if (_perfTier !== 'full' && _hmSizeMatch &&
+      performance.now() - _hmLastRenderMs < _HM_THROTTLE_MS) {
     ctx.drawImage(hmComposite, 0, 0);
     return;
   }
@@ -1378,11 +1490,12 @@ function drawElectricHeatmap(particleList, sampleFrac = 0.5, sigmaScale = 1.0, m
   }
   hmcCtx.clearRect(0, 0, fullW, fullH);
   hmcCtx.imageSmoothingEnabled = true;
-  hmcCtx.imageSmoothingQuality = 'high';
+  hmcCtx.imageSmoothingQuality = 'low';
   hmCtx.putImageData(hmImgElec, 0, 0);
   hmcCtx.drawImage(hmCanvas, 0, 0, fullW, fullH);
   ctx.drawImage(hmComposite, 0, 0);
   heatmapDirty = false;
+  _hmLastRenderMs = performance.now();
 }
 
 // ─── Cloud outline — evenly-spaced scallop circles on a ring ─────────────────
@@ -1648,7 +1761,7 @@ function drawParticles(particles, jitterScale = 1, radiusScale = 1, drawCtx = ct
     const mid  = isProton ? '#ff1a65' : '#70707f';
     const core = isProton ? '#ff80b0' : '#b0b0c4';
 
-    if (_flatFill) {
+    if (_flatFill && currentTab === 'fission') {
       // Flat fill — no gradients, no shadowBlur; ~70% faster per particle
       dc.fillStyle = mid;
       dc.beginPath(); dc.arc(px, py, R, 0, Math.PI * 2); dc.fill();
@@ -2270,13 +2383,40 @@ function renderAtFrac(frac) {
   updateParticleCounters();
   captureFrame();
 
-  // ── Lag EMA: measure actual render time ──
+  // ── Adaptive quality: EMA → tier transitions ──
   { const _dt = performance.now() - _lagDrawT0;
     _lagEma = _lagEma * 0.9 + _dt * 0.1;
+
+    // Desired tier based on current EMA
+    const wantTier = _lagEma > 50 ? 'low' : _lagEma > 25 ? 'medium' : 'full';
+    const wantDown = _TIER_RANK[wantTier] > _TIER_RANK[_perfTier];
+    const wantUp   = _TIER_RANK[wantTier] < _TIER_RANK[_perfTier];
+
+    if (wantDown) {
+      _lagSustDown++; _lagSustUp = 0;
+      if (_lagSustDown >= 90) {                          // ~1.5s sustained lag
+        _lagSustDown = 0;
+        const next = _perfTier === 'full' ? 'medium' : 'low';
+        _applyPerfTier(next);
+        _showPerfToast(next);
+      }
+    } else if (wantUp) {
+      _lagSustUp++; _lagSustDown = 0;
+      if (_lagSustUp >= 300) {                           // ~5s clean performance
+        _lagSustUp = 0;
+        const next = _perfTier === 'low' ? 'medium' : 'full';
+        _applyPerfTier(next);
+      }
+    } else {
+      _lagSustDown = 0; _lagSustUp = 0;
+    }
+
+    // _lagDetected drives the frame-skip in _lagTick; lagAlert only shows pre-engagement
     const det = _lagEma > 40;
     if (det !== _lagDetected) {
       _lagDetected = det;
-      document.getElementById('lagAlert').style.display = det ? 'block' : 'none';
+      if (_perfTier === 'full')
+        document.getElementById('lagAlert').style.display = det ? 'block' : 'none';
     }
   }
 }
@@ -2688,28 +2828,27 @@ function drawChainOverlay() {
     ctx.restore();
   }
 
-  // Helper: draw one nucleus (fuel or daughter) — blob, outline, or particles
+  // Helper: draw one nucleus (fuel or daughter) — outline wins; blob replaces particles only
   function drawChainNucleus(cx, cy, r, rot = 0, isControl = false) {
-    if (_chainBlobMode)    drawChainSiteBlob(cx, cy, r, isControl);
-    else if (showParticles) drawChainSiteParticles(cx, cy, r, rot);
-    else                    drawCloudOutline(cx, cy, r);
+    if (!showParticles)      drawCloudOutline(cx, cy, r);
+    else if (_chainBlobMode) drawChainSiteBlob(cx, cy, r, isControl);
+    else                     drawChainSiteParticles(cx, cy, r, rot);
   }
-  // Helper: draw split daughters — blob, outline, or particles
   function drawChainDaughters(d0, d1) {
-    if (_chainBlobMode) {
+    if (!showParticles) {
+      drawFissionOutline(d0.x, d0.y, d0.r, d1.x, d1.y, d1.r);
+    } else if (_chainBlobMode) {
       drawChainSiteBlob(d0.x, d0.y, d0.r, false);
       drawChainSiteBlob(d1.x, d1.y, d1.r, false);
-    } else if (showParticles) {
+    } else {
       drawChainSiteParticles(d0.x, d0.y, d0.r, d0.viewAngle || 0);
       drawChainSiteParticles(d1.x, d1.y, d1.r, d1.viewAngle || 0);
-    } else {
-      drawFissionOutline(d0.x, d0.y, d0.r, d1.x, d1.y, d1.r);
     }
   }
   function drawChainDaughter(d) {
-    if (_chainBlobMode)    drawChainSiteBlob(d.x, d.y, d.r, false);
-    else if (showParticles) drawChainSiteParticles(d.x, d.y, d.r, d.viewAngle || 0);
-    else                    drawCloudOutline(d.x, d.y, d.r);
+    if (!showParticles)      drawCloudOutline(d.x, d.y, d.r);
+    else if (_chainBlobMode) drawChainSiteBlob(d.x, d.y, d.r, false);
+    else                     drawChainSiteParticles(d.x, d.y, d.r, d.viewAngle || 0);
   }
 
   // Control sites (Ag-107) render at 75% the radius of fuel sites
@@ -3792,6 +3931,7 @@ document.getElementById('goBtn').addEventListener('click', () => {
   if (currentTab === 'chain') { isFirstFission = true; isFirstChainFission = true; }
   for (const s of enrichSites) s.state = 'idle';
   heatmapDirty    = true;
+  _lagEma = 0; _lagSustDown = 0; _lagSustUp = 0;   // fresh perf baseline each run
   // Reset the fission axis so the force viz panel shows a neutral horizontal
   // pair of arrows during the neutron's flight — the actual axis is chosen
   // when the neutron impacts the nucleus (in neutronTick).
@@ -4007,6 +4147,15 @@ document.getElementById('flatFillToggle').addEventListener('change', function() 
 
 document.getElementById('chainBlobToggle').addEventListener('change', function() {
   _chainBlobMode = this.checked;
+  drawStaticFrame();
+});
+
+document.getElementById('perfToastOverride').addEventListener('click', function() {
+  clearTimeout(_toastTimer);
+  const el = document.getElementById('perfToast');
+  el.style.opacity = '0';
+  setTimeout(() => { el.style.display = 'none'; el.classList.remove('has-override'); }, 420);
+  _applyPerfTier('full');
   drawStaticFrame();
 });
 
@@ -4670,6 +4819,24 @@ setParticleWheelActive(document.querySelector('.awheel-item[data-pmode="particle
 drawSpeedLines();
 applyTab(location.hash === '#chain' ? 'chain' : 'fission');
 initNuclei();
+
+// Startup benchmark — measure actual gradient render cost and set tier before
+// the first frame. Thresholds are per 100 particles; the full nucleus is ~220,
+// so multiply by ~2.2 to project real frame cost.
+//   < 3ms / 100p → full   (< ~7ms projected → fine at 60fps)
+//   3–6ms / 100p → medium (~7–13ms projected → tight but manageable)
+//   > 6ms / 100p → low    (> ~13ms projected → basically the whole frame budget)
+(function _startupBenchmark() {
+  const ms = _runPerfBenchmark();
+  if (ms > 6) {
+    _applyPerfTier('low');
+    _showPerfToast('low', true);
+  } else if (ms > 3) {
+    _applyPerfTier('medium');
+    _showPerfToast('medium', true);
+  }
+}());
+
 drawStaticFrame();
 if (showParticles && !idleParticleRAF) idleParticleLoop();
 
