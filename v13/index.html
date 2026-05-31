@@ -829,26 +829,13 @@
   body.screenshot-mode .nucleus-opt.selected { border-color: rgba(200,30,60,0.55) !important; background: rgba(255,180,190,0.4) !important; }
   body.screenshot-mode .nucleus-opt-label { color: rgba(0,0,0,0.75) !important; }
 
-  /* ── Perf toast ──────────────────────────────────────────────────────────── */
-  #perfToast {
-    display: none; position: fixed; bottom: 92px; left: 50%;
-    transform: translateX(-50%);
-    background: rgba(20,15,40,0.92); border: 1px solid rgba(255,200,50,0.35);
-    color: rgba(255,215,100,0.9); font-size: 12px; padding: 7px 16px;
-    border-radius: 6px; pointer-events: none; z-index: 25;
-    text-align: center; white-space: nowrap;
-    transition: opacity 0.4s;
-    flex-direction: column; align-items: center; gap: 5px;
+  /* ── Quality select ──────────────────────────────────────────────────────── */
+  #qualitySelect {
+    background: #1a1428; color: rgba(255,255,255,0.85);
+    border: 1px solid rgba(255,255,255,0.2); border-radius: 4px;
+    padding: 2px 4px; font-size: 12px; font-family: inherit; cursor: pointer;
   }
-  #perfToast.has-override { pointer-events: auto; }
-  #perfToastOverride {
-    display: none; background: none; border: none;
-    color: rgba(255,215,100,0.6); font-size: 11px; font-style: italic;
-    cursor: pointer; padding: 0; text-decoration: underline;
-    font-family: inherit;
-  }
-  #perfToast.has-override #perfToastOverride { display: block; }
-  #perfToastOverride:hover { color: rgba(255,215,100,1); }
+  #qualitySelect:focus { outline: 1px solid rgba(255,100,100,0.5); }
 
   /* ── Force viz panel — exact v11 forcePanel style ─────────────────────────── */
   #forceVizPanel {
@@ -905,8 +892,6 @@
 
 <canvas id="canvas"></canvas>
 
-
-<div id="perfToast"><span id="perfToastMsg"></span><button id="perfToastOverride">Use full quality this session</button></div>
 
 <div id="forceVizPanel">
   <div class="fp-rh nw" data-dir="nw"></div><div class="fp-rh ne" data-dir="ne"></div>
@@ -1025,6 +1010,14 @@
           <input type="checkbox" id="hmPrerenderToggle">
           <span>Field pre-render</span>
         </label>
+        <div id="qualitySelectRow" style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,0.7);margin-top:2px">
+          <span>Quality:</span>
+          <select id="qualitySelect">
+            <option value="hi-res">Hi-res</option>
+            <option value="detailed">Detailed</option>
+            <option value="simple">Simple</option>
+          </select>
+        </div>
 
       </div>
       <div style="display:flex;gap:10px;align-self:stretch;align-items:center">
@@ -1114,57 +1107,30 @@ let hmImgElec  = null;
 let heatmapDirty    = true;
 let hmFrameCounter  = 0;
 let _hmLastRenderMs = 0;     // timestamp of last full heatmap recompute
-// Throttle intervals: medium → ~20fps (50ms), low → ~10fps (100ms)
-const _HM_THROTTLE = { full: 0, medium: 50, low: 100 };
 let _hmAfterFrames  = null;   // pre-rendered AFTER-phase frames [{frac, canvas}]; null = not built
 let _hmPixelFreeze  = false;  // dev toggle: throttle + DURING freeze
 let _hmUsePrerender = false;  // dev toggle: use pre-rendered frames for AFTER phase
 
-// ── Perf / adaptive quality ───────────────────────────────────────────────────
-let _lagEma      = 0;
-let _perfTier    = 'full';  // 'full' | 'medium' | 'low'
-let _lagSustDown = 0;       // consecutive frames pushing toward a lower tier
+// ── Quality selector ──────────────────────────────────────────────────────────
+let _quality = 'hi-res';  // 'hi-res' | 'detailed' | 'simple'
 
-// ── Dev perf toggles (also driven automatically by _applyPerfTier) ────────────
+// ── Dev perf toggles (driven by _applyQuality) ────────────────────────────────
 let _flatFill      = false;
 let _chainBlobMode = false;
 
-const _TIER_RANK = { full: 0, medium: 1, low: 2 };
-
-function _applyPerfTier(tier) {
-  _perfTier = tier;
-  const wantReduced = tier !== 'full';
-  _flatFill      = wantReduced;
-  _chainBlobMode = wantReduced;
-  _hmPixelFreeze  = wantReduced;
-  _hmUsePrerender = wantReduced;
-  document.getElementById('hmPixelFreezeToggle').checked  = wantReduced;
-  document.getElementById('hmPrerenderToggle').checked    = wantReduced;
-}
-
-let _toastTimer = null;
-function _showPerfToast(tier, isLoad = false) {
-  let msg;
-  if (isLoad) {
-    msg = tier === 'low'
-      ? 'Optimized for your device — minimal visual quality for smooth playback'
-      : 'Optimized for your device — visuals adjusted for smooth playback';
-  } else {
-    msg = tier === 'low'
-      ? 'Minimal render mode'
-      : 'Fast render mode — reduced visual quality';
-  }
-  const el  = document.getElementById('perfToast');
-  const msg_el = document.getElementById('perfToastMsg');
-  msg_el.textContent = msg;
-  el.style.display = 'flex';
-  el.style.opacity = '1';
-  el.classList.toggle('has-override', isLoad);
-  clearTimeout(_toastTimer);
-  _toastTimer = setTimeout(() => {
-    el.style.opacity = '0';
-    setTimeout(() => { el.style.display = 'none'; el.classList.remove('has-override'); }, 420);
-  }, isLoad ? 8000 : 3500);
+function _applyQuality(level) {
+  _quality = level;
+  const el = document.getElementById('qualitySelect');
+  if (el) el.value = level;
+  // hi-res: all optimizations off (exact pre-perf-work behavior)
+  // detailed: flat fills + pixel freeze, no pre-render
+  // simple: all optimizations on
+  _flatFill       = level !== 'hi-res';
+  _chainBlobMode  = level !== 'hi-res';
+  _hmPixelFreeze  = level !== 'hi-res';
+  _hmUsePrerender = level === 'simple';
+  document.getElementById('hmPixelFreezeToggle').checked = _hmPixelFreeze;
+  document.getElementById('hmPrerenderToggle').checked   = _hmUsePrerender;
 }
 
 // Draws 100 gradient+shadowBlur particles to an offscreen canvas and returns ms.
@@ -1361,7 +1327,8 @@ function drawElectricHeatmap(particleList, sampleFrac = 0.5, sigmaScale = 1.0, m
   }
   // Pixel-freeze mode: throttle to tier interval + freeze during DURING phase.
   if (!_forceRender && _hmPixelFreeze) {
-    const _hmInterval = _HM_THROTTLE[_perfTier] || 0;
+    const _hmIntervalMap = { 'hi-res': 0, 'detailed': 50, 'simple': 100 };
+    const _hmInterval = _hmIntervalMap[_quality] || 0;
     if (_hmInterval > 0 && _hmSizeMatch &&
         performance.now() - _hmLastRenderMs < _hmInterval) {
       destCtx.drawImage(hmComposite, 0, 0);
@@ -2431,7 +2398,6 @@ function drawAnimContent(t) {
 
 // ─── Canonical renderer — single source of truth for any scrub position ───────
 function renderAtFrac(frac) {
-  const _lagDrawT0 = performance.now();
   ctx.fillStyle = document.body.classList.contains('screenshot-mode') ? getBgColor() : '#05040f';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   if (!animParent) { if (currentTab === 'chain') drawChainBarChart(); drawEnergyGraph(); return; }
@@ -2485,23 +2451,6 @@ function renderAtFrac(frac) {
   drawEnergyGraph();
   updateParticleCounters();
   captureFrame();
-
-  // ── Adaptive quality: EMA → downgrade only (never auto-upgrades mid-run) ──
-  { const _dt = performance.now() - _lagDrawT0;
-    _lagEma = _lagEma * 0.9 + _dt * 0.1;
-
-    const wantTier = _lagEma > 50 ? 'low' : _lagEma > 25 ? 'medium' : 'full';
-    if (_TIER_RANK[wantTier] > _TIER_RANK[_perfTier]) {
-      if (++_lagSustDown >= 90) {                        // ~1.5s sustained lag
-        _lagSustDown = 0;
-        const next = _perfTier === 'full' ? 'medium' : 'low';
-        _applyPerfTier(next);
-        _showPerfToast(next);
-      }
-    } else {
-      _lagSustDown = 0;
-    }
-  }
 }
 
 // ─── Particle counter ─────────────────────────────────────────────────────────
@@ -4010,7 +3959,6 @@ document.getElementById('goBtn').addEventListener('click', () => {
   if (currentTab === 'chain') { isFirstFission = true; isFirstChainFission = true; }
   for (const s of enrichSites) s.state = 'idle';
   heatmapDirty    = true;
-  _lagEma = 0; _lagSustDown = 0;   // fresh perf baseline each run
   // Reset the fission axis so the force viz panel shows a neutral horizontal
   // pair of arrows during the neutron's flight — the actual axis is chosen
   // when the neutron impacts the nucleus (in neutronTick).
@@ -4229,12 +4177,8 @@ document.getElementById('hmPrerenderToggle').addEventListener('change', function
   drawStaticFrame();
 });
 
-document.getElementById('perfToastOverride').addEventListener('click', function() {
-  clearTimeout(_toastTimer);
-  const el = document.getElementById('perfToast');
-  el.style.opacity = '0';
-  setTimeout(() => { el.style.display = 'none'; el.classList.remove('has-override'); }, 420);
-  _applyPerfTier('full');
+document.getElementById('qualitySelect').addEventListener('change', function() {
+  _applyQuality(this.value);
   drawStaticFrame();
 });
 
@@ -4899,21 +4843,20 @@ drawSpeedLines();
 applyTab(location.hash === '#chain' ? 'chain' : 'fission');
 initNuclei();
 
-// Startup benchmark — measure actual gradient render cost and set tier before
-// the first frame. Thresholds are per 100 particles; the full nucleus is ~220,
-// so multiply by ~2.2 to project real frame cost.
-//   < 3ms / 100p → full   (< ~7ms projected → fine at 60fps)
-//   3–6ms / 100p → medium (~7–13ms projected → tight but manageable)
-//   > 6ms / 100p → low    (> ~13ms projected → basically the whole frame budget)
+// Startup benchmark — measure actual gradient render cost and set initial quality.
+// Thresholds are per 100 particles; the full nucleus is ~220 so multiply by ~2.2
+// to project real frame cost.
+//   < 3ms / 100p → hi-res   (< ~7ms projected — fine at 60fps)
+//   3–6ms / 100p → detailed (~7–13ms projected — reduced effects)
+//   > 6ms / 100p → simple   (> ~13ms projected — minimal rendering)
 (function _startupBenchmark() {
   const ms = _runPerfBenchmark();
   if (ms > 6) {
-    _applyPerfTier('low');
-    _showPerfToast('low', true);
+    _applyQuality('simple');
   } else if (ms > 3) {
-    _applyPerfTier('medium');
-    _showPerfToast('medium', true);
+    _applyQuality('detailed');
   }
+  // else stays 'hi-res' (default)
 }());
 
 drawStaticFrame();
