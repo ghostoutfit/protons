@@ -1007,10 +1007,6 @@
           <input type="checkbox" id="showElectric">
           <span class="field-label-electric">Show electric field</span>
         </label>
-        <label class="toggle-label" id="hmPixelFreezeRow" style="opacity:0.55;font-style:italic">
-          <input type="checkbox" id="hmPixelFreezeToggle">
-          <span>Field pixel freeze</span>
-        </label>
 
       </div>
       <div style="display:flex;gap:10px;align-self:stretch;align-items:center">
@@ -1100,8 +1096,6 @@ let hmDataElec = null;
 let hmImgElec  = null;
 let heatmapDirty    = true;
 let hmFrameCounter  = 0;
-let _hmLastRenderMs = 0;     // timestamp of last full heatmap recompute
-let _hmPixelFreeze  = false;  // dev toggle: throttle + DURING freeze
 
 // ── Quality selector ──────────────────────────────────────────────────────────
 let _quality = 'hi-res';  // 'hi-res' | 'detailed' | 'simple'
@@ -1119,14 +1113,12 @@ function _applyQuality(level) {
   // simple:   detailed + field freeze throttle
   _flatFill      = level !== 'hi-res';
   _chainBlobMode = level !== 'hi-res';
-  _hmPixelFreeze = level === 'simple';
-  document.getElementById('hmPixelFreezeToggle').checked = _hmPixelFreeze;
   const summaryEl = document.getElementById('qualitySummary');
   if (summaryEl) {
     const features = [];
     if (_flatFill)      features.push('Flat fills');
     if (_chainBlobMode) features.push('Chain blobs');
-    if (_hmPixelFreeze) features.push('Field freeze');
+    if (level === 'simple') features.push('Low-res field');
     summaryEl.textContent = features.join(' · ');
     summaryEl.style.display = features.length ? '' : 'none';
   }
@@ -1324,25 +1316,7 @@ function drawElectricHeatmap(particleList, sampleFrac = 0.5, sigmaScale = 1.0, m
     destCtx.drawImage(hmComposite, 0, 0);
     return;
   }
-  // Pixel-freeze mode: throttle to tier interval + freeze during DURING phase.
-  if (!_forceRender && _hmPixelFreeze) {
-    const _hmIntervalMap = { 'hi-res': 0, 'detailed': 50, 'simple': 100 };
-    const _hmInterval = _hmIntervalMap[_quality] || 0;
-    if (_hmInterval > 0 && _hmSizeMatch &&
-        performance.now() - _hmLastRenderMs < _hmInterval) {
-      destCtx.drawImage(hmComposite, 0, 0);
-      return;
-    }
-    // Freeze during nucleus deformation (neutron impact → daughters start separating).
-    // _FRAC_AFTER_START is the scrubFrac where t = PH2_END (Phase 3 begins).
-    if (currentTab === 'fission' && _hmSizeMatch &&
-        currentScrubFrac >= NEUTRON_FRAC && currentScrubFrac < _FRAC_AFTER_START) {
-      destCtx.drawImage(hmComposite, 0, 0);
-      return;
-    }
-  }
-
-  const scale    = 0.25;
+  const scale    = _quality === 'simple' ? 0.08 : 0.25;
   const w        = Math.ceil(fullW * scale);
   const h        = Math.ceil(fullH * scale);
   const invScale = 1 / scale;
@@ -1457,7 +1431,6 @@ function drawElectricHeatmap(particleList, sampleFrac = 0.5, sigmaScale = 1.0, m
   destCtx.drawImage(hmComposite, 0, 0);
   if (destCtx === ctx) {
     heatmapDirty = false;
-    _hmLastRenderMs = performance.now();
   }
 }
 
@@ -1933,7 +1906,6 @@ function applyTab(tab) {
   document.getElementById('playbackSpeedRow').style.display  = isChain ? 'none' : '';
   document.getElementById('zoomSliderRow').style.display     = isChain ? 'none' : '';
   document.getElementById('showElectricRow').style.display   = isChain ? 'none' : '';
-  document.getElementById('hmPixelFreezeRow').style.display  = isChain ? 'none' : '';
   document.getElementById('particleCounters').style.display  = isChain ? 'none' : '';
   document.getElementById('forceModeRow').style.display      = isChain ? 'none' : 'flex';
   // Hide fission-only nucleus options on chain tab; show all on fission tab
@@ -2412,7 +2384,7 @@ let staticNeutronIY = 0;
 
 const NEUTRON_FRAC = 0.2;
 // scrubFrac at which drawAnimContent enters Phase 3 (t = PH2_END, daughters start separating)
-const _FRAC_AFTER_START = NEUTRON_FRAC + ((PH2_END - PH1_END) / (FISS_STOP_T - PH1_END)) * (1 - NEUTRON_FRAC);
+
 const ENRICH_ZOOM_SHOW = 0.6;  // show Enrich button at this zoom or below
 
 // ─── Enrich / chain-reaction system ──────────────────────────────────────────
@@ -4058,11 +4030,6 @@ document.getElementById('showElectric').addEventListener('change', function() {
   drawStaticFrame();
 });
 
-
-document.getElementById('hmPixelFreezeToggle').addEventListener('change', function() {
-  _hmPixelFreeze = this.checked;
-  drawStaticFrame();
-});
 
 document.getElementById('qualitySelect').addEventListener('change', function() {
   _applyQuality(this.value);
