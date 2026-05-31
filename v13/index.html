@@ -829,13 +829,6 @@
   body.screenshot-mode .nucleus-opt.selected { border-color: rgba(200,30,60,0.55) !important; background: rgba(255,180,190,0.4) !important; }
   body.screenshot-mode .nucleus-opt-label { color: rgba(0,0,0,0.75) !important; }
 
-  /* ── Lag alert ───────────────────────────────────────────────────────────── */
-  #lagAlert {
-    display: none; position: fixed; right: 8px; bottom: 86px;
-    font-size: 11px; color: rgba(255,215,0,0.5); font-style: italic;
-    pointer-events: none; z-index: 20;
-  }
-
   /* ── Perf toast ──────────────────────────────────────────────────────────── */
   #perfToast {
     display: none; position: fixed; bottom: 92px; left: 50%;
@@ -913,7 +906,6 @@
 <canvas id="canvas"></canvas>
 
 
-<div id="lagAlert">Lag detected - try hiding fields<br>to increase performance.</div>
 <div id="perfToast"><span id="perfToastMsg"></span><button id="perfToastOverride">Use full quality this session</button></div>
 
 <div id="forceVizPanel">
@@ -1025,14 +1017,7 @@
           <input type="checkbox" id="showElectric">
           <span class="field-label-electric">Show electric field</span>
         </label>
-        <label class="toggle-label" id="flatFillRow" style="opacity:0.55;font-style:italic">
-          <input type="checkbox" id="flatFillToggle">
-          <span>Flat fills (perf)</span>
-        </label>
-        <label class="toggle-label" id="chainBlobRow" style="opacity:0.55;font-style:italic;display:none">
-          <input type="checkbox" id="chainBlobToggle">
-          <span>Chain blobs (perf)</span>
-        </label>
+
       </div>
       <div style="display:flex;gap:10px;align-self:stretch;align-items:center">
         <div style="display:flex;flex-direction:column;gap:4px">
@@ -1121,15 +1106,13 @@ let hmImgElec  = null;
 let heatmapDirty    = true;
 let hmFrameCounter  = 0;
 let _hmLastRenderMs = 0;     // timestamp of last full heatmap recompute
-const _HM_THROTTLE_MS = 50; // ~20fps cap in non-full tier
+// Throttle intervals: medium → ~20fps (50ms), low → ~10fps (100ms)
+const _HM_THROTTLE = { full: 0, medium: 50, low: 100 };
 
 // ── Perf / adaptive quality ───────────────────────────────────────────────────
 let _lagEma      = 0;
-let _lagDetected = false;   // kept for _lagTick frame-skip compat
-let _lagSkip     = 0;
 let _perfTier    = 'full';  // 'full' | 'medium' | 'low'
 let _lagSustDown = 0;       // consecutive frames pushing toward a lower tier
-let _lagSustUp   = 0;       // consecutive frames pushing toward a higher tier
 
 // ── Dev perf toggles (also driven automatically by _applyPerfTier) ────────────
 let _flatFill      = false;
@@ -1140,20 +1123,8 @@ const _TIER_RANK = { full: 0, medium: 1, low: 2 };
 function _applyPerfTier(tier) {
   _perfTier = tier;
   const wantReduced = tier !== 'full';
-  if (_flatFill !== wantReduced) {
-    _flatFill = wantReduced;
-    document.getElementById('flatFillToggle').checked = wantReduced;
-  }
-  if (_chainBlobMode !== wantReduced) {
-    _chainBlobMode = wantReduced;
-    document.getElementById('chainBlobToggle').checked = wantReduced;
-  }
-  if (tier === 'low') {
-    const el = document.getElementById('showElectric');
-    if (el && el.checked) { el.checked = false; heatmapDirty = true; }
-  }
-  // Only show lagAlert when at full tier and still lagging (pre-engagement window)
-  if (tier !== 'full') document.getElementById('lagAlert').style.display = 'none';
+  _flatFill      = wantReduced;
+  _chainBlobMode = wantReduced;
 }
 
 let _toastTimer = null;
@@ -1161,11 +1132,11 @@ function _showPerfToast(tier, isLoad = false) {
   let msg;
   if (isLoad) {
     msg = tier === 'low'
-      ? 'Optimized for your device — visuals simplified, electric field off'
+      ? 'Optimized for your device — minimal visual quality for smooth playback'
       : 'Optimized for your device — visuals adjusted for smooth playback';
   } else {
     msg = tier === 'low'
-      ? 'Minimal render mode — electric field off'
+      ? 'Minimal render mode'
       : 'Fast render mode — reduced visual quality';
   }
   const el  = document.getElementById('perfToast');
@@ -1375,8 +1346,9 @@ function drawElectricHeatmap(particleList, sampleFrac = 0.5, sigmaScale = 1.0, m
   }
   // In non-full tier, reuse stale cache at ~20fps so the pixel loop doesn't
   // run every frame. Size-mismatch (resize) always forces a full recompute.
-  if (_perfTier !== 'full' && _hmSizeMatch &&
-      performance.now() - _hmLastRenderMs < _HM_THROTTLE_MS) {
+  const _hmInterval = _HM_THROTTLE[_perfTier] || 0;
+  if (_hmInterval > 0 && _hmSizeMatch &&
+      performance.now() - _hmLastRenderMs < _hmInterval) {
     ctx.drawImage(hmComposite, 0, 0);
     return;
   }
@@ -1970,7 +1942,6 @@ function applyTab(tab) {
   document.getElementById('playbackSpeedRow').style.display  = isChain ? 'none' : '';
   document.getElementById('zoomSliderRow').style.display     = isChain ? 'none' : '';
   document.getElementById('showElectricRow').style.display   = isChain ? 'none' : '';
-  document.getElementById('chainBlobRow').style.display      = isChain ? '' : 'none';
   document.getElementById('particleCounters').style.display  = isChain ? 'none' : '';
   document.getElementById('forceModeRow').style.display      = isChain ? 'none' : 'flex';
   // Hide fission-only nucleus options on chain tab; show all on fission tab
@@ -2383,40 +2354,20 @@ function renderAtFrac(frac) {
   updateParticleCounters();
   captureFrame();
 
-  // ── Adaptive quality: EMA → tier transitions ──
+  // ── Adaptive quality: EMA → downgrade only (never auto-upgrades mid-run) ──
   { const _dt = performance.now() - _lagDrawT0;
     _lagEma = _lagEma * 0.9 + _dt * 0.1;
 
-    // Desired tier based on current EMA
     const wantTier = _lagEma > 50 ? 'low' : _lagEma > 25 ? 'medium' : 'full';
-    const wantDown = _TIER_RANK[wantTier] > _TIER_RANK[_perfTier];
-    const wantUp   = _TIER_RANK[wantTier] < _TIER_RANK[_perfTier];
-
-    if (wantDown) {
-      _lagSustDown++; _lagSustUp = 0;
-      if (_lagSustDown >= 90) {                          // ~1.5s sustained lag
+    if (_TIER_RANK[wantTier] > _TIER_RANK[_perfTier]) {
+      if (++_lagSustDown >= 90) {                        // ~1.5s sustained lag
         _lagSustDown = 0;
         const next = _perfTier === 'full' ? 'medium' : 'low';
         _applyPerfTier(next);
         _showPerfToast(next);
       }
-    } else if (wantUp) {
-      _lagSustUp++; _lagSustDown = 0;
-      if (_lagSustUp >= 300) {                           // ~5s clean performance
-        _lagSustUp = 0;
-        const next = _perfTier === 'low' ? 'medium' : 'full';
-        _applyPerfTier(next);
-      }
     } else {
-      _lagSustDown = 0; _lagSustUp = 0;
-    }
-
-    // _lagDetected drives the frame-skip in _lagTick; lagAlert only shows pre-engagement
-    const det = _lagEma > 40;
-    if (det !== _lagDetected) {
-      _lagDetected = det;
-      if (_perfTier === 'full')
-        document.getElementById('lagAlert').style.display = det ? 'block' : 'none';
+      _lagSustDown = 0;
     }
   }
 }
@@ -2930,7 +2881,7 @@ function ensureChainLoop() {
   lastChainTime = null;  // reset so first tick dt = 0
   function chainTick(now) {
     updateChain(now);
-    if (!_lagTick(now)) drawStaticFrame();
+    drawStaticFrame();
     const stillActive = chainNeutrons.length > 0 ||
                         enrichSites.some(s => s.state === 'fission' || s.daughters) ||
                         mainDaughters !== null;
@@ -3255,12 +3206,6 @@ new MutationObserver(() => {
 }).observe(document.getElementById('scrubPct'), { childList: true, characterData: true, subtree: true });
 
 
-// Returns true if the current frame's draw calls should be skipped (lag throttle).
-// EMA is tracked in renderAtFrac() via actual draw time — not here.
-function _lagTick(now) {
-  _lagSkip++;
-  return _lagDetected && _lagSkip % 4 !== 0;
-}
 
 function neutronTick(now) {
   if (neutronState !== 'flying') return;
@@ -3319,7 +3264,7 @@ function neutronTick(now) {
 
   if (currentTab !== 'chain') updateParticleJitter(animParent.particles.length, 1, true);
   syncForceVizVisibility();
-  if (!_lagTick(now)) { renderAtFrac(currentScrubFrac); drawForceViz(); }
+  renderAtFrac(currentScrubFrac); drawForceViz();
   neutronRAF = requestAnimationFrame(neutronTick);
 }
 
@@ -3355,7 +3300,7 @@ function bounceTick(now) {
 
   updateParticleJitter(animParent.particles.length, 1, true);
   syncForceVizVisibility();
-  if (!_lagTick(now)) { renderAtFrac(0); drawForceViz(); }
+  renderAtFrac(0); drawForceViz();
   neutronRAF = requestAnimationFrame(bounceTick);
 }
 
@@ -3386,7 +3331,7 @@ function passTick(now) {
 
   updateParticleJitter(animParent.particles.length, 1, true);
   syncForceVizVisibility();
-  if (!_lagTick(now)) { renderAtFrac(0); drawForceViz(); }
+  renderAtFrac(0); drawForceViz();
   neutronRAF = requestAnimationFrame(passTick);
 }
 
@@ -3452,7 +3397,7 @@ function fissionTick(now) {
   document.getElementById('scrubSlider').value = scrubVal(currentScrubFrac);
   document.getElementById('scrubPct').textContent = scrubPct(currentScrubFrac);
   syncForceVizVisibility();
-  if (!_lagTick(now)) { renderAtFrac(currentScrubFrac); drawForceViz(); }
+  renderAtFrac(currentScrubFrac); drawForceViz();
   const stableDone = wobbleMode === 'stable' && currentScrubFrac >= 0.70 && currentTab !== 'chain';
   if (staticFissT < FISS_STOP_T && !stableDone) {
     neutronRAF = requestAnimationFrame(fissionTick);
@@ -3817,7 +3762,7 @@ function playbackLoop(now) {
     currentScrubFrac = prerenderFracs[idx];
     document.getElementById('scrubSlider').value = scrubVal(currentScrubFrac);
     document.getElementById('scrubPct').textContent = scrubPct(currentScrubFrac);
-    if (!_lagTick(now)) { renderAtFrac(currentScrubFrac); drawForceViz(); }
+    renderAtFrac(currentScrubFrac); drawForceViz();
   }
 
   if (elapsed < animEnd) {
@@ -3931,7 +3876,7 @@ document.getElementById('goBtn').addEventListener('click', () => {
   if (currentTab === 'chain') { isFirstFission = true; isFirstChainFission = true; }
   for (const s of enrichSites) s.state = 'idle';
   heatmapDirty    = true;
-  _lagEma = 0; _lagSustDown = 0; _lagSustUp = 0;   // fresh perf baseline each run
+  _lagEma = 0; _lagSustDown = 0;   // fresh perf baseline each run
   // Reset the fission axis so the force viz panel shows a neutral horizontal
   // pair of arrows during the neutron's flight — the actual axis is chosen
   // when the neutron impacts the nucleus (in neutronTick).
@@ -4140,15 +4085,6 @@ document.getElementById('showElectric').addEventListener('change', function() {
   drawStaticFrame();
 });
 
-document.getElementById('flatFillToggle').addEventListener('change', function() {
-  _flatFill = this.checked;
-  drawStaticFrame();
-});
-
-document.getElementById('chainBlobToggle').addEventListener('change', function() {
-  _chainBlobMode = this.checked;
-  drawStaticFrame();
-});
 
 document.getElementById('perfToastOverride').addEventListener('click', function() {
   clearTimeout(_toastTimer);
