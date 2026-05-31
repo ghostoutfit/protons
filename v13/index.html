@@ -1702,7 +1702,7 @@ function drawParticles(particles, jitterScale = 1, radiusScale = 1, drawCtx = ct
     const mid  = isProton ? '#ff1a65' : '#70707f';
     const core = isProton ? '#ff80b0' : '#b0b0c4';
 
-    if (_flatFill) {
+    if (_flatFill && currentTab === 'fission') {
       // Flat fill — no gradients, no shadowBlur; ~70% faster per particle
       dc.fillStyle = mid;
       dc.beginPath(); dc.arc(px, py, R, 0, Math.PI * 2); dc.fill();
@@ -2769,28 +2769,27 @@ function drawChainOverlay() {
     ctx.restore();
   }
 
-  // Helper: draw one nucleus (fuel or daughter) — blob, outline, or particles
+  // Helper: draw one nucleus (fuel or daughter) — outline wins; blob replaces particles only
   function drawChainNucleus(cx, cy, r, rot = 0, isControl = false) {
-    if (_chainBlobMode)    drawChainSiteBlob(cx, cy, r, isControl);
-    else if (showParticles) drawChainSiteParticles(cx, cy, r, rot);
-    else                    drawCloudOutline(cx, cy, r);
+    if (!showParticles)      drawCloudOutline(cx, cy, r);
+    else if (_chainBlobMode) drawChainSiteBlob(cx, cy, r, isControl);
+    else                     drawChainSiteParticles(cx, cy, r, rot);
   }
-  // Helper: draw split daughters — blob, outline, or particles
   function drawChainDaughters(d0, d1) {
-    if (_chainBlobMode) {
+    if (!showParticles) {
+      drawFissionOutline(d0.x, d0.y, d0.r, d1.x, d1.y, d1.r);
+    } else if (_chainBlobMode) {
       drawChainSiteBlob(d0.x, d0.y, d0.r, false);
       drawChainSiteBlob(d1.x, d1.y, d1.r, false);
-    } else if (showParticles) {
+    } else {
       drawChainSiteParticles(d0.x, d0.y, d0.r, d0.viewAngle || 0);
       drawChainSiteParticles(d1.x, d1.y, d1.r, d1.viewAngle || 0);
-    } else {
-      drawFissionOutline(d0.x, d0.y, d0.r, d1.x, d1.y, d1.r);
     }
   }
   function drawChainDaughter(d) {
-    if (_chainBlobMode)    drawChainSiteBlob(d.x, d.y, d.r, false);
-    else if (showParticles) drawChainSiteParticles(d.x, d.y, d.r, d.viewAngle || 0);
-    else                    drawCloudOutline(d.x, d.y, d.r);
+    if (!showParticles)      drawCloudOutline(d.x, d.y, d.r);
+    else if (_chainBlobMode) drawChainSiteBlob(d.x, d.y, d.r, false);
+    else                     drawChainSiteParticles(d.x, d.y, d.r, d.viewAngle || 0);
   }
 
   // Control sites (Ag-107) render at 75% the radius of fuel sites
