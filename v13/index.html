@@ -1638,6 +1638,9 @@ function drawParticles(particles, jitterScale = 1, radiusScale = 1) {
       // Flat fill — no gradients, no shadowBlur; ~70% faster per particle
       ctx.fillStyle = mid;
       ctx.beginPath(); ctx.arc(px, py, R, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+      ctx.lineWidth = 1 / viewZoom;
+      ctx.stroke();
     } else {
       // Base fill — soft edge fade
       const baseGrad = ctx.createRadialGradient(px, py, 0, px, py, R * 1.1);
