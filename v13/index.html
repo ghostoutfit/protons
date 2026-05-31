@@ -1110,6 +1110,8 @@ let hmDataElec = null;
 let hmImgElec  = null;
 let heatmapDirty    = true;
 let hmFrameCounter  = 0;
+let _hmLastRenderMs = 0;     // timestamp of last full heatmap recompute
+const _HM_THROTTLE_MS = 50; // ~20fps cap in non-full tier
 
 // ── Perf / adaptive quality ───────────────────────────────────────────────────
 let _lagEma      = 0;
@@ -1317,8 +1319,15 @@ function generateNucleus(nProtons, nNeutrons, cx, cy, seed) {
 function drawElectricHeatmap(particleList, sampleFrac = 0.5, sigmaScale = 1.0, masks = null, boundsExpand = 50) {
   const fullW = canvas.width, fullH = canvas.height;
 
-  if (!heatmapDirty &&
-      hmComposite.width === fullW && hmComposite.height === fullH) {
+  const _hmSizeMatch = hmComposite.width === fullW && hmComposite.height === fullH;
+  if (!heatmapDirty && _hmSizeMatch) {
+    ctx.drawImage(hmComposite, 0, 0);
+    return;
+  }
+  // In non-full tier, reuse stale cache at ~20fps so the pixel loop doesn't
+  // run every frame. Size-mismatch (resize) always forces a full recompute.
+  if (_perfTier !== 'full' && _hmSizeMatch &&
+      performance.now() - _hmLastRenderMs < _HM_THROTTLE_MS) {
     ctx.drawImage(hmComposite, 0, 0);
     return;
   }
@@ -1432,11 +1441,12 @@ function drawElectricHeatmap(particleList, sampleFrac = 0.5, sigmaScale = 1.0, m
   }
   hmcCtx.clearRect(0, 0, fullW, fullH);
   hmcCtx.imageSmoothingEnabled = true;
-  hmcCtx.imageSmoothingQuality = 'high';
+  hmcCtx.imageSmoothingQuality = 'low';
   hmCtx.putImageData(hmImgElec, 0, 0);
   hmcCtx.drawImage(hmCanvas, 0, 0, fullW, fullH);
   ctx.drawImage(hmComposite, 0, 0);
   heatmapDirty = false;
+  _hmLastRenderMs = performance.now();
 }
 
 // ─── Cloud outline — evenly-spaced scallop circles on a ring ─────────────────
