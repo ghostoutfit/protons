@@ -1593,16 +1593,29 @@ function drawChainSiteParticles(cx, cy, r, rotAngle = 0) {
   drawParticles(pts, 0, radiusScale);   // no jitter in chain mode
 }
 
-// Single-gradient blob — replaces full particle cloud in chain blob mode
+// Draw a nucleus using the pre-rendered offscreen canvas image (one drawImage blit).
+// Falls back to a gradient blob for control sites or before images are built.
 function drawChainSiteBlob(cx, cy, r, isControl = false) {
-  const inner = isControl ? '#6090d0' : '#e0403a';
-  const outer = isControl ? '#304070' : '#801818';
-  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-  g.addColorStop(0,    inner);
-  g.addColorStop(0.65, outer);
-  g.addColorStop(1,    'rgba(0,0,0,0)');
-  ctx.fillStyle = g;
-  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  if (isControl || !_imgParent) {
+    // Gradient fallback — control sites are few and don't need image quality
+    const inner = isControl ? '#6090d0' : '#e0403a';
+    const outer = isControl ? '#304070' : '#801818';
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    g.addColorStop(0, inner); g.addColorStop(0.65, outer); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+    return;
+  }
+  // Pick image by matching r to the three known display radii:
+  //   parent: animParent.sphereR  |  heavy daughter: parent*0.7  |  light daughter: parent*0.6
+  const pR = animParent.sphereR;
+  const d0 = Math.abs(r - pR), d1 = Math.abs(r - pR * 0.7), d2 = Math.abs(r - pR * 0.6);
+  let img, imgNatR;
+  if (d1 < d0 && d1 <= d2) { img = _imgProd1; imgNatR = animProd1.sphereR; }
+  else if (d2 < d0)         { img = _imgProd2; imgNatR = animProd2.sphereR; }
+  else                       { img = _imgParent; imgNatR = pR; }
+  // Scale the full image (nucleus + padding) to the requested display radius
+  const half = (imgNatR + _NUCLEUS_IMG_PAD) * (r / imgNatR);
+  ctx.drawImage(img, cx - half, cy - half, half * 2, half * 2);
 }
 
 // ─── v11-style particle renderer — stochastic jitter + fuzzy glow ────────────
@@ -1621,7 +1634,8 @@ function updateParticleJitter(count, strength = 1, slow = false) {
   }
 }
 
-function drawParticles(particles, jitterScale = 1, radiusScale = 1) {
+function drawParticles(particles, jitterScale = 1, radiusScale = 1, drawCtx = ctx) {
+  const dc = drawCtx;
   const R = PARTICLE_RADIUS * radiusScale;
   // z ascending = back to front; protons after neutrons at same depth
   const sorted = [...particles].sort((a, b) =>
@@ -1636,39 +1650,42 @@ function drawParticles(particles, jitterScale = 1, radiusScale = 1) {
 
     if (_flatFill) {
       // Flat fill — no gradients, no shadowBlur; ~70% faster per particle
-      ctx.fillStyle = mid;
-      ctx.beginPath(); ctx.arc(px, py, R, 0, Math.PI * 2); ctx.fill();
+      dc.fillStyle = mid;
+      dc.beginPath(); dc.arc(px, py, R, 0, Math.PI * 2); dc.fill();
+      dc.strokeStyle = 'rgba(255,255,255,0.45)';
+      dc.lineWidth = 1 / viewZoom;
+      dc.stroke();
     } else {
       // Base fill — soft edge fade
-      const baseGrad = ctx.createRadialGradient(px, py, 0, px, py, R * 1.1);
+      const baseGrad = dc.createRadialGradient(px, py, 0, px, py, R * 1.1);
       baseGrad.addColorStop(0,    mid);
       baseGrad.addColorStop(0.82, mid);
       baseGrad.addColorStop(1,    'rgba(0,0,0,0)');
-      ctx.fillStyle = baseGrad;
-      ctx.beginPath(); ctx.arc(px, py, R * 1.1, 0, Math.PI * 2); ctx.fill();
+      dc.fillStyle = baseGrad;
+      dc.beginPath(); dc.arc(px, py, R * 1.1, 0, Math.PI * 2); dc.fill();
 
       // Inner glow with shadowBlur for fuzzy halo
-      const innerGlow = ctx.createRadialGradient(px, py, 0, px, py, R);
+      const innerGlow = dc.createRadialGradient(px, py, 0, px, py, R);
       innerGlow.addColorStop(0,   core);
       innerGlow.addColorStop(0.5, core);
       innerGlow.addColorStop(1,   'rgba(0,0,0,0)');
-      ctx.save();
-      ctx.shadowColor = core;
-      ctx.shadowBlur  = 8;
-      ctx.globalAlpha = 0.82;
-      ctx.fillStyle = innerGlow;
-      ctx.beginPath(); ctx.arc(px, py, R, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-      ctx.globalAlpha = 1;
+      dc.save();
+      dc.shadowColor = core;
+      dc.shadowBlur  = 8;
+      dc.globalAlpha = 0.82;
+      dc.fillStyle = innerGlow;
+      dc.beginPath(); dc.arc(px, py, R, 0, Math.PI * 2); dc.fill();
+      dc.restore();
+      dc.globalAlpha = 1;
     }
 
     // + label on protons
     if (isProton) {
-      ctx.fillStyle = 'rgba(255,255,255,0.88)';
-      ctx.font = `bold ${Math.max(6, Math.round(11 * radiusScale))}px Lexend, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('+', px, py + 1 * radiusScale);
+      dc.fillStyle = 'rgba(255,255,255,0.88)';
+      dc.font = `bold ${Math.max(6, Math.round(11 * radiusScale))}px Lexend, sans-serif`;
+      dc.textAlign = 'center';
+      dc.textBaseline = 'middle';
+      dc.fillText('+', px, py + 1 * radiusScale);
     }
   }
 }
@@ -1870,6 +1887,7 @@ let maxRevealedFrac  = 0;   // high-water mark — graph line never erases back
 let egZoomStart = 0, egZoomEnd = 1;
 let egDragStartPx = null, egDragCurPx = null;
 let animParent = null, animProd1 = null, animProd2 = null;
+let _imgParent = null, _imgProd1 = null, _imgProd2 = null;  // pre-rendered nucleus canvases
 let animMap = [];
 let prod1R = 0, prod2R = 0;  // daughter radii, fixed at product size
 
@@ -1985,6 +2003,33 @@ function initNuclei() {
   for (let k = 0; k < n1; k++)  animMap.push({ fromIdx: parentN[k].i,      prod: 1, toIdx: p1N[k] });
   for (let k = 0; k < n2; k++)  animMap.push({ fromIdx: parentN[n1+k].i,   prod: 2, toIdx: p2N[k] });
 
+  buildNucleusImages();
+}
+
+// Pre-render a nucleus to an offscreen canvas using the full gradient renderer.
+// The result is a square canvas with the nucleus centered; draw with drawImage scaled to
+// (cx - halfDraw, cy - halfDraw, halfDraw*2, halfDraw*2) where
+// halfDraw = (_NUCLEUS_IMG_PAD + nucleus.sphereR) * (displayR / nucleus.sphereR).
+const _NUCLEUS_IMG_PAD = PARTICLE_RADIUS * 2 + 2;
+function _prerenderNucleus(nucleus) {
+  const r    = nucleus.sphereR;
+  const size = Math.ceil((r + _NUCLEUS_IMG_PAD) * 2);
+  const oc   = document.createElement('canvas');
+  oc.width = oc.height = size;
+  const ocCtx = oc.getContext('2d');
+  const dx = size / 2 - nucleus.cx, dy = size / 2 - nucleus.cy;
+  const pts = nucleus.particles.map(p => ({ ...p, x: p.x + dx, y: p.y + dy }));
+  const savedFlat = _flatFill;
+  _flatFill = false;  // always render with full gradient quality
+  drawParticles(pts, 0, 1, ocCtx);
+  _flatFill = savedFlat;
+  return oc;
+}
+
+function buildNucleusImages() {
+  _imgParent = _prerenderNucleus(animParent);
+  _imgProd1  = _prerenderNucleus(animProd1);
+  _imgProd2  = _prerenderNucleus(animProd2);
 }
 
 // ─── Frame content renderer — called inside renderAtFrac's zoom transform ─────
