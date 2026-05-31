@@ -836,6 +836,17 @@
     pointer-events: none; z-index: 20;
   }
 
+  /* ── Perf toast ──────────────────────────────────────────────────────────── */
+  #perfToast {
+    display: none; position: fixed; bottom: 92px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(20,15,40,0.92); border: 1px solid rgba(255,200,50,0.35);
+    color: rgba(255,215,100,0.9); font-size: 12px; padding: 7px 16px;
+    border-radius: 6px; pointer-events: none; z-index: 25;
+    text-align: center; white-space: nowrap;
+    transition: opacity 0.4s;
+  }
+
   /* ── Force viz panel — exact v11 forcePanel style ─────────────────────────── */
   #forceVizPanel {
     display: none;
@@ -893,6 +904,7 @@
 
 
 <div id="lagAlert">Lag detected - try hiding fields<br>to increase performance.</div>
+<div id="perfToast"></div>
 
 <div id="forceVizPanel">
   <div class="fp-rh nw" data-dir="nw"></div><div class="fp-rh ne" data-dir="ne"></div>
@@ -1099,12 +1111,54 @@ let hmImgElec  = null;
 let heatmapDirty    = true;
 let hmFrameCounter  = 0;
 
-// ── Perf / lag detection ──────────────────────────────────────────────────────
-let _lagEma = 0, _lagDetected = false, _lagSkip = 0;
+// ── Perf / adaptive quality ───────────────────────────────────────────────────
+let _lagEma      = 0;
+let _lagDetected = false;   // kept for _lagTick frame-skip compat
+let _lagSkip     = 0;
+let _perfTier    = 'full';  // 'full' | 'medium' | 'low'
+let _lagSustDown = 0;       // consecutive frames pushing toward a lower tier
+let _lagSustUp   = 0;       // consecutive frames pushing toward a higher tier
 
-// ── Dev perf toggles ─────────────────────────────────────────────────────────
-let _flatFill      = false;   // skip gradients+shadowBlur in drawParticles
-let _chainBlobMode = false;   // replace per-site particle clouds with single blobs
+// ── Dev perf toggles (also driven automatically by _applyPerfTier) ────────────
+let _flatFill      = false;
+let _chainBlobMode = false;
+
+const _TIER_RANK = { full: 0, medium: 1, low: 2 };
+
+function _applyPerfTier(tier) {
+  _perfTier = tier;
+  const wantReduced = tier !== 'full';
+  if (_flatFill !== wantReduced) {
+    _flatFill = wantReduced;
+    document.getElementById('flatFillToggle').checked = wantReduced;
+  }
+  if (_chainBlobMode !== wantReduced) {
+    _chainBlobMode = wantReduced;
+    document.getElementById('chainBlobToggle').checked = wantReduced;
+  }
+  if (tier === 'low') {
+    const el = document.getElementById('showElectric');
+    if (el && el.checked) { el.checked = false; heatmapDirty = true; }
+  }
+  // Only show lagAlert when at full tier and still lagging (pre-engagement window)
+  if (tier !== 'full') document.getElementById('lagAlert').style.display = 'none';
+}
+
+let _toastTimer = null;
+function _showPerfToast(tier) {
+  const msg = tier === 'low'
+    ? 'Minimal render mode — electric field off'
+    : 'Fast render mode — reduced visual quality';
+  const el = document.getElementById('perfToast');
+  el.textContent = msg;
+  el.style.opacity = '1';
+  el.style.display = 'block';
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => {
+    el.style.opacity = '0';
+    setTimeout(() => { el.style.display = 'none'; }, 420);
+  }, 3500);
+}
 
 function resize() {
   canvas.width   = window.innerWidth;
@@ -2270,13 +2324,40 @@ function renderAtFrac(frac) {
   updateParticleCounters();
   captureFrame();
 
-  // ── Lag EMA: measure actual render time ──
+  // ── Adaptive quality: EMA → tier transitions ──
   { const _dt = performance.now() - _lagDrawT0;
     _lagEma = _lagEma * 0.9 + _dt * 0.1;
+
+    // Desired tier based on current EMA
+    const wantTier = _lagEma > 50 ? 'low' : _lagEma > 25 ? 'medium' : 'full';
+    const wantDown = _TIER_RANK[wantTier] > _TIER_RANK[_perfTier];
+    const wantUp   = _TIER_RANK[wantTier] < _TIER_RANK[_perfTier];
+
+    if (wantDown) {
+      _lagSustDown++; _lagSustUp = 0;
+      if (_lagSustDown >= 90) {                          // ~1.5s sustained lag
+        _lagSustDown = 0;
+        const next = _perfTier === 'full' ? 'medium' : 'low';
+        _applyPerfTier(next);
+        _showPerfToast(next);
+      }
+    } else if (wantUp) {
+      _lagSustUp++; _lagSustDown = 0;
+      if (_lagSustUp >= 300) {                           // ~5s clean performance
+        _lagSustUp = 0;
+        const next = _perfTier === 'low' ? 'medium' : 'full';
+        _applyPerfTier(next);
+      }
+    } else {
+      _lagSustDown = 0; _lagSustUp = 0;
+    }
+
+    // _lagDetected drives the frame-skip in _lagTick; lagAlert only shows pre-engagement
     const det = _lagEma > 40;
     if (det !== _lagDetected) {
       _lagDetected = det;
-      document.getElementById('lagAlert').style.display = det ? 'block' : 'none';
+      if (_perfTier === 'full')
+        document.getElementById('lagAlert').style.display = det ? 'block' : 'none';
     }
   }
 }
@@ -3792,6 +3873,7 @@ document.getElementById('goBtn').addEventListener('click', () => {
   if (currentTab === 'chain') { isFirstFission = true; isFirstChainFission = true; }
   for (const s of enrichSites) s.state = 'idle';
   heatmapDirty    = true;
+  _lagEma = 0; _lagSustDown = 0; _lagSustUp = 0;   // fresh perf baseline each run
   // Reset the fission axis so the force viz panel shows a neutral horizontal
   // pair of arrows during the neutron's flight — the actual axis is chosen
   // when the neutron impacts the nucleus (in neutronTick).
@@ -4670,6 +4752,11 @@ setParticleWheelActive(document.querySelector('.awheel-item[data-pmode="particle
 drawSpeedLines();
 applyTab(location.hash === '#chain' ? 'chain' : 'fission');
 initNuclei();
+
+// Startup hardware hint — engage medium tier immediately on weak hardware
+// so the first run isn't choppy while the EMA warms up.
+if ((navigator.hardwareConcurrency || 4) <= 2) _applyPerfTier('medium');
+
 drawStaticFrame();
 if (showParticles && !idleParticleRAF) idleParticleLoop();
 
