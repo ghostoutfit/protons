@@ -626,11 +626,13 @@
   }
 
   /* dev: white background for screenshots */
+  #qualitySelect {
+    background: #1a1428; color: rgba(255,255,255,0.85);
+    border: 1px solid rgba(255,255,255,0.2); border-radius: 4px;
+    padding: 2px 4px; font-size: 12px; font-family: inherit; cursor: pointer;
+  }
+  #qualitySelect:focus { outline: 1px solid rgba(255,100,100,0.5); }
   .theme-btn {
-    width: 18px; height: 18px;
-    border-radius: 50%;
-    border: 1px solid rgba(255,255,255,0.12);
-    cursor: pointer;
     transition: transform 0.15s, box-shadow 0.15s;
     flex-shrink: 0;
     box-shadow: none;
@@ -896,6 +898,11 @@
 
 <!-- Theme color row — floats at top of bar chart panel (fusion tab only) -->
 <div id="v14ColorRow" style="position:fixed;right:0;top:0;width:320px;display:none;z-index:50;justify-content:center;align-items:center;gap:10px;padding:7px 0;box-sizing:border-box;background:rgba(4,3,20,0.88);border-bottom:1px solid rgba(0,180,255,0.15);">
+  <select id="qualitySelect">
+    <option value="hi-res">Hi-res</option>
+    <option value="detailed">Detailed</option>
+    <option value="simple">Simple</option>
+  </select>
   <button class="theme-btn active" id="v14ThemeA" title="Synthwave"></button>
   <button class="theme-btn" id="v14ThemeB" title="Industrial"></button>
   <button class="theme-btn" id="v14ThemeC" title="Neon Blue"></button>
@@ -1012,6 +1019,7 @@ let approachSpeed   = 1.15;
 // ============================================================
 let particles  = [];
 let running    = false;
+let _quality   = 'hi-res';  // 'hi-res' | 'detailed' | 'simple'
 let paused     = false;
 let animId     = null;
 
@@ -2063,7 +2071,7 @@ function drawFieldHeatmap(pairs, colormap, mode) {
   if (pairs.length === 0) return;
 
   const fullW = canvas.width, fullH = canvas.height;
-  const scale = 0.25;
+  const scale = _quality === 'simple' ? 0.08 : _quality === 'detailed' ? 0.15 : 0.25;
   const w = Math.ceil(fullW * scale), h = Math.ceil(fullH * scale);
   const invScale = 1 / scale;
   const cxH = fullW / 2, cyH = fullH / 2;
@@ -4520,6 +4528,50 @@ window.addEventListener('hashchange', applyHash);
   });
   document.addEventListener('click', () => menu.style.display = 'none');
 })();
+
+// ── Quality selector ─────────────────────────────────────────────────────────
+function _applyQuality(level) {
+  _quality = level;
+  const el = document.getElementById('qualitySelect');
+  if (el) el.value = level;
+}
+
+function _runPerfBenchmark() {
+  const oc = document.createElement('canvas');
+  oc.width = 300; oc.height = 300;
+  const dc = oc.getContext('2d');
+  const R = PARTICLE_RADIUS;
+  for (let i = 0; i < 15; i++) {
+    const x = 15 + (i % 5) * 40, y = 15 + Math.floor(i / 5) * 40;
+    const g = dc.createRadialGradient(x, y, 0, x, y, R);
+    g.addColorStop(0, '#ff1a65'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    dc.fillStyle = g; dc.beginPath(); dc.arc(x, y, R, 0, Math.PI * 2); dc.fill();
+  }
+  const t0 = performance.now();
+  for (let i = 0; i < 100; i++) {
+    const x = 15 + (i % 10) * 27, y = 15 + Math.floor(i / 10) * 27;
+    const g1 = dc.createRadialGradient(x, y, 0, x, y, R * 1.1);
+    g1.addColorStop(0, '#ff1a65'); g1.addColorStop(0.82, '#ff1a65'); g1.addColorStop(1, 'rgba(0,0,0,0)');
+    dc.fillStyle = g1; dc.beginPath(); dc.arc(x, y, R * 1.1, 0, Math.PI * 2); dc.fill();
+    const g2 = dc.createRadialGradient(x, y, 0, x, y, R);
+    g2.addColorStop(0, '#ff80b0'); g2.addColorStop(0.5, '#ff80b0'); g2.addColorStop(1, 'rgba(0,0,0,0)');
+    dc.save(); dc.shadowColor = '#ff80b0'; dc.shadowBlur = 8; dc.globalAlpha = 0.82;
+    dc.fillStyle = g2; dc.beginPath(); dc.arc(x, y, R, 0, Math.PI * 2); dc.fill();
+    dc.restore(); dc.globalAlpha = 1;
+  }
+  dc.getImageData(0, 0, 1, 1);
+  return performance.now() - t0;
+}
+
+(function _startupBenchmark() {
+  const ms = _runPerfBenchmark();
+  if (ms > 6) _applyQuality('simple');
+  else if (ms > 3) _applyQuality('detailed');
+}());
+
+document.getElementById('qualitySelect').addEventListener('change', function() {
+  _applyQuality(this.value);
+});
 
 // ── Bug report button ─────────────────────────────────────────────────────
 function getBugState() {
