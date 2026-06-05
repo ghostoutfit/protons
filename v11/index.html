@@ -798,6 +798,10 @@
   }
   #qualitySelect:focus { outline: 1px solid rgba(255,100,100,0.5); }
   .theme-btn {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.12);
+    cursor: pointer;
     transition: transform 0.15s, box-shadow 0.15s;
     flex-shrink: 0;
     box-shadow: none;
@@ -849,6 +853,15 @@
   body.screenshot-mode .slider-icon {
     filter: brightness(0) !important;
     opacity: 1 !important;
+  }
+  body.screenshot-mode #bugReportBtn .slider-icon {
+    filter: drop-shadow(0 0 5px rgba(200,0,0,0.8)) drop-shadow(0 0 14px rgba(180,0,0,0.5)) !important;
+    background: rgba(210,210,210,0.85) !important;
+  }
+  body.screenshot-mode #qualitySelect {
+    background: rgba(240,240,240,0.9) !important;
+    color: #000 !important;
+    border-color: rgba(0,0,0,0.25) !important;
   }
   body.screenshot-mode #forcePanel {
     background: rgba(255,255,255,0.96) !important;
@@ -917,16 +930,10 @@
     font-size: 12px;
     width: 46px;
   }
-  #lagAlert {
-    display: none; position: fixed; right: 8px; bottom: 82px;
-    font-size: 11px; color: rgba(255,215,0,0.5); font-style: italic;
-    pointer-events: none; z-index: 20;
-  }
 </style>
 </head>
 <body>
 
-<div id="lagAlert">Lag detected - try hiding fields<br>to increase performance.</div>
 
 <!-- ========================================
      TOOLBAR HTML
@@ -2991,7 +2998,7 @@ function drawForcePanel() {
       forcePanelCtx.font = '10px Lexend, sans-serif';
       forcePanelCtx.textAlign = 'center';
       forcePanelCtx.textBaseline = 'middle';
-      const lines = ['click and drag to draw', 'a box around', 'a group of particles'];
+      const lines = ['click and drag a box to group', 'particles as one system.', 'arrows show forces from outside this system.'];
       const lineH = 16;
       lines.forEach((ln, i) => forcePanelCtx.fillText(ln, cx, cy + (i - 1) * lineH));
       forcePanelCtx.restore();
@@ -3515,10 +3522,7 @@ function draw() {
   { const _dt = performance.now() - _lagDrawT0;
     _lagEma = _lagEma * 0.9 + _dt * 0.1;
     const det = _lagEma > 40;
-    if (det !== _lagDetected) {
-      _lagDetected = det;
-      document.getElementById('lagAlert').style.display = det ? 'block' : 'none';
-    }
+    _lagDetected = det;
   }
 }
 
@@ -4168,8 +4172,13 @@ function _runPerfBenchmark() {
 
 (function _startupBenchmark() {
   const ms = _runPerfBenchmark();
-  if (ms > 6) _applyQuality('simple');
-  else if (ms > 3) _applyQuality('detailed');
+  if (ms > 6) {
+    const hiOpt = document.querySelector('#qualitySelect option[value="hi-res"]');
+    if (hiOpt) hiOpt.remove();
+    _applyQuality('simple');
+  } else if (ms > 3) {
+    _applyQuality('detailed');
+  }
 }());
 
 document.getElementById('qualitySelect').addEventListener('change', function() {

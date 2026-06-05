@@ -795,6 +795,15 @@
     filter: brightness(0) !important;
     opacity: 1 !important;
   }
+  body.screenshot-mode #bugReportBtn .slider-icon {
+    filter: drop-shadow(0 0 5px rgba(200,0,0,0.8)) drop-shadow(0 0 14px rgba(180,0,0,0.5)) !important;
+    background: rgba(210,210,210,0.85) !important;
+  }
+  body.screenshot-mode #qualitySelect {
+    background: rgba(240,240,240,0.9) !important;
+    color: #000 !important;
+    border-color: rgba(0,0,0,0.25) !important;
+  }
   body.screenshot-mode #scrubBar {
     background: rgba(255,255,255,0.42) !important;
     border-top-color: rgba(0,0,0,0.15) !important;
@@ -1101,7 +1110,7 @@ let hmFrameCounter  = 0;
 let _quality = 'hi-res';  // 'hi-res' | 'detailed' | 'simple'
 
 // ── Dev perf toggles (driven by _applyQuality) ────────────────────────────────
-let _flatFill      = false;
+let _flatFill      = true;
 let _chainBlobMode = false;
 
 function _applyQuality(level) {
@@ -1111,12 +1120,11 @@ function _applyQuality(level) {
   // hi-res:   all flags off (exact pre-session behavior)
   // detailed: flat fills + chain blobs
   // simple:   detailed + field freeze throttle
-  _flatFill      = level !== 'hi-res';
+  _flatFill      = true;
   _chainBlobMode = level !== 'hi-res';
   const summaryEl = document.getElementById('qualitySummary');
   if (summaryEl) {
     const features = [];
-    if (_flatFill)      features.push('Flat fills');
     if (_chainBlobMode) features.push('Chain blobs');
     if (level === 'simple') features.push('Low-res field');
     summaryEl.textContent = features.join(' · ');
@@ -1656,27 +1664,20 @@ function drawChainSiteParticles(cx, cy, r, rotAngle = 0) {
 
 // Draw a nucleus using the pre-rendered offscreen canvas image (one drawImage blit).
 // Falls back to a gradient blob for control sites or before images are built.
-function drawChainSiteBlob(cx, cy, r, isControl = false) {
-  if (isControl || !_imgParent) {
-    // Gradient fallback — control sites are few and don't need image quality
-    const inner = isControl ? '#6090d0' : '#e0403a';
-    const outer = isControl ? '#304070' : '#801818';
+function drawChainSiteBlob(cx, cy, r, img, rot = 0) {
+  if (!img) {
+    // Gradient fallback if image not yet built
     const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-    g.addColorStop(0, inner); g.addColorStop(0.65, outer); g.addColorStop(1, 'rgba(0,0,0,0)');
+    g.addColorStop(0, '#e0403a'); g.addColorStop(0.65, '#801818'); g.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
     return;
   }
-  // Pick image by matching r to the three known display radii:
-  //   parent: animParent.sphereR  |  heavy daughter: parent*0.7  |  light daughter: parent*0.6
-  const pR = animParent.sphereR;
-  const d0 = Math.abs(r - pR), d1 = Math.abs(r - pR * 0.7), d2 = Math.abs(r - pR * 0.6);
-  let img, imgNatR;
-  if (d1 < d0 && d1 <= d2) { img = _imgProd1; imgNatR = animProd1.sphereR; }
-  else if (d2 < d0)         { img = _imgProd2; imgNatR = animProd2.sphereR; }
-  else                       { img = _imgParent; imgNatR = pR; }
-  // Scale the full image (nucleus + padding) to the requested display radius
+  const imgNatR = img._natR;
   const half = (imgNatR + _NUCLEUS_IMG_PAD) * (r / imgNatR);
+  const useRot = _quality !== 'simple' && rot !== 0;
+  if (useRot) { ctx.save(); ctx.translate(cx, cy); ctx.rotate(rot); ctx.translate(-cx, -cy); }
   ctx.drawImage(img, cx - half, cy - half, half * 2, half * 2);
+  if (useRot) ctx.restore();
 }
 
 // ─── v11-style particle renderer — stochastic jitter + fuzzy glow ────────────
@@ -1947,7 +1948,8 @@ let maxRevealedFrac  = 0;   // high-water mark — graph line never erases back
 let egZoomStart = 0, egZoomEnd = 1;
 let egDragStartPx = null, egDragCurPx = null;
 let animParent = null, animProd1 = null, animProd2 = null;
-let _imgParent = null, _imgProd1 = null, _imgProd2 = null;  // pre-rendered nucleus canvases
+let _imgParent = null, _imgProd1 = null, _imgProd2 = null, _imgControl = null;  // pre-rendered nucleus canvases
+let animControl = null;
 let animMap = [];
 let prod1R = 0, prod2R = 0;  // daughter radii, fixed at product size
 
@@ -2063,6 +2065,16 @@ function initNuclei() {
   for (let k = 0; k < n1; k++)  animMap.push({ fromIdx: parentN[k].i,      prod: 1, toIdx: p1N[k] });
   for (let k = 0; k < n2; k++)  animMap.push({ fromIdx: parentN[n1+k].i,   prod: 2, toIdx: p2N[k] });
 
+  const agDef = NUCLEUS_DEFS['ag107'];
+  animControl = generateNucleus(agDef.animZ, agDef.animN, cx, cy, 0x4a5b6c7d);
+  if (agDef.displayScale !== 1.0) {
+    const ds = agDef.displayScale;
+    for (const p of animControl.particles) {
+      p.x = cx + (p.x - cx) * ds;
+      p.y = cy + (p.y - cy) * ds;
+    }
+    animControl.sphereR *= ds;
+  }
   buildNucleusImages();
 }
 
@@ -2076,6 +2088,7 @@ function _prerenderNucleus(nucleus) {
   const size = Math.ceil((r + _NUCLEUS_IMG_PAD) * 2);
   const oc   = document.createElement('canvas');
   oc.width = oc.height = size;
+  oc._natR = r;
   const ocCtx = oc.getContext('2d');
   const dx = size / 2 - nucleus.cx, dy = size / 2 - nucleus.cy;
   const pts = nucleus.particles.map(p => ({ ...p, x: p.x + dx, y: p.y + dy }));
@@ -2087,9 +2100,10 @@ function _prerenderNucleus(nucleus) {
 }
 
 function buildNucleusImages() {
-  _imgParent = _prerenderNucleus(animParent);
-  _imgProd1  = _prerenderNucleus(animProd1);
-  _imgProd2  = _prerenderNucleus(animProd2);
+  _imgParent  = _prerenderNucleus(animParent);
+  _imgProd1   = _prerenderNucleus(animProd1);
+  _imgProd2   = _prerenderNucleus(animProd2);
+  _imgControl = _prerenderNucleus(animControl);
 }
 
 
@@ -2524,8 +2538,8 @@ function updateChain(now) {
         const spd = 0.55 + Math.random() * 0.20;
         const a = site.angle;
         site.daughters = [
-          { x: site.cx, y: site.cy, vx:  Math.cos(a) * spd, vy:  Math.sin(a) * spd, r: site.sphereR * 0.7, viewAngle: Math.random() * Math.PI * 2 },
-          { x: site.cx, y: site.cy, vx: -Math.cos(a) * spd, vy: -Math.sin(a) * spd, r: site.sphereR * 0.6, viewAngle: Math.random() * Math.PI * 2 },
+          { x: site.cx, y: site.cy, vx:  Math.cos(a) * spd, vy:  Math.sin(a) * spd, r: site.sphereR * 0.7, viewAngle: Math.random() * Math.PI * 2, img: _imgProd1 },
+          { x: site.cx, y: site.cy, vx: -Math.cos(a) * spd, vy: -Math.sin(a) * spd, r: site.sphereR * 0.6, viewAngle: Math.random() * Math.PI * 2, img: _imgProd2 },
         ];
       }
       if (site.fissT >= ANIM_T_END) site.state = 'done';
@@ -2697,32 +2711,12 @@ function drawChainOverlay() {
     const wobble     = deformAmp * wobbleSignal(ph2, site.wobbleMode || 'dip1');
     const scaleAlong = 1 + wobble;
     const scalePerp  = 1 / (1 + wobble * 0.7);
-    if (showParticles && !_chainBlobMode) {
-      const offsets = getChainParticleOffsets();
-      const cosV = Math.cos(site.viewAngle || 0), sinV = Math.sin(site.viewAngle || 0);
-      const cosA = Math.cos(site.angle), sinA = Math.sin(site.angle);
-      const pts = offsets.map(p => {
-        // Apply viewAngle rotation first, then fission-axis deformation
-        const rx = (p.ox * cosV - p.oy * sinV) * site.sphereR;
-        const ry = (p.ox * sinV + p.oy * cosV) * site.sphereR;
-        const along = rx * cosA + ry * sinA;
-        const perp  = -rx * sinA + ry * cosA;
-        return {
-          x: cx + along * scaleAlong * cosA - perp * scalePerp * sinA,
-          y: cy + along * scaleAlong * sinA + perp * scalePerp * cosA,
-          z: p.oz * site.sphereR,
-          type: p.type,
-        };
-      });
-      const wobbleRadiusScale = animParent ? site.sphereR / animParent.sphereR : 1;
-      drawParticles(pts, 0, wobbleRadiusScale);
-    } else {
-      ctx.save();
-      ctx.translate(cx, cy); ctx.rotate(site.angle);
-      ctx.scale(scaleAlong, scalePerp); ctx.rotate(-site.angle); ctx.translate(-cx, -cy);
-      drawCloudOutline(cx, cy, site.sphereR);
-      ctx.restore();
-    }
+    ctx.save();
+    ctx.translate(cx, cy); ctx.rotate(site.angle);
+    ctx.scale(scaleAlong, scalePerp); ctx.rotate(-site.angle); ctx.translate(-cx, -cy);
+    if (showParticles) drawChainSiteBlob(cx, cy, site.sphereR, site.img, site.viewAngle || 0);
+    else               drawCloudOutline(cx, cy, site.sphereR);
+    ctx.restore();
     // Excited glow ring
     const _LIGHT = document.body.classList.contains('screenshot-mode');
     ctx.save();
@@ -2738,26 +2732,21 @@ function drawChainOverlay() {
   }
 
   // Helper: draw one nucleus (fuel or daughter) — outline wins; blob replaces particles only
-  function drawChainNucleus(cx, cy, r, rot = 0, isControl = false) {
-    if (!showParticles)      drawCloudOutline(cx, cy, r);
-    else if (_chainBlobMode) drawChainSiteBlob(cx, cy, r, isControl);
-    else                     drawChainSiteParticles(cx, cy, r, rot);
+  function drawChainNucleus(cx, cy, r, rot = 0, img = null) {
+    if (!showParticles) drawCloudOutline(cx, cy, r);
+    else                drawChainSiteBlob(cx, cy, r, img, rot);
   }
   function drawChainDaughters(d0, d1) {
     if (!showParticles) {
       drawFissionOutline(d0.x, d0.y, d0.r, d1.x, d1.y, d1.r);
-    } else if (_chainBlobMode) {
-      drawChainSiteBlob(d0.x, d0.y, d0.r, false);
-      drawChainSiteBlob(d1.x, d1.y, d1.r, false);
     } else {
-      drawChainSiteParticles(d0.x, d0.y, d0.r, d0.viewAngle || 0);
-      drawChainSiteParticles(d1.x, d1.y, d1.r, d1.viewAngle || 0);
+      drawChainSiteBlob(d0.x, d0.y, d0.r, d0.img, d0.viewAngle || 0);
+      drawChainSiteBlob(d1.x, d1.y, d1.r, d1.img, d1.viewAngle || 0);
     }
   }
   function drawChainDaughter(d) {
-    if (!showParticles)      drawCloudOutline(d.x, d.y, d.r);
-    else if (_chainBlobMode) drawChainSiteBlob(d.x, d.y, d.r, false);
-    else                     drawChainSiteParticles(d.x, d.y, d.r, d.viewAngle || 0);
+    if (!showParticles) drawCloudOutline(d.x, d.y, d.r);
+    else                drawChainSiteBlob(d.x, d.y, d.r, d.img, d.viewAngle || 0);
   }
 
   // Control sites (Ag-107) render at 75% the radius of fuel sites
@@ -2771,7 +2760,7 @@ function drawChainOverlay() {
   if (!_PART) { ctx.save(); ctx.globalAlpha = 0.3; }
   for (const site of enrichSites) {
     if (site.state === 'done' && site.wobbleMode === 'stable') {
-      drawChainNucleus(site.cx, site.cy, siteR(site), site.viewAngle, site.isControl);
+      drawChainNucleus(site.cx, site.cy, siteR(site), site.viewAngle, site.img);
     }
     if (site.daughters) {
       if (site.state === 'done') {
@@ -2814,13 +2803,13 @@ function drawChainOverlay() {
   // ── FOREGROUND LAYER: idle fuel, actively fissioning sites, fresh neutrons ──
   for (const site of enrichSites) {
     if (site.state === 'idle') {
-      drawChainNucleus(site.cx, site.cy, siteR(site), site.viewAngle, site.isControl);
+      drawChainNucleus(site.cx, site.cy, siteR(site), site.viewAngle, site.img);
     } else if (site.state === 'fission') {
       const t = site.fissT;
       if (t <= PH2_END) {
         drawFissionWobble(site);
       } else if (site.wobbleMode === 'stable') {
-        drawChainNucleus(site.cx, site.cy, site.sphereR, site.viewAngle, site.isControl);
+        drawChainNucleus(site.cx, site.cy, site.sphereR, site.viewAngle, site.img);
       } else if (site.daughters) {
         // Draw each daughter in foreground only until it bounces
         for (const d of site.daughters) { if (!d.bounced) drawChainDaughter(d); }
@@ -3182,7 +3171,7 @@ function neutronTick(now) {
     // Top 10% of speed slider → bounce off the nucleus (fission tab only)
     const speedVal = parseFloat(document.getElementById('neutronSpeed').value);
     const bounceThreshold = 0.2 + 0.9 * (8.0 - 0.2); // = 7.22
-    if (currentTab === 'fission' && speedVal > bounceThreshold) {
+    if (speedVal > bounceThreshold) {
       // Too fast for fission — neutron passes straight through the nucleus.
       neutronX = animParent.cx - animParent.sphereR - PARTICLE_RADIUS;
       neutronY = animParent.cy;
@@ -3313,8 +3302,8 @@ function fissionTick(now) {
       const spd = 0.55 + Math.random() * 0.20;
       const a = staticFissAngle;
       mainDaughters = [
-        { x: animParent.cx, y: animParent.cy, vx: -Math.cos(a) * spd, vy: -Math.sin(a) * spd, r: prod1R, viewAngle: Math.random() * Math.PI * 2 },
-        { x: animParent.cx, y: animParent.cy, vx:  Math.cos(a) * spd, vy:  Math.sin(a) * spd, r: prod2R, viewAngle: Math.random() * Math.PI * 2 },
+        { x: animParent.cx, y: animParent.cy, vx: -Math.cos(a) * spd, vy: -Math.sin(a) * spd, r: prod1R, viewAngle: Math.random() * Math.PI * 2, img: _imgProd1 },
+        { x: animParent.cx, y: animParent.cy, vx:  Math.cos(a) * spd, vy:  Math.sin(a) * spd, r: prod2R, viewAngle: Math.random() * Math.PI * 2, img: _imgProd2 },
       ];
       // Convert unabsorbed fission neutrons to physics-based chain neutrons so they bounce off walls
       for (const n of fissionNeutrons) {
@@ -3624,37 +3613,43 @@ function drawOutlineIcon() {
   c.closePath(); c.stroke(); c.restore();
 }
 
-function nucleusIconLoop() {
-  // Animate jitter for all nucleus particle arrays
-  for (const pts of Object.values(nucleusIconParticlesMap)) {
-    for (const p of pts) {
-      p.jx += (Math.random() - 0.5) * 0.7;
-      p.jy += (Math.random() - 0.5) * 0.7;
+let _iconLast = -67;
+function nucleusIconLoop(now) {
+  if (now - _iconLast >= 67) {   // ~15 fps
+    _iconLast = now;
+    // Animate jitter for all nucleus particle arrays
+    for (const pts of Object.values(nucleusIconParticlesMap)) {
+      for (const p of pts) {
+        p.jx += (Math.random() - 0.5) * 0.7;
+        p.jy += (Math.random() - 0.5) * 0.7;
+        p.jx *= 0.78;
+        p.jy *= 0.78;
+      }
+    }
+    for (const p of miniNucleusIconParticles) {
+      p.jx += (Math.random() - 0.5) * 0.4;
+      p.jy += (Math.random() - 0.5) * 0.4;
       p.jx *= 0.78;
       p.jy *= 0.78;
     }
+    // Draw trigger (current selection)
+    drawNucleusIcon(
+      document.getElementById('newBtnNucleus'),
+      nucleusIconParticlesMap[selectedNucleusKey],
+      NUCLEUS_DEFS[selectedNucleusKey].iconScale
+    );
+    // Draw option canvases only when dropdown is open
+    if (document.getElementById('nucleusWheel').classList.contains('open')) {
+      document.querySelectorAll('.nucleus-opt-canvas').forEach(c => {
+        const k = c.dataset.key;
+        drawNucleusIcon(c, nucleusIconParticlesMap[k], NUCLEUS_DEFS[k].iconScale);
+      });
+    }
+    drawMiniNucleusIcon(document.getElementById('particlesModeIcon'));
   }
-  for (const p of miniNucleusIconParticles) {
-    p.jx += (Math.random() - 0.5) * 0.4;
-    p.jy += (Math.random() - 0.5) * 0.4;
-    p.jx *= 0.78;
-    p.jy *= 0.78;
-  }
-  // Draw trigger (current selection)
-  drawNucleusIcon(
-    document.getElementById('newBtnNucleus'),
-    nucleusIconParticlesMap[selectedNucleusKey],
-    NUCLEUS_DEFS[selectedNucleusKey].iconScale
-  );
-  // Draw option canvases in dropdown
-  document.querySelectorAll('.nucleus-opt-canvas').forEach(c => {
-    const k = c.dataset.key;
-    drawNucleusIcon(c, nucleusIconParticlesMap[k], NUCLEUS_DEFS[k].iconScale);
-  });
-  drawMiniNucleusIcon(document.getElementById('particlesModeIcon'));
   requestAnimationFrame(nucleusIconLoop);
 }
-nucleusIconLoop();
+nucleusIconLoop(0);
 drawOutlineIcon();
 
 // ─── Controls ─────────────────────────────────────────────────────────────────
@@ -4029,7 +4024,8 @@ document.getElementById('enrichBtn').addEventListener('click', () => {
                          angle: 0, shakeDur: 600, neutronsEmitted: false,
                          viewAngle: Math.random() * Math.PI * 2,
                          isControl: isCtrl,
-                         sphereR: animParent.sphereR });
+                         sphereR: animParent.sphereR * (isCtrl ? CONTROL_SITE_SCALE : 1),
+                         img: isCtrl ? _imgControl : _imgParent });
       if (!isCtrl) { totalFuelAdded++; energyInFields++; }
     }
   }
@@ -4718,6 +4714,8 @@ initNuclei();
 (function _startupBenchmark() {
   const ms = _runPerfBenchmark();
   if (ms > 6) {
+    const hiOpt = document.querySelector('#qualitySelect option[value="hi-res"]');
+    if (hiOpt) hiOpt.remove();
     _applyQuality('simple');
   } else if (ms > 3) {
     _applyQuality('detailed');
