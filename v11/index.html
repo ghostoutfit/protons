@@ -281,7 +281,7 @@
       0 0 44px var(--accent2-dim);
   }
   #goBtn:hover { background: var(--accent2-glow); }
-  /* Go running (⏸) — red */
+  /* Go running (❙ ❙) — red */
   #goBtn.running {
     border-color: #ff4040;
     color: rgba(255,255,255,0.5);
@@ -979,7 +979,10 @@
           <span id="statProtons" style="color:var(--accent1);text-shadow:0 0 8px var(--accent1-glow)">Protons: 0</span>
           <span id="statNeutrons" style="visibility:hidden;color:var(--neutron-core);text-shadow:0 0 8px var(--neutron-mid)">Neutrons: 0</span>
         </div>
-        <button id="centerBtn" class="force-mode-btn" style="visibility:hidden;margin-top:4px;">Center</button>
+        <label id="centerLabel" style="visibility:hidden;margin-top:4px;display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:700;color:var(--accent1);text-shadow:0 0 6px var(--accent1-glow);">
+          <input type="checkbox" id="centerChk" style="width:15px;height:15px;accent-color:var(--accent1);cursor:pointer;flex-shrink:0;">
+          Center
+        </label>
       </div>
       <!-- Right col: proton buttons + neutron row -->
       <div style="display:flex;flex-direction:column;gap:8px;justify-content:center;align-self:stretch">
@@ -1064,7 +1067,7 @@
       <span class="slider-icon" style="font-size:18px;">🔍</span>
     </span>
   </div>
-  <canvas id="forcePanelCanvas" width="400" height="400"></canvas>
+  <canvas id="forcePanelCanvas" width="400" height="240"></canvas>
 </div>
 
 
@@ -1086,7 +1089,7 @@
   <input type="range" id="timeSlider" min="0" max="0" value="0" disabled>
 
 </div>
-<img src="../images/logo-placeholder.png" alt="logo" style="position:fixed;bottom:5px;right:5px;z-index:25;height:60px;width:auto;border-radius:4px 0 0 0;opacity:0.85;display:block;">
+<img src="../images/logo-placeholder.png" alt="logo" style="position:fixed;bottom:5px;right:5px;z-index:25;height:60px;width:auto;border-radius:4px 0 0 0;opacity:0;display:block;">
 
 <script>
 // ============================================================
@@ -1819,14 +1822,16 @@ goBtn.addEventListener('click', () => {
   replaying = false;
   running = !running;
   logAction(running ? 'Pressed Go (' + currentTab + ')' : 'Paused (' + currentTab + ')');
-  goBtn.textContent = running ? '⏸' : '▶ GO';
+  goBtn.textContent = running ? '❙ ❙' : '▶ GO';
   goBtn.classList.toggle('running', running);
   if (running) {
-    _histReset();
-    scrubFrame = -1;
-    recordedSpeed = speed;  // snapshot the speed this recording is made at
-    timeSlider.disabled = true;
+    if (_histLen === 0) {
+      // Fresh start (after reset) — initialise history and snapshot
+      recordedSpeed = speed;
       takeSnapshot();
+    }
+    scrubFrame = -1;       // exit any scrub/replay mode, go live
+    timeSlider.disabled = true;
     loop();
   } else {
     cancelAnimationFrame(animId);
@@ -1851,7 +1856,7 @@ function doReplay() {
   replayAccum = 0;
   replaying = true;
   running = true;
-  goBtn.textContent = '⏸';
+  goBtn.textContent = '❙ ❙';
   goBtn.classList.add('running');
   animId = requestAnimationFrame(loop);
 }
@@ -1927,7 +1932,7 @@ function applyTab(tab) {
   document.getElementById('particleBtnsNucleus').style.display = isNucleus ? 'flex' : 'none';
   document.getElementById('tabA').classList.toggle('active', isProtonOnly);
   document.getElementById('tabB').classList.toggle('active', isNucleus);
-  document.getElementById('centerBtn').style.visibility = isNucleus ? 'visible' : 'hidden';
+  document.getElementById('centerLabel').style.visibility = isNucleus ? 'visible' : 'hidden';
   // Strong field: hide checkbox + key entry on Tab A; restore on Tab B
   document.getElementById('strongFieldLabel').style.visibility = isProtonOnly ? 'hidden' : '';
   document.getElementById('forcePanelKeyStrong').style.display = isProtonOnly ? 'none' : '';
@@ -1948,7 +1953,7 @@ function applyTab(tab) {
     document.querySelector('.force-mode-btn[data-mode="2"]').textContent = 'Total Force';
     // Turn off center tracking
     centerTracking = false;
-    document.getElementById('centerBtn').classList.remove('active');
+    document.getElementById('centerChk').checked = false;
     // Default to single-particle mode, no group
     groupSelectMode = false;
     selectedGroup = [];
@@ -2023,9 +2028,8 @@ function findBiggestCluster() {
 }
 
 let centerTracking = false;
-document.getElementById('centerBtn').addEventListener('click', () => {
-  centerTracking = !centerTracking;
-  document.getElementById('centerBtn').classList.toggle('active', centerTracking);
+document.getElementById('centerChk').addEventListener('change', function() {
+  centerTracking = this.checked;
   if (!running) draw();
 });
 
@@ -2848,6 +2852,8 @@ document.getElementById('fpZoomSlider').addEventListener('input', function() {
 function drawForcePanel() {
   if (arrowMode === 0) { forcePanelEl.style.display = 'none'; return; }
   forcePanelEl.style.display = 'block';
+  const _fpw = forcePanelEl.offsetWidth;
+  if (_fpw > 0 && _fpw !== _forcePanelWidth) _forcePanelWidth = _fpw;
 
   const W = forcePanelCv.width, H = forcePanelCv.height;
   const cx = W / 2, cy = H / 2;
@@ -2994,13 +3000,16 @@ function drawForcePanel() {
   if (groupSelectMode) {
     const group = selectedGroup.filter(i => i < particles.length);
     if (group.length === 0) {
+      forcePanelCtx.restore();
+      forcePanelCtx.save();
       forcePanelCtx.fillStyle = 'rgba(100,220,255,0.35)';
       forcePanelCtx.font = '10px Lexend, sans-serif';
       forcePanelCtx.textAlign = 'center';
       forcePanelCtx.textBaseline = 'middle';
-      const lines = ['click and drag a box to group', 'particles as one system.', 'arrows show forces from outside this system.'];
+      const lines = ['click and drag a box to group', 'particles as one system.', 'arrows show forces from', 'outside this system.'];
       const lineH = 16;
-      lines.forEach((ln, i) => forcePanelCtx.fillText(ln, cx, cy + (i - 1) * lineH));
+      const startY = cy - lineH * 1.5;
+      lines.forEach((ln, i) => forcePanelCtx.fillText(ln, cx, startY + i * lineH));
       forcePanelCtx.restore();
       return;
     }

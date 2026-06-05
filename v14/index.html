@@ -119,7 +119,7 @@
   }
   #clearBtn:hover { background: var(--accent2-glow); }
 
-  /* ⏸ running — red */
+  /* ❙ ❙ running — red */
   #goBtn.running {
     border-color: #ff4040; color: rgba(255,255,255,0.5); background: rgba(255,40,40,0.15);
     box-shadow:
@@ -604,26 +604,6 @@
     max-width: 140px;
   }
 
-  /* ── Portrait overlay ──────────────────────────────────────────────────── */
-  #portrait-overlay {
-    display: none;
-    position: fixed; inset: 0; z-index: 9999;
-    background: #05040f; color: var(--text-bright);
-    flex-direction: column; align-items: center; justify-content: center;
-    text-align: center; padding: 2rem;
-  }
-  #portrait-overlay .rotate-icon { font-size: 64px; margin-bottom: 1.5rem; }
-  #portrait-overlay h2 {
-    font-size: 18px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
-    color: var(--accent1); text-shadow: 0 0 10px var(--accent1-glow);
-    margin-bottom: 0.75rem;
-  }
-  #portrait-overlay p { font-size: 14px; color: var(--text-dim); max-width: 280px; }
-
-  @media (max-width: 860px) and (orientation: portrait) {
-    #portrait-overlay { display: flex; }
-    body > *:not(#portrait-overlay) { display: none !important; }
-  }
 
   /* dev: white background for screenshots */
   #qualitySelect {
@@ -733,11 +713,6 @@
 <body>
 
 
-<div id="portrait-overlay">
-  <div class="rotate-icon">&#x1F4F1;&#x21BB;</div>
-  <h2>Rotate Your Device</h2>
-  <p>Go horizontal to use this app</p>
-</div>
 
 <div id="toolbar">
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
@@ -889,13 +864,13 @@
     </div>
     <div id="scrubButtons">
       <button id="fullTimelineBtn" style="font-size:15px;padding:6px 18px;">SHOW LINE<br>GRAPH</button>
-      <img src="../images/logo-placeholder.png" alt="logo" style="height:60px;width:auto;opacity:0.85;display:block;border-radius:4px;flex-shrink:0;">
+      <img src="../images/logo-placeholder.png" alt="logo" style="height:60px;width:auto;opacity:0;display:block;border-radius:4px;flex-shrink:0;">
     </div>
   </div>
 </div>
 
 <div id="tempLogoBar">
-  <img src="../images/logo-placeholder.png" alt="logo" style="height:60px;width:auto;opacity:0.85;display:block;border-radius:4px;">
+  <img src="../images/logo-placeholder.png" alt="logo" style="height:60px;width:auto;opacity:0;display:block;border-radius:4px;">
 </div>
 
 <!-- Bar chart overlay — fixed over full height including toolbar -->
@@ -2078,7 +2053,7 @@ function drawFieldHeatmap(pairs, colormap, mode) {
   if (pairs.length === 0) return;
 
   const fullW = canvas.width, fullH = canvas.height;
-  const scale = _quality === 'simple' ? 0.08 : _quality === 'detailed' ? 0.15 : 0.25;
+  const scale = _quality === 'simple' ? 0.15 : 0.25;
   const w = Math.ceil(fullW * scale), h = Math.ceil(fullH * scale);
   const invScale = 1 / scale;
   const cxH = fullW / 2, cyH = fullH / 2;
@@ -2914,7 +2889,7 @@ goBtn.addEventListener('click', () => {
     } else {
       if (!tempProtons.length || !tempPaused) initTempProtons();
       tempPaused = false; tempRunning = true;
-      goBtn.textContent = '⏸'; goBtn.classList.add('running');
+      goBtn.textContent = '❙ ❙'; goBtn.classList.add('running');
       logAction('Pressed Go (TEMPERATURE)');
       tempRAF = requestAnimationFrame(tempLoop);
     }
@@ -2940,7 +2915,7 @@ goBtn.addEventListener('click', () => {
     // Resume from pause
     paused  = false;
     running = true;
-    goBtn.textContent = '⏸';
+    goBtn.textContent = '❙ ❙';
     goBtn.classList.add('running');
     logAction('Resumed (FUSION)');
     loop();
@@ -2952,7 +2927,7 @@ goBtn.addEventListener('click', () => {
     paused     = false;
     running    = true;
     logAction('Pressed Go — ' + leftChoice.toUpperCase() + ' + ' + rightChoice.toUpperCase() + ' (FUSION)');
-    goBtn.textContent = '⏸';
+    goBtn.textContent = '❙ ❙';
     goBtn.classList.add('running');
     takeSnapshot();
     recordingFrameSpeed = frameSpeed();
@@ -2978,7 +2953,7 @@ function doReplay() {
   scrubFrame = 0;
   replayAccum = 0;
   timeSlider.value = 0;
-  goBtn.textContent = '⏸';
+  goBtn.textContent = '❙ ❙';
   goBtn.classList.add('running');
   setScrubReplayDisabled(true);
   function replayLoop() {

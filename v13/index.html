@@ -156,7 +156,7 @@
       0 0 44px var(--accent2-dim);
   }
   #goBtn:hover { background: var(--accent2-glow); }
-  /* Go running (⏸) — red */
+  /* Go running (❙ ❙) — red */
   #goBtn.running {
     border-color: #ff4040;
     color: rgba(255,255,255,0.5);
@@ -1073,14 +1073,14 @@
       </div>
       <div id="scrubButtons">
         <button id="energyGraphToggle" class="btn">SHOW LINE<br>GRAPH</button>
-        <img src="../images/logo-placeholder.png" alt="logo" style="height:60px;width:auto;opacity:0.85;display:block;border-radius:4px;flex-shrink:0;">
+        <img src="../images/logo-placeholder.png" alt="logo" style="height:60px;width:auto;opacity:0;display:block;border-radius:4px;flex-shrink:0;">
       </div>
     </div>
   </div>
 </div>
 
 <div id="chainLogoBar">
-  <img src="../images/logo-placeholder.png" alt="logo" style="height:60px;width:auto;opacity:0.85;display:block;border-radius:4px;">
+  <img src="../images/logo-placeholder.png" alt="logo" style="height:60px;width:auto;opacity:0;display:block;border-radius:4px;">
 </div>
 
 <script>
@@ -1711,12 +1711,29 @@ function drawParticles(particles, jitterScale = 1, radiusScale = 1, drawCtx = ct
     const core = isProton ? '#ff80b0' : '#b0b0c4';
 
     if (_flatFill && currentTab === 'fission') {
-      // Flat fill — no gradients, no shadowBlur; ~70% faster per particle
-      dc.fillStyle = mid;
-      dc.beginPath(); dc.arc(px, py, R, 0, Math.PI * 2); dc.fill();
-      dc.strokeStyle = 'rgba(255,255,255,0.45)';
-      dc.lineWidth = 1 / viewZoom;
-      dc.stroke();
+      if (_quality !== 'simple') {
+        // Hi-res / Detailed: layered rings matching v11 particle appearance
+        // Draw back-to-front using filled circles so rings never bleed inside
+        const cW = 4 / viewZoom;   // colored mid-ring width (screen px)
+        const wW = 1 / viewZoom;   // dark gray outline width (screen px)
+        const R1 = R * 1.1;
+        // Outermost: dark gray ring
+        dc.fillStyle = 'rgba(40,40,40,0.85)';
+        dc.beginPath(); dc.arc(px, py, R1, 0, Math.PI * 2); dc.fill();
+        // Middle: mid color ring (matches v11 outer gradient color)
+        dc.fillStyle = mid;
+        dc.beginPath(); dc.arc(px, py, R1 - wW, 0, Math.PI * 2); dc.fill();
+        // Inner: core (lighter) fill — matches v11 bright center
+        dc.fillStyle = core;
+        dc.beginPath(); dc.arc(px, py, R1 - wW - cW, 0, Math.PI * 2); dc.fill();
+      } else {
+        // Simple: thin white stroke over mid fill (original appearance)
+        dc.fillStyle = mid;
+        dc.beginPath(); dc.arc(px, py, R, 0, Math.PI * 2); dc.fill();
+        dc.strokeStyle = 'rgba(255,255,255,0.45)';
+        dc.lineWidth = 1 / viewZoom;
+        dc.stroke();
+      }
     } else {
       // Base fill — soft edge fade
       const baseGrad = dc.createRadialGradient(px, py, 0, px, py, R * 1.1);
@@ -3668,13 +3685,15 @@ let playbackStartRealT     = 0;
 let pausedInPrerender      = false;   // paused during prerender playback
 let pausedPlaybackElapsed  = 0;       // raw ms elapsed when paused
 let chainPaused            = false;   // chain reaction was running when paused
+let _prerenderPauseOffset  = 0;       // cumulative ms spent paused during live recording
+let _prerenderPauseStart   = 0;       // wall time when current pause began (0 = not paused)
 
 function captureFrame() {
   if (!prerenderActive) return;
   const slot = prerenderSlot++;
   prerenderFrames.push(null);
   prerenderFracs.push(currentScrubFrac);
-  prerenderTimes.push(performance.now());
+  prerenderTimes.push(performance.now() - _prerenderPauseOffset);
   prerenderPending++;
   createImageBitmap(canvas).then(bmp => {
     prerenderFrames[slot] = bmp;
@@ -3736,13 +3755,14 @@ function resetPrerender() {
   prerenderActive = false; prerenderAllDone = false;
   prerenderPending = 0; prerenderSlot = 0;
   pausedInPrerender = false;
+  _prerenderPauseOffset = 0; _prerenderPauseStart = 0;
 }
 
 document.getElementById('goBtn').addEventListener('click', () => {
   const btn = document.getElementById('goBtn');
 
   // ── PAUSE: freeze everything in place ────────────────────────────────────
-  if (btn.textContent === '⏸') {
+  if (btn.textContent === '❙ ❙') {
     logAction('Paused');
     if (neutronRAF) { cancelAnimationFrame(neutronRAF); neutronRAF = null; }
     if (chainRAF)   { cancelAnimationFrame(chainRAF);   chainRAF   = null; chainPaused = true; }
@@ -3753,6 +3773,8 @@ document.getElementById('goBtn').addEventListener('click', () => {
       playbackRAF = null;
     } else {
       pausedInPrerender = false;
+      // Track wall time so we can subtract the pause gap from captured timestamps
+      if (prerenderActive) _prerenderPauseStart = performance.now();
     }
     btn.textContent = '▶ GO';
     btn.classList.remove('running');
@@ -3765,7 +3787,7 @@ document.getElementById('goBtn').addEventListener('click', () => {
   if (pausedInPrerender) {
     pausedInPrerender  = false;
     playbackStartRealT = performance.now() - pausedPlaybackElapsed;
-    btn.textContent = '⏸';
+    btn.textContent = '❙ ❙';
     btn.classList.add('running');
     playbackRAF = requestAnimationFrame(playbackLoop);
     return;
@@ -3775,7 +3797,7 @@ document.getElementById('goBtn').addEventListener('click', () => {
   if (chainPaused) {
     chainPaused = false;
     lastChainTime = null;   // prevents dt spike from pause duration
-    btn.textContent = '⏸';
+    btn.textContent = '❙ ❙';
     btn.classList.add('running');
     ensureChainLoop();
     return;
@@ -3785,6 +3807,11 @@ document.getElementById('goBtn').addEventListener('click', () => {
   if (neutronState === 'flying' || neutronState === 'fission') {
     const frac = currentScrubFrac;
     const now  = performance.now();
+    // Accumulate pause duration so captured timestamps stay gapless
+    if (_prerenderPauseStart > 0) {
+      _prerenderPauseOffset += now - _prerenderPauseStart;
+      _prerenderPauseStart = 0;
+    }
     if (frac < NEUTRON_FRAC) {
       const nf = frac / NEUTRON_FRAC;
       neutronX    = (PARTICLE_RADIUS + 60) + nf * (neutronImpactX() - (PARTICLE_RADIUS + 60));
@@ -3802,7 +3829,7 @@ document.getElementById('goBtn').addEventListener('click', () => {
       const pbSpeed = parseFloat(document.getElementById('playbackSpeed').value);
       staticFissStart = now - elapsedAtPos / pbSpeed;
     }
-    btn.textContent = '⏸';
+    btn.textContent = '❙ ❙';
     btn.classList.add('running');
     neutronRAF = requestAnimationFrame(frac < NEUTRON_FRAC ? neutronTick : fissionTick);
     return;
@@ -3849,7 +3876,7 @@ document.getElementById('goBtn').addEventListener('click', () => {
   document.getElementById('scrubPct').textContent = '0';
   document.getElementById('replayBtn').disabled = false;
   document.getElementById('scrubReplayBtn').disabled = false;
-  btn.textContent = '⏸';
+  btn.textContent = '❙ ❙';
   btn.classList.add('running');
   neutronRAF = requestAnimationFrame(neutronTick);
 });
@@ -3873,7 +3900,7 @@ function doReplay() {
   document.getElementById('scrubSlider').value = 0;
   document.getElementById('scrubPct').textContent = '0';
   playbackStartRealT = performance.now();
-  document.getElementById('goBtn').textContent = '⏸';
+  document.getElementById('goBtn').textContent = '❙ ❙';
   document.getElementById('goBtn').classList.add('running');
   playbackRAF = requestAnimationFrame(playbackLoop);
 }
@@ -3885,7 +3912,7 @@ document.getElementById('scrubSlider').addEventListener('input', function () {
   if (playbackRAF) { cancelAnimationFrame(playbackRAF); playbackRAF = null; }
   if (neutronState === 'flying' || neutronState === 'fission' || neutronState === 'bouncing') neutronState = 'done';
   const gbtn = document.getElementById('goBtn');
-  if (gbtn.textContent === '⏸') { gbtn.textContent = '▶ GO'; gbtn.classList.remove('running'); }
+  if (gbtn.textContent === '❙ ❙') { gbtn.textContent = '▶ GO'; gbtn.classList.remove('running'); }
   currentScrubFrac = parseInt(this.value) / 1000;
   document.getElementById('scrubPct').textContent = scrubPct(currentScrubFrac);
   heatmapDirty = true;
