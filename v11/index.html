@@ -279,6 +279,7 @@
       0 0 10px var(--accent2),
       0 0 22px var(--accent2-glow),
       0 0 44px var(--accent2-dim);
+    display: flex; align-items: center; justify-content: center;
   }
   #goBtn:hover { background: var(--accent2-glow); }
   /* Go running (❙ ❙) — red */
@@ -293,7 +294,6 @@
       0 0 18px rgba(255,40,40,0.5),
       0 0 40px rgba(255,40,40,0.2);
     text-shadow: 0 0 4px rgba(255,255,255,0.5), 0 0 10px #ff4040, 0 0 22px rgba(255,80,80,0.6);
-    display: flex; align-items: center; justify-content: center;
   }
   #goBtn.running:hover { background: rgba(255,40,40,0.3); }
 
@@ -363,7 +363,7 @@
 
 
   /* Go / Replay — squished symbol buttons */
-  #goBtn, #replayBtn { font-size: 24px; letter-spacing: 0; padding: 2px 0; width: 90px; }
+  #goBtn, #replayBtn { font-size: 24px; letter-spacing: 0; padding: 2px 0; width: 90px; line-height: 1; }
 
   /* Neutron slider — grey to distinguish from sim speed/zoom */
   #neutronSlider {
