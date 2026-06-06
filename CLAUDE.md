@@ -145,6 +145,76 @@ const COULOMB_CUTOFF_SQ = (PARTICLE_RADIUS * 40) ** 2;
 
 If editing physics in **v13** or **v14**, look up the constants in that file — they are not the same numbers.
 
+## Standalone repos (GitHub Pages deployments)
+
+Four repos derived from the canonical protons versions, each a self-contained single-file sim deployed to `ghostoutfit.github.io/<repo>/`.
+
+| Repo | URL | Based on | Role |
+|------|-----|----------|------|
+| **nucleus** | ghostoutfit.github.io/nucleus/ | v11 | Protons + Nucleus Stability sim; `#all` opens the hub overlay |
+| **stability** | ghostoutfit.github.io/stability/ | v11 | Parallel v11 deployment (same sim as nucleus) |
+| **fission** | ghostoutfit.github.io/fission/ | v13 | Fission-only — chain reaction code fully removed |
+| **chain-reaction** | ghostoutfit.github.io/chain-reaction/ | v13 | Chain-reaction-only — fission tab code fully removed |
+| **fusion** | ghostoutfit.github.io/fusion/ | v14 | Fusion + Temperature sim; **defaults to Temperature tab** |
+
+Local paths: `/Users/jkremer/Projects/nucleus`, `…/stability`, `…/fission`, `…/chain-reaction`, `…/fusion`.
+
+### Hub overlay (`nucleus/#all`)
+
+`nucleus/index.html` contains a full-screen `#allModal` overlay that shows the `TitleText.jpg` hotspot hub when `location.hash === '#all'`. Images live in `nucleus/images/` (TitleFull.png, TitleText.jpg). The ✕ button calls `history.back()`. The overlay is driven by a self-contained IIFE at the bottom of the file that listens to `hashchange` and calls `positionAllHotspots()` on resize.
+
+Hotspot links (inside `#allHotspots`):
+```
+Protons              → ghostoutfit.github.io/stability/
+Investigate Stability→ ghostoutfit.github.io/stability/#nucleus
+Fission              → ghostoutfit.github.io/fission/
+Chain Reaction       → ghostoutfit.github.io/chain-reaction/
+Fusion               → ghostoutfit.github.io/fusion/#fusion
+Temperature          → ghostoutfit.github.io/fusion/
+```
+
+### Differences from canonical versions
+
+**nucleus / stability (from v11)**
+- Image paths changed: `../images/` → `images/` (no parent directory)
+- `#all` hash route added to nucleus only
+
+**fission (from v13)**
+- Chain Reaction tab removed entirely: `chainNeutrons`, `chainRAF`, `enrichSites`, `chainParticleOffsets`, `drawChainOverlay`, `drawChainBarChart`, `updateChain`, `ensureChainLoop`, `triggerEnrichSite`, `emitChainNeutrons`, `pickChainSite`, `CHAIN_*` constants all removed
+- `currentTab` is a constant `'fission'`; `applyTab()` simplified to fission-only
+- Image paths: `../images/` → `images/`
+
+**chain-reaction (from v13)**
+- Fission tab removed entirely: replay button, playback speed slider, scrub bar, `drawForceViz`, `drawEnergyGraph`, `doReplay`, nucleus rotation, `computeEnergy`, prerender system all removed
+- `captureFrame()` / `markPrerenderDone()` are no-op stubs
+- `applyTab('chain')` is called once at init; zoom fixed at -0.6 (slider hidden in VISUALS box but kept in DOM for JS)
+- `renderAtFrac(frac)` uses `frac < NEUTRON_FRAC` branching (not `neutronState`) for the nucleus+neutron approach phase
+- Canvas-drawn energy bar chart (`drawChainBarChart`) always visible at right edge; bars minimum 4px tall; left border glow strengthened for visibility
+- Image paths: `../images/` → `images/`
+
+**fusion (from v14)**
+- Defaults to Temperature tab on load (`switchTab(hash === '#fusion' ? 'fusion' : 'temp')`)
+- Color picker (`#bgColorPicker`) moved into `#v14ColorRow` floating panel
+- `body.screenshot-mode #themeLight { display: none }` added
+- Image paths: `../images/` → `images/`
+
+### Cross-sim search across all repos
+
+```bash
+# Search canonical versions
+grep -n "functionName" v11/index.html v13/index.html v14/index.html
+
+# Search standalone repos
+grep -n "functionName" \
+  /Users/jkremer/Projects/nucleus/index.html \
+  /Users/jkremer/Projects/stability/index.html \
+  /Users/jkremer/Projects/fission/index.html \
+  /Users/jkremer/Projects/chain-reaction/index.html \
+  /Users/jkremer/Projects/fusion/index.html
+```
+
+Changes to canonical v11/v13/v14 should generally be ported to their corresponding standalone repos. The standalones are **not** auto-synced — they diverge intentionally (removed features, path changes, defaults).
+
 ## Cross-version comparison workflow
 
 ```bash
