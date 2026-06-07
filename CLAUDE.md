@@ -152,12 +152,13 @@ Four repos derived from the canonical protons versions, each a self-contained si
 | Repo | URL | Based on | Role |
 |------|-----|----------|------|
 | **nucleus** | ghostoutfit.github.io/nucleus/ | v11 | Protons + Nucleus Stability sim; `#all` opens the hub overlay |
-| **stability** | ghostoutfit.github.io/stability/ | v11 | Parallel v11 deployment (same sim as nucleus) |
 | **fission** | ghostoutfit.github.io/fission/ | v13 | Fission-only — chain reaction code fully removed |
 | **chain-reaction** | ghostoutfit.github.io/chain-reaction/ | v13 | Chain-reaction-only — fission tab code fully removed |
 | **fusion** | ghostoutfit.github.io/fusion/ | v14 | Fusion + Temperature sim; **defaults to Temperature tab** |
 
-Local paths: `/Users/jkremer/Projects/nucleus`, `…/stability`, `…/fission`, `…/chain-reaction`, `…/fusion`.
+Local paths: `/Users/jkremer/Projects/nucleus`, `…/fission`, `…/chain-reaction`, `…/fusion`.
+
+Note: the local `/Users/jkremer/Projects/stability` directory is a clone of the same `ghostoutfit/nucleus` repo (GitHub renamed it). Treat them as the same repo; push from either.
 
 ### Hub overlay (`nucleus/#all`)
 
@@ -175,9 +176,9 @@ Temperature          → ghostoutfit.github.io/fusion/
 
 ### Differences from canonical versions
 
-**nucleus / stability (from v11)**
+**nucleus (from v11)**
 - Image paths changed: `../images/` → `images/` (no parent directory)
-- `#all` hash route added to nucleus only
+- `#all` hash route: full-screen hub overlay with hotspot links to all four sims
 
 **fission (from v13)**
 - Chain Reaction tab removed entirely: `chainNeutrons`, `chainRAF`, `enrichSites`, `chainParticleOffsets`, `drawChainOverlay`, `drawChainBarChart`, `updateChain`, `ensureChainLoop`, `triggerEnrichSite`, `emitChainNeutrons`, `pickChainSite`, `CHAIN_*` constants all removed
@@ -207,7 +208,6 @@ grep -n "functionName" v11/index.html v13/index.html v14/index.html
 # Search standalone repos
 grep -n "functionName" \
   /Users/jkremer/Projects/nucleus/index.html \
-  /Users/jkremer/Projects/stability/index.html \
   /Users/jkremer/Projects/fission/index.html \
   /Users/jkremer/Projects/chain-reaction/index.html \
   /Users/jkremer/Projects/fusion/index.html
