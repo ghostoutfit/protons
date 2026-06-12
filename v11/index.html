@@ -1026,7 +1026,10 @@
       <div style="display:flex;flex-direction:column;gap:10px;justify-content:space-evenly;align-self:stretch;flex:1;min-width:0">
         <div class="slider-group">
           <span class="slider-icon" title="Slow"><img src="../images/Turtle.png" style="height:0.85em;vertical-align:middle;display:block"></span>
-          <input type="range" id="speedSlider" min="0" max="20" step="1" value="13">
+          <div style="position:relative;display:inline-flex;align-items:center;">
+            <input type="range" id="speedSlider" min="0" max="20" step="1" value="13">
+            <div id="speedDefaultTick" style="position:absolute;top:-3px;height:calc(100% + 6px);transform:translateX(-50%);width:2px;background:rgba(26,110,255,0.55);border-radius:1px;pointer-events:none;"></div>
+          </div>
           <span class="slider-icon" title="Fast"><img src="../images/Rabbit.png" style="height:0.98em;vertical-align:middle;display:block;margin-top:-3px"></span>
         </div>
         <div class="slider-group">
@@ -1168,7 +1171,7 @@ function _snapshotParticles(ps) {
     data[o+3] = p.vy;
     data[o+4] = p.type === 'proton' ? 0 : 1;
   }
-  return { n, data };
+  return { n, data, t: performance.now() };  // wall-clock time for timestamp-based replay
 }
 function _restoreParticles(frame) {
   const { n, data } = frame;
@@ -1183,6 +1186,8 @@ function _restoreParticles(frame) {
 let scrubFrame = -1;
 let replaying = false;  // true while auto-playing back recorded history
 let replayAccum = 0;    // fractional frame accumulator for speed-slider-controlled playback
+let _replayWallStart = 0;   // performance.now() when replay began
+let _replaySimStart  = 0;   // recorded timestamp of frame 0 (for timestamp-based sync)
 
 // ---- Visualization toggles ----
 let showElectricField = true;   // Toggle for Coulomb heatmap
@@ -1830,7 +1835,10 @@ goBtn.addEventListener('click', () => {
   goBtn.classList.toggle('running', running);
   if (running) {
     if (_histLen === 0) {
-      // Fresh start (after reset) — initialise history and snapshot
+      // Fresh start (after reset) — initialise history and snapshot.
+      // Reset lag state so live recording and replay start from the same baseline,
+      // preventing the ambient-loop EMA from skewing the recording frame rate.
+      _lagEma = 0; _lagDetected = false; _lagSkip = 0;
       recordedSpeed = speed;
       takeSnapshot();
     }
@@ -1847,6 +1855,8 @@ goBtn.addEventListener('click', () => {
 // ============================================================
 function doReplay() {
   if (!_histLen) return;
+  // Reset lag state so replay starts with the same frame-rate baseline as recording did.
+  _lagEma = 0; _lagDetected = false; _lagSkip = 0;
   // Snap current slider values so replay uses whatever zoom/speed are set now
   applySpeedSlider();
   zoom = parseInt(zoomSlider.value) / 10;
@@ -1856,8 +1866,10 @@ function doReplay() {
   scrubFrame = 0;
   timeSlider.value = 0;
   renderFrame(0);
-  // Auto-play through recorded history
+  // Auto-play through recorded history using timestamp-based sync.
   replayAccum = 0;
+  _replayWallStart = 0;
+  _replaySimStart  = _histGet(0).t;
   replaying = true;
   running = true;
   goBtn.textContent = '❙ ❙';
@@ -1886,8 +1898,25 @@ function applySpeedSlider() {
   const idx = parseInt(speedSlider.value);
   speed = SPEED_STOPS[idx] / 2;  // Internal dt is half the display value for stability
 }
+const SPEED_DEFAULT_IDX = 13;
+const SPEED_SNAP_RANGE  = 2;
+(function _posSpeedTick() {
+  const tick = document.getElementById('speedDefaultTick');
+  const sl   = document.getElementById('speedSlider');
+  if (!tick || !sl) return;
+  const pct = (SPEED_DEFAULT_IDX - +sl.min) / (+sl.max - +sl.min);
+  const thumbR = 10;
+  const w = sl.offsetWidth || 72;
+  const xPx = thumbR + pct * (w - 2 * thumbR);
+  tick.style.left = (xPx / w * 100).toFixed(2) + '%';
+})();
 let _speedLogTimer = null;
 speedSlider.addEventListener('input', function() {
+  let idx = parseInt(this.value);
+  if (Math.abs(idx - SPEED_DEFAULT_IDX) <= SPEED_SNAP_RANGE) {
+    idx = SPEED_DEFAULT_IDX;
+    this.value = String(SPEED_DEFAULT_IDX);
+  }
   applySpeedSlider();
   clearTimeout(_speedLogTimer);
   _speedLogTimer = setTimeout(() => logAction('Set speed to ' + SPEED_STOPS[parseInt(this.value)] + '×'), 400);
@@ -2844,6 +2873,7 @@ window.addEventListener('mousemove', e => {
   if (forcePanelCv.width !== cw || forcePanelCv.height !== ch) {
     forcePanelCv.width = cw;
     forcePanelCv.height = ch;
+    drawForcePanel();
   }
 });
 
@@ -2858,6 +2888,12 @@ function drawForcePanel() {
   forcePanelEl.style.display = 'block';
   const _fpw = forcePanelEl.offsetWidth;
   if (_fpw > 0 && _fpw !== _forcePanelWidth) _forcePanelWidth = _fpw;
+  // Sync canvas WIDTH to panel every frame so right-aligned text is correct before any drag.
+  // Height is NOT synced here — doing so creates a feedback loop (canvas height → panel taller → repeat).
+  if (_fpw > 0) {
+    const _cw = Math.max(80, (_fpw - 20)) | 0;
+    if (forcePanelCv.width !== _cw) forcePanelCv.width = _cw;
+  }
 
   const W = forcePanelCv.width, H = forcePanelCv.height;
   const cx = W / 2, cy = H / 2;
@@ -2996,6 +3032,37 @@ function drawForcePanel() {
   const pivotX = cx, pivotY = cy;
 
   forcePanelCtx.clearRect(0, 0, W, H);
+
+  // ---- Unscaled overlays: drawn before scale() so they are never zoomed ----
+  {
+    const _lightMode = document.body.classList.contains('screenshot-mode');
+    forcePanelCtx.save();
+    // Hint text at bottom (only in single-particle mode)
+    if (!groupSelectMode) {
+      forcePanelCtx.fillStyle = _lightMode ? 'rgba(60,60,60,0.7)' : 'rgba(255,255,255,0.2)';
+      const _hintText = 'click a particle to see forces on it from other particles';
+      let _hintPx = 13;
+      forcePanelCtx.font = `${_hintPx}px Lexend, sans-serif`;
+      const _hintMeasured = forcePanelCtx.measureText(_hintText).width;
+      if (_hintMeasured > W - 8) {
+        _hintPx = Math.max(7, Math.floor(_hintPx * (W - 8) / _hintMeasured));
+        forcePanelCtx.font = `${_hintPx}px Lexend, sans-serif`;
+      }
+      forcePanelCtx.textAlign = 'center';
+      forcePanelCtx.textBaseline = 'bottom';
+      forcePanelCtx.fillText(_hintText, cx, H - 6);
+    }
+    // "Total arrow length not to scale" — top-right, always visible in Total Force mode
+    if (arrowMode === 2) {
+      forcePanelCtx.fillStyle = _lightMode ? 'rgba(60,60,60,0.7)' : 'rgba(150,150,180,0.5)';
+      forcePanelCtx.font = '8px Lexend, sans-serif';
+      forcePanelCtx.textAlign = 'right';
+      forcePanelCtx.textBaseline = 'top';
+      forcePanelCtx.fillText('total arrow length not to scale', W - 3, 4);
+    }
+    forcePanelCtx.restore();
+  }
+
   forcePanelCtx.save();
   forcePanelCtx.translate(pivotX * (1 - fpZoom), pivotY * (1 - fpZoom));
   forcePanelCtx.scale(fpZoom, fpZoom);
@@ -3006,7 +3073,8 @@ function drawForcePanel() {
     if (group.length === 0) {
       forcePanelCtx.restore();
       forcePanelCtx.save();
-      forcePanelCtx.fillStyle = 'rgba(100,220,255,0.35)';
+      const _cdLight = document.body.classList.contains('screenshot-mode');
+      forcePanelCtx.fillStyle = _cdLight ? 'rgba(50,50,50,0.75)' : 'rgba(100,220,255,0.35)';
       forcePanelCtx.font = '14px Lexend, sans-serif';
       forcePanelCtx.textAlign = 'center';
       forcePanelCtx.textBaseline = 'middle';
@@ -3166,19 +3234,18 @@ function drawForcePanel() {
     const _sGcx = cx + fpZoom * (gcx - clusterCx);
     const _minGy = group.reduce((m, i) => Math.min(m, particles[i].y), Infinity);
     const _sGty = cy + fpZoom * (_minGy - clusterCy - PARTICLE_RADIUS) - 4;
-    // Draw colored group counter: (pink Zp + grey Nn = blue total)
+    // Draw colored group counter: "Zp protons, Nn neutrons"
     const _gZ2 = group.filter(i => particles[i].type === 'proton').length;
     const _gN2 = group.length - _gZ2;
+    const _glLight = document.body.classList.contains('screenshot-mode');
     forcePanelCtx.font = '9px Lexend, sans-serif';
     forcePanelCtx.textBaseline = 'bottom'; forcePanelCtx.textAlign = 'left';
     const _glParts = [
-      { text: '(', color: 'rgba(150,150,180,0.6)' },
-      { text: `${_gZ2}p`, color: 'rgba(255,100,150,0.85)' },
-      { text: ' + ', color: 'rgba(150,150,180,0.6)' },
-      { text: `${_gN2}n`, color: 'rgba(170,170,170,0.8)' },
-      { text: ' = ', color: 'rgba(150,150,180,0.6)' },
-      { text: `${group.length}`, color: 'rgba(100,220,255,0.85)' },
-      { text: ')', color: 'rgba(150,150,180,0.6)' },
+      { text: `${_gZ2}`, color: _glLight ? 'rgba(180,40,80,0.9)' : 'rgba(255,100,150,0.85)' },
+      { text: ' protons', color: _glLight ? 'rgba(180,40,80,0.9)' : 'rgba(255,100,150,0.85)' },
+      { text: '  ', color: 'rgba(0,0,0,0)' },
+      { text: `${_gN2}`, color: _glLight ? 'rgba(60,60,60,0.85)' : 'rgba(170,170,170,0.8)' },
+      { text: ' neutrons', color: _glLight ? 'rgba(60,60,60,0.85)' : 'rgba(170,170,170,0.8)' },
     ];
     const _glW = _glParts.reduce((s, p) => s + forcePanelCtx.measureText(p.text).width, 0);
     let _glX = _sGcx - _glW / 2;
@@ -3187,22 +3254,11 @@ function drawForcePanel() {
       forcePanelCtx.fillText(_glP.text, _glX, _sGty);
       _glX += forcePanelCtx.measureText(_glP.text).width;
     }
-    if (arrowMode === 2) {
-      forcePanelCtx.fillStyle = 'rgba(150,150,180,0.5)';
-      forcePanelCtx.font = '8px Lexend, sans-serif';
-      forcePanelCtx.textAlign = 'right'; forcePanelCtx.textBaseline = 'bottom';
-      forcePanelCtx.fillText('total arrow length not to scale', W - 5, H - 4);
-    }
     return;
   }
 
   // ---- Single particle mode (default) ----
   if (selectedParticle === null || selectedParticle >= particles.length) {
-    forcePanelCtx.fillStyle = 'rgba(255,255,255,0.2)';
-    forcePanelCtx.font = '10px Lexend, sans-serif';
-    forcePanelCtx.textAlign = 'center';
-    forcePanelCtx.textBaseline = 'middle';
-    forcePanelCtx.fillText('click a particle', cx, cy);
     forcePanelCtx.restore();
     return;
   }
@@ -3350,12 +3406,6 @@ function drawForcePanel() {
     if (!currentTabIsProton) drawNet(sSum, STRONG_ARROW_COLOR);
   }
   forcePanelCtx.restore();
-  if (arrowMode === 2) {
-    forcePanelCtx.fillStyle = 'rgba(150,150,180,0.5)';
-    forcePanelCtx.font = '8px Lexend, sans-serif';
-    forcePanelCtx.textAlign = 'right'; forcePanelCtx.textBaseline = 'bottom';
-    forcePanelCtx.fillText('total arrow length not to scale', W - 5, H - 4);
-  }
 }
 
 // ============================================================
@@ -3596,13 +3646,16 @@ function loop() {
 
   // ── Replay mode: play back recorded history automatically ──
   if (replaying) {
-    // Advance (currentSpeed / recordedSpeed) frames per RAF.
-    // recordedSpeed cancels out the motion density baked into each recorded frame,
-    // so only the current slider value determines visual replay speed.
-    replayAccum += speed / recordedSpeed;
-    const steps = Math.floor(replayAccum);
-    replayAccum -= steps;
-    scrubFrame = Math.min(scrubFrame + steps, _histLen - 1);
+    // Timestamp-based sync: advance to whichever recorded frame matches how much
+    // real time has passed since replay started, scaled by the speed slider.
+    const _now = performance.now();
+    if (!_replayWallStart) _replayWallStart = _now;
+    const _elapsed = (_now - _replayWallStart) * (speed / recordedSpeed);
+    while (scrubFrame + 1 < _histLen) {
+      const nextT = _histGet(scrubFrame + 1).t - _replaySimStart;
+      if (nextT > _elapsed) break;
+      scrubFrame++;
+    }
     if (scrubFrame >= _histLen - 1) {
       // Reached end of recording — stop
       running = false;
