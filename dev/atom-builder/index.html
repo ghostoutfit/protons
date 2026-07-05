@@ -889,8 +889,10 @@
     <div class="dev-row"><label>Damp</label><input type="range" id="slDamp" min="0.990" max="1.000" step="0.0001" value="1.000"><span class="dev-val" id="slDampVal">1.0000</span></div>
     <div class="dev-row"><label>Min r</label><input type="range" id="slMinR" min="5" max="100" step="1" value="30"><span class="dev-val" id="slMinRVal">30</span></div>
     <div class="dev-row"><label>Max r</label><input type="range" id="slMaxR" min="50" max="800" step="10" value="220"><span class="dev-val" id="slMaxRVal">220</span></div>
-    <div class="dev-row"><label>dt</label><input type="range" id="slDt" min="0.05" max="2.0" step="0.05" value="0.5"><span class="dev-val" id="slDtVal">0.50</span></div>
-    <div class="dev-row"><label>Trail</label><input type="range" id="slTrail" min="0" max="300" step="5" value="80"><span class="dev-val" id="slTrailVal">80</span></div>
+    <div class="dev-row"><label>dt</label><input type="range" id="slDt" min="0.05" max="2.0" step="0.05" value="1.45"><span class="dev-val" id="slDtVal">1.45</span></div>
+    <div class="dev-row"><label>Trail</label><input type="range" id="slTrail" min="0" max="300" step="5" value="105"><span class="dev-val" id="slTrailVal">105</span></div>
+    <div class="dev-row"><label>baseR</label><input type="range" id="slBaseR" min="50" max="2000" step="10" value="200"><span class="dev-val" id="slBaseRVal">200</span></div>
+    <div class="dev-row"><label>shrink</label><input type="range" id="slShrink" min="0" max="1" step="0.01" value="0.05"><span class="dev-val" id="slShrinkVal">0.05</span></div>
   </div>
 </div>
 <div id="forceVizPanel">
@@ -1464,7 +1466,7 @@ let selectedNucleusKey = 'u235';
 
 // ─── Animation state ──────────────────────────────────────────────────────────
 let currentSeed = Math.floor(Math.random() * 1e9);
-let viewZoom = 0.35;
+let viewZoom = 0.55;
 let currentTab = 'shells';
 
 // ── Action log (for bug reports) ─────────────────────────────────────────────
@@ -1478,7 +1480,11 @@ function logAction(msg) {
 // v=-1 → 0.83 (20% wider),  v=0 → 1.0,  v=1 → 2.0
 // v=-1 → 0.1,  v=0 → 0.35,  v=1 → 2.0
 function zoomFromSlider(v) {
-  return v <= 0 ? 0.35 + v * 0.25 : 0.35 + v * 1.65;
+  // Zoom-out half: exponential so mid-slider feels natural across a 100× range
+  // v=-1 → 0.006 (whole lead atom fits), v=0 → 0.55 (2 shells fill screen)
+  if (v <= 0) return 0.55 * Math.pow(0.006 / 0.55, -v);
+  // Zoom-in half: linear up to 2.0
+  return 0.55 + v * 1.45;
 }
 
 let showParticles = true;
@@ -1492,19 +1498,26 @@ let _imgParent = null;
 // ─── Electron physics ─────────────────────────────────────────────────────────
 // Each electron: { x, y, vx, vy, trail: [{x,y}] }
 let electrons = [];
-let eK = 250000, eRepulse = 50000, eDamp = 1, eMinR = 30, eMaxR = 220, eDt = 0.5;
-let eTrailLen = 80;
+let eK = 250000, eRepulse = 50000, eDamp = 1, eMinR = 30, eMaxR = 220, eDt = 1.45;
+let eTrailLen = 105;
 
 // Shell definitions: capacity (max electrons), maxR (outer soft-wall radius)
 // Shell 0 = innermost (holds 2), shells 1–3 hold 8 each → total 26
 const SHELLS = [
-  { capacity:  2, maxR:  220 },
-  { capacity:  8, maxR:  440 },
-  { capacity: 18, maxR:  880 },
-  { capacity: 18, maxR: 1760 },
-  { capacity: 14, maxR: 3520 },
+  { capacity: 2, maxR:    220 },
+  { capacity: 8, maxR:    440 },
+  { capacity: 8, maxR:    880 },
+  { capacity: 8, maxR:   1760 },
+  { capacity: 8, maxR:   3520 },
+  { capacity: 8, maxR:   7040 },
+  { capacity: 8, maxR:  14080 },
+  { capacity: 8, maxR:  28160 },
+  { capacity: 8, maxR:  56320 },
+  { capacity: 8, maxR: 112640 },
+  { capacity: 8, maxR: 225280 },
+  { capacity: 8, maxR: 450560 },
 ];
-const E_MAX_TOTAL = SHELLS.reduce((s, sh) => s + sh.capacity, 0); // 60
+const E_MAX_TOTAL = SHELLS.reduce((s, sh) => s + sh.capacity, 0); // 90
 
 function getShellForNewElectron() {
   let filled = 0;
@@ -1713,12 +1726,34 @@ function setNucleusFromZ(Z) {
   draw();
 }
 
-// Shell radius scaled by proton count: more protons → tighter shells.
-// Reference point Z=20; power 0.3 gives ~15% shrink at Z=56, ~25% at Z=92.
+// Shell radius formula: actualRadius = (baseRadius * n²) / (Z * shrinkFactor + 1)
+// where n = shell number starting at 1 (s+1), Z = proton count
+let shellBaseR   = 200;
+let shellShrink  = 0.05;
+
 function getShellRadius(s) {
-  const Z = customZ || 1;
-  const scale = Math.pow(20 / Math.max(Z, 1), 0.3);
-  return SHELLS[s].maxR * scale;
+  const Z = Math.max(customZ, 1);
+  function natural(i) {
+    const n = i + 1;
+    return (shellBaseR * n * n) / (Z * shellShrink + 1);
+  }
+
+  // Inner shell must clear the nucleus — clamp to 1.4× sphereR
+  const minR = animParent ? animParent.sphereR * 1.4 : 0;
+  const r0 = Math.max(natural(0), minR);
+
+  if (s === 0) return r0;
+
+  // Shells 1 & 2: if their natural position falls within the clamped zone,
+  // squish them evenly between r0 and shell 3's natural position
+  if (s <= 2) {
+    const rNat = natural(s);
+    if (rNat > r0 * 1.1) return rNat;          // enough room — no squish needed
+    const r3 = Math.max(natural(3), r0 * 1.5); // anchor for squish spread
+    return r0 + (s / 3) * (r3 - r0);
+  }
+
+  return natural(s);
 }
 
 // ─── Shells tab: Bohr-model style — electrons locked to shell radii ───────────
@@ -2316,8 +2351,10 @@ let selectedElectronIdx = -1;
 
 // ─── Tab switching ────────────────────────────────────────────────────────────
 const _devSlidersRow = document.getElementById('devSlidersRow');
+const _shellsOnlyHide = ['slRepulse', 'slDamp', 'slMinR', 'slMaxR'].map(id => document.getElementById(id)?.closest('.dev-row'));
 function _syncDevSliders() {
-  _devSlidersRow.style.display = currentTab === 'shells' ? 'none' : '';
+  const isShells = currentTab === 'shells';
+  _shellsOnlyHide.forEach(row => { if (row) row.style.display = isShells ? 'none' : ''; });
 }
 _syncDevSliders();
 
@@ -2418,7 +2455,9 @@ window.addEventListener('mouseup', () => { _fvResize = null; _fvDrag = null; });
   bind('slMinR',  'slMinRVal',  v => { eMinR    = v; }, v => Math.round(v));
   bind('slMaxR',  'slMaxRVal',  v => { eMaxR    = v; }, v => Math.round(v));
   bind('slDt',    'slDtVal',    v => { eDt      = v; }, v => v.toFixed(2));
-  bind('slTrail', 'slTrailVal', v => { eTrailLen = Math.round(v); for (const e of electrons) { if (e.trail.length > eTrailLen) e.trail.splice(0, e.trail.length - eTrailLen); } }, v => Math.round(v));
+  bind('slTrail',  'slTrailVal',  v => { eTrailLen = Math.round(v); for (const e of electrons) { if (e.trail.length > eTrailLen) e.trail.splice(0, e.trail.length - eTrailLen); } }, v => Math.round(v));
+  bind('slBaseR',  'slBaseRVal',  v => { shellBaseR  = v; }, v => Math.round(v));
+  bind('slShrink', 'slShrinkVal', v => { shellShrink = v; }, v => v.toFixed(2));
   document.getElementById('addElectronBtn').addEventListener('click', () => {
     document.getElementById('neutralCheckbox').checked = false;
     addElectron();
