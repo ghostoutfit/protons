@@ -127,6 +127,31 @@
     }
 
     .hint { font-size: 10px; color: #5060a0; margin-top: 2px; }
+
+    .radio-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 2px;
+    }
+    .radio-opt {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(10,8,30,0.9);
+      border: 1px solid rgba(26,110,255,0.3);
+      border-radius: 6px;
+      padding: 6px 10px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 400;
+      color: #d0d0e8;
+      text-transform: none;
+      letter-spacing: normal;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .radio-opt:hover { border-color: rgba(26,110,255,0.6); background: rgba(26,110,255,0.1); }
+    .radio-opt input[type="radio"] { accent-color: #1a6eff; width: 14px; height: 14px; flex-shrink: 0; }
   </style>
 </head>
 <body>
@@ -154,6 +179,30 @@
   </div>
 
   <div class="field">
+    <label>Are you a teacher or a student?</label>
+    <select id="roleSelect">
+      <option value="">— select —</option>
+      <option value="teacher">Teacher</option>
+      <option value="student">Student</option>
+    </select>
+  </div>
+
+  <div class="field" id="schoolField" style="display:none">
+    <label>Where is your school?</label>
+    <select id="schoolSelect">
+      <option value="">— select —</option>
+      <option value="Knox">Knox</option>
+      <option value="Compton">Compton</option>
+      <option value="Other">Other</option>
+    </select>
+  </div>
+
+  <div class="field" id="teacherField" style="display:none">
+    <label>Who is your teacher?</label>
+    <input id="teacherInput" type="text" placeholder="Teacher's name">
+  </div>
+
+  <div class="field">
     <label>What happened? *</label>
     <textarea id="titleInput" rows="2" placeholder="Brief description of the bug or question/concern" style="resize:vertical;"></textarea>
   </div>
@@ -163,9 +212,50 @@
     <textarea id="descInput" rows="4" placeholder="Optional details…"></textarea>
   </div>
 
+  <!-- Steps populated from actionLog; sent in payload but not shown to students -->
+  <div style="display:none">
+    <textarea id="stepsInput"></textarea>
+  </div>
+
   <div class="field">
-    <label>Steps to reproduce</label>
-    <textarea id="stepsInput" rows="3" placeholder="1. Select D+D&#10;2. Press Go&#10;3. …"></textarea>
+    <label>How long had you been using it before the problem?</label>
+    <div class="radio-group">
+      <label class="radio-opt"><input type="radio" name="duration" value="Right away"> Right away</label>
+      <label class="radio-opt"><input type="radio" name="duration" value="A few minutes"> A few minutes</label>
+      <label class="radio-opt"><input type="radio" name="duration" value="A long time"> A long time</label>
+      <label class="radio-opt"><input type="radio" name="duration" value="Not sure"> Not sure</label>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>How many other tabs do you have open?</label>
+    <div class="radio-group">
+      <label class="radio-opt"><input type="radio" name="tabCount" value="Just this one"> Just this one</label>
+      <label class="radio-opt"><input type="radio" name="tabCount" value="A few (2-5)"> A few (2–5)</label>
+      <label class="radio-opt"><input type="radio" name="tabCount" value="A lot (6+)"> A lot (6+)</label>
+      <label class="radio-opt"><input type="radio" name="tabCount" value="Don't know"> Don't know</label>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Has this happened before?</label>
+    <div class="radio-group">
+      <label class="radio-opt"><input type="radio" name="happenedBefore" value="Yes"> Yes</label>
+      <label class="radio-opt"><input type="radio" name="happenedBefore" value="No"> No</label>
+      <label class="radio-opt"><input type="radio" name="happenedBefore" value="First time using this"> First time using this</label>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>What were you doing right before?</label>
+    <div class="radio-group">
+      <label class="radio-opt"><input type="radio" name="lastAction" value="Just watching it run"> Just watching it run</label>
+      <label class="radio-opt"><input type="radio" name="lastAction" value="Pressing buttons"> Pressing buttons (reset, go, etc.)</label>
+      <label class="radio-opt"><input type="radio" name="lastAction" value="Zooming or dragging"> Zooming or dragging</label>
+      <label class="radio-opt"><input type="radio" name="lastAction" value="Switching tabs"> Switching tabs</label>
+      <label class="radio-opt"><input type="radio" name="lastAction" value="Nothing, it just happened"> Nothing, it just happened</label>
+      <label class="radio-opt"><input type="radio" name="lastAction" value="Other"> Other</label>
+    </div>
   </div>
 
   <hr class="divider">
@@ -233,19 +323,44 @@
   };
   document.getElementById('metaDisplay').textContent = JSON.stringify(meta, null, 2);
 
+  // ── Role show/hide ─────────────────────────────────────────
+  document.getElementById('roleSelect').addEventListener('change', function() {
+    const isStudent = this.value === 'student';
+    document.getElementById('schoolField').style.display  = isStudent ? 'flex' : 'none';
+    document.getElementById('teacherField').style.display = isStudent ? 'flex' : 'none';
+  });
+
   // ── Build the full report payload ──────────────────────────
   function buildPayload() {
-    const title  = document.getElementById('titleInput').value.trim();
-    const desc   = document.getElementById('descInput').value.trim();
-    const steps  = document.getElementById('stepsInput').value.trim();
-    const sim    = document.getElementById('simSel').value;
+    const title    = document.getElementById('titleInput').value.trim();
+    const desc     = document.getElementById('descInput').value.trim();
+    const steps    = document.getElementById('stepsInput').value.trim();
+    const sim      = document.getElementById('simSel').value;
     const stateRaw = document.getElementById('simStateInput').value.trim();
     let simState = null;
     if (stateRaw) {
       try { simState = JSON.parse(stateRaw); } catch { simState = { raw: stateRaw }; }
     }
-    const name  = document.getElementById('nameInput').value.trim();
-    return { meta, sim, name: name || null, title, description: desc, steps, simState };
+    const name           = document.getElementById('nameInput').value.trim();
+    const role           = document.getElementById('roleSelect').value;
+    const school         = document.getElementById('schoolSelect').value;
+    const teacher        = document.getElementById('teacherInput').value.trim();
+    const duration       = document.querySelector('input[name="duration"]:checked')?.value       || '';
+    const tabCount       = document.querySelector('input[name="tabCount"]:checked')?.value       || '';
+    const happenedBefore = document.querySelector('input[name="happenedBefore"]:checked')?.value || '';
+    const lastAction     = document.querySelector('input[name="lastAction"]:checked')?.value     || '';
+    return {
+      meta, sim,
+      name:           name     || null,
+      role:           role     || null,
+      school:         school   || null,
+      teacher:        teacher  || null,
+      title, description: desc, steps, simState,
+      duration:       duration       || null,
+      tabCount:       tabCount       || null,
+      happenedBefore: happenedBefore || null,
+      lastAction:     lastAction     || null,
+    };
   }
 
   // ── Submit ─────────────────────────────────────────────────
@@ -261,14 +376,21 @@
 
     const textBody = [
       payload.title,
-      payload.name ? 'From: ' + payload.name : '',
+      payload.name          ? 'From: '              + payload.name          : '',
+      payload.role          ? 'Role: '               + payload.role          : '',
+      payload.school        ? 'School: '             + payload.school        : '',
+      payload.teacher       ? 'Teacher: '            + payload.teacher       : '',
       '',
       payload.description,
-      payload.steps ? '\nSteps to reproduce:\n' + payload.steps : '',
+      payload.steps         ? '\nSteps to reproduce:\n' + payload.steps      : '',
+      '',
+      payload.duration      ? 'Time before problem: ' + payload.duration      : '',
+      payload.tabCount      ? 'Other tabs open: '     + payload.tabCount      : '',
+      payload.happenedBefore? 'Happened before: '     + payload.happenedBefore: '',
+      payload.lastAction    ? 'Last action: '         + payload.lastAction    : '',
     ].join('\n').trim();
 
     // Serialize full payload; truncate sim_state to keep URL manageable (~4KB cap)
-    const fullJson = JSON.stringify(payload);
     const simStateJson = payload.simState ? JSON.stringify(payload.simState) : '';
     const simStateTrunc = simStateJson.length > 3800
       ? simStateJson.slice(0, 3800) + '…[truncated]'
@@ -286,9 +408,16 @@
       });
       status.textContent = '✓ Submitted — thank you!';
       status.className = 'ok';
-      document.getElementById('titleInput').value = '';
-      document.getElementById('descInput').value  = '';
-      document.getElementById('stepsInput').value = '';
+      document.getElementById('titleInput').value  = '';
+      document.getElementById('descInput').value   = '';
+      document.getElementById('stepsInput').value  = '';
+      document.getElementById('nameInput').value   = '';
+      document.getElementById('roleSelect').value  = '';
+      document.getElementById('schoolSelect').value = '';
+      document.getElementById('teacherInput').value = '';
+      document.getElementById('schoolField').style.display  = 'none';
+      document.getElementById('teacherField').style.display = 'none';
+      document.querySelectorAll('input[type="radio"]').forEach(r => r.checked = false);
     } catch (e) {
       status.textContent = 'Error: ' + (e.message || 'unknown');
       status.className   = 'err';
