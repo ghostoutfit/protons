@@ -184,6 +184,7 @@
       <option value="">— select —</option>
       <option value="teacher">Teacher</option>
       <option value="student">Student</option>
+      <option value="other">Other</option>
     </select>
   </div>
 
@@ -205,11 +206,6 @@
   <div class="field">
     <label>What happened? *</label>
     <textarea id="titleInput" rows="2" placeholder="Brief description of the bug or question/concern" style="resize:vertical;"></textarea>
-  </div>
-
-  <div class="field">
-    <label>If you want, describe a potential fix or describe what you expected to happen.</label>
-    <textarea id="descInput" rows="4" placeholder="Optional details…"></textarea>
   </div>
 
   <!-- Steps populated from actionLog; sent in payload but not shown to students -->
@@ -256,6 +252,11 @@
       <label class="radio-opt"><input type="radio" name="lastAction" value="Nothing, it just happened"> Nothing, it just happened</label>
       <label class="radio-opt"><input type="radio" name="lastAction" value="Other"> Other</label>
     </div>
+  </div>
+
+  <div class="field">
+    <label>If you want, describe a potential fix or describe what you expected to happen.</label>
+    <textarea id="descInput" rows="4" placeholder="Optional details…"></textarea>
   </div>
 
   <hr class="divider">
