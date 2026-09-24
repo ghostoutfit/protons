@@ -279,7 +279,7 @@
         id:          SHEETS.generateId(),
         student_id:  'BUG',
         timestamp:   meta.timestamp,
-        sim_version: 'bug-' + payload.sim,
+        sim_version: payload.sim + (payload.simState?.version ? '-FTv' + payload.simState.version : ''),
         sim_state:   simStateTrunc || JSON.stringify({ meta }),
         text:        textBody,
         is_public:   false,
